@@ -34,6 +34,15 @@ class IdentifiersTest {
     }
 
     @Test
+    void 짝_없는_대리_문자가_든_값은_거부하고_짝이_맞는_글자는_받는다() {
+        assertThatThrownBy(() -> new EntityRef("p", "T", "a\uD800b")).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("깨진 글자");
+        assertThatThrownBy(() -> new EntityRef("p", "T", "a\uDE00")).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("깨진 글자");
+        assertThat(new EntityRef("p", "T", "\uD83D\uDE00").entityKey()).isEqualTo("\uD83D\uDE00");
+    }
+
+    @Test
     void NUL_글자가_든_값은_거부한다() {
         assertThatThrownBy(() -> new EntityRef("p", "T", "a\u0000b")).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("NUL");

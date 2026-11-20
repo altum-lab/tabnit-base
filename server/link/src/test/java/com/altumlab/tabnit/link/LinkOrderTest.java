@@ -1,0 +1,31 @@
+package com.altumlab.tabnit.link;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.altumlab.tabnit.core.EntityRef;
+import java.util.ArrayList;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+
+/**
+ * 항목의 키를 잇는 규칙은 core 의 식별자와 같아야 한다 (D2 AD-65, AD-122).
+ * link 가 그 규칙을 따로 구현하므로, core 가 규칙을 바꾸면 이 시험이 알려 준다.
+ */
+class LinkOrderTest {
+
+    @Test
+    void 값을_잇는_규칙이_core의_식별자와_같다() {
+        for (String key : List.of("K-1", "a|b", "c\\d", "\\|", "|", "끝\\", "가 나", "😀|x")) {
+            assertThat(LinkOrder.join(List.of("p", "T", key))).isEqualTo(new EntityRef("p", "T", key).id());
+        }
+    }
+
+    @Test
+    void 비교는_글자_코드_순이고_보충_문자를_BMP_뒤에_둔다() {
+        List<String> sorted = new ArrayList<>(List.of("b", "😀", "Ａ", "a", "", "가", "B", "ab"));
+        sorted.sort(LinkOrder.STRINGS);
+
+        // UTF-16 단위로 견주면 보충 문자(U+1F600)가 U+FF21 보다 앞에 온다. 글자 코드 순에서는 뒤다.
+        assertThat(sorted).containsExactly("", "B", "a", "ab", "b", "가", "Ａ", "😀");
+    }
+}

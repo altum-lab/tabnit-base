@@ -27,7 +27,14 @@ dependencies {
     api(project(":common"))
     api(project(":pack"))
     api(project(":core"))
+    implementation("org.springframework:spring-jdbc")
     testImplementation("org.junit.jupiter:junit-jupiter")
+    // 시험은 실제 PostgreSQL 에 api 모듈의 스키마 변경 파일을 적용해 돌린다 (D2 AD-10, AD-46).
+    testImplementation("org.testcontainers:testcontainers-postgresql")
+    testImplementation("org.flywaydb:flyway-core")
+    testImplementation("org.springframework:spring-jdbc")
+    testRuntimeOnly("org.flywaydb:flyway-database-postgresql")
+    testRuntimeOnly("org.postgresql:postgresql")
     testImplementation("org.assertj:assertj-core")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }

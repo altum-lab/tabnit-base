@@ -417,7 +417,7 @@ Pack 적재는 정의(온톨로지, 제약, 매핑, 규칙, 검증 질문)만 �
 |---|---|---|---|
 | `edition_id` | text | 어느 판의 알림인가 | [AD-153] |
 | `notice_no` | integer | 그 판 안에서의 차례. 1 부터. 아래의 차례로 매긴다 | [AD-153] |
-| `kind` | text | `SKIPPED_ROW` (건너뛴 행. 항목의 키가 겹쳐 건너뛴 것도 여기에 든다), `REFERENCE_ONLY_ENTITY` (참조로만 만들어진 개체), `ATTRIBUTE_CONFLICT` (서로 다른 값으로 부딪힌 속성) | [AD-94] [AD-138] [AD-136] [AD-157] |
+| `kind` | text | `SKIPPED_ROW` (건너뛴 행. 항목의 키가 겹쳐 건너뛴 것도 여기에 든다), `REFERENCE_ONLY_ENTITY` (참조로만 만들어진 개체), `ATTRIBUTE_CONFLICT` (서로 다른 값으로 부딪힌 속성), `RELATION_CONFLICT` (서로 겹치는 기간으로 부딪힌 관계. 제안, D6 "결정 필요" 13번) | [AD-94] [AD-138] [AD-136] [AD-157] |
 | `row_no` | integer | 걸린 행의 번호 | |
 | `code` | text | 이유의 코드 | [AD-153] |
 | `subject` | text, 없을 수 있다 | 걸린 개체의 식별자나 속성의 이름, 열의 이름 | |

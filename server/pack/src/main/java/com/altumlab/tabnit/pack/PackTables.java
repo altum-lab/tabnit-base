@@ -59,20 +59,22 @@ final class PackTables {
     }
 
     /** 매핑 한 행. 안쪽(열, 개체, 관계)은 이 목록을 다 읽은 뒤에 채운다. 결과를 읽는 도중에 다른 질의를 보내지 않는다. */
-    private record MappingRow(String source, MappingFileFormat format, String sheet, MappedEntityRef primary) {
+    private record MappingRow(String source, MappingFileFormat format, String sheet, String defaultDatePattern,
+            MappedEntityRef primary) {
     }
 
     private List<MappingDefinition> readMappings(String packId) {
         List<MappingRow> rows = jdbc.query("""
-                select input_source_id, file_format, sheet_name, primary_entity_type, primary_key_column
+                select input_source_id, file_format, sheet_name, default_date_pattern,
+                       primary_entity_type, primary_key_column
                 from pack_mapping where pack_id = ? order by input_source_id collate "C\"""",
                 (rs, n) -> new MappingRow(rs.getString("input_source_id"),
                         MappingFileFormat.valueOf(rs.getString("file_format")), rs.getString("sheet_name"),
-                        new MappedEntityRef(rs.getString("primary_entity_type"), rs.getString("primary_key_column"))),
+                        rs.getString("default_date_pattern"), new MappedEntityRef(rs.getString("primary_entity_type"), rs.getString("primary_key_column"))),
                 packId);
         List<MappingDefinition> mappings = new ArrayList<>();
         for (MappingRow row : rows) {
-            mappings.add(new MappingDefinition(row.source(), row.format(), row.sheet(),
+            mappings.add(new MappingDefinition(row.source(), row.format(), row.sheet(), row.defaultDatePattern(),
                     readColumns(packId, row.source(), "REQUIRED"), readColumns(packId, row.source(), "ITEM_KEY"),
                     row.primary(), readMappedEntities(packId, row.source()),
                     readMappedRelations(packId, row.source())));
@@ -129,9 +131,9 @@ final class PackTables {
     private void insertMapping(String packId, MappingDefinition mapping) {
         String source = mapping.inputSourceId();
         jdbc.update("""
-                insert into pack_mapping (pack_id, input_source_id, file_format, sheet_name,
-                                          primary_entity_type, primary_key_column) values (?, ?, ?, ?, ?, ?)""",
-                packId, source, mapping.fileFormat().name(), mapping.sheetName(),
+                insert into pack_mapping (pack_id, input_source_id, file_format, sheet_name, default_date_pattern,
+                                          primary_entity_type, primary_key_column) values (?, ?, ?, ?, ?, ?, ?)""",
+                packId, source, mapping.fileFormat().name(), mapping.sheetName(), mapping.defaultDatePattern(),
                 mapping.primaryEntity().entityType(), mapping.primaryEntity().keyColumn());
         insertColumns(packId, source, "REQUIRED", mapping.requiredColumns());
         insertColumns(packId, source, "ITEM_KEY", mapping.itemKeyColumns());

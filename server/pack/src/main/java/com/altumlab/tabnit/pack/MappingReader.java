@@ -4,12 +4,15 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -221,6 +224,12 @@ final class MappingReader {
             }
         }
         String source = text(top, V + "inputSourceId", "tabnit:inputSourceId", item, "", true);
+        if (source != null && !source.matches("[a-z][a-z0-9-]*")) {
+            // 입력 자료의 식별자는 Pack 식별자와 같은 규칙이다 (D2 AD-145).
+            problem(item, "tabnit:inputSourceId \"" + source
+                    + "\" 을(를) 쓸 수 없습니다. 영어 소문자로 시작하고 영어 소문자, 숫자, 붙임표(-)만 쓰세요.");
+            source = null;
+        }
         if (source != null) {
             seenSources.merge(source, 1, Integer::sum);
             sourceFiles.computeIfAbsent(source, k -> new TreeSet<>(PackOrder.STRINGS)).add(file.substring(FOLDER.length() + 1));
@@ -250,6 +259,14 @@ final class MappingReader {
             problem(item, "tabnit:sheetName 은(는) 엑셀 매핑에만 적습니다. CSV 매핑에서는 빼세요.");
         }
 
+        // 날짜의 기본 모양 (D2 AD-143).
+        String defaultDatePattern = text(top, V + "defaultDatePattern", "tabnit:defaultDatePattern", item, "", false);
+        if (defaultDatePattern != null) {
+            String fault = datePatternFault(defaultDatePattern);
+            if (fault != null) {
+                problem(item, "tabnit:defaultDatePattern \"" + defaultDatePattern + "\" 을(를) 쓸 수 없습니다: " + fault);
+            }
+        }
         List<String> required = columns(top, V + "requiredColumns", "tabnit:requiredColumns", item, false);
         List<String> itemKey = columns(top, V + "itemKeyColumns", "tabnit:itemKeyColumns", item, true);
 
@@ -309,7 +326,7 @@ final class MappingReader {
         if (problems.size() > before) {
             return null;
         }
-        return new MappingDefinition(source, format, sheet, required, itemKey, primary, List.copyOf(entities.values()),
+        return new MappingDefinition(source, format, sheet, defaultDatePattern, required, itemKey, primary, List.copyOf(entities.values()),
                 List.copyOf(relations));
     }
 
@@ -366,11 +383,9 @@ final class MappingReader {
                 problem(item, "tabnit:datePattern 은(는) 날짜 속성에만 적습니다. 속성 " + name + " 은(는) 날짜가 아닙니다. 빼세요.");
             }
             else {
-                try {
-                    DateTimeFormatter.ofPattern(datePattern);
-                }
-                catch (IllegalArgumentException e) {
-                    problem(item, "tabnit:datePattern \"" + datePattern + "\" 을(를) 읽을 수 없습니다. yyyy.M.d 처럼 적으세요.");
+                String fault = datePatternFault(datePattern);
+                if (fault != null) {
+                    problem(item, "tabnit:datePattern \"" + datePattern + "\" 을(를) 쓸 수 없습니다 (속성 " + name + "): " + fault);
                 }
             }
         }
@@ -580,6 +595,83 @@ final class MappingReader {
                 }
             }
         }
+    }
+
+    /**
+     * 날짜의 모양이 받을 수 있는 것인지 본다 (D2 AD-144). 받을 수 있으면 null, 아니면 무엇이 틀렸는지.
+     *
+     * <p>연(y), 월(M), 일(d)을 숫자로 적는 글자와 구분 글자(마침표, 붙임표, 빗금, 빈칸, 작은따옴표로 감싼 글자)만 받는다.
+     * 연, 월, 일이 모두 한 번씩 있어야 한다. 그래야 어느 서버에서 읽어도 같은 날짜가 나온다.
+     */
+    static String datePatternFault(String pattern) {
+        String hint = " yyyy.M.d 나 yyyy'년' M'월' d'일' 처럼 적으세요.";
+        int years = 0;
+        int months = 0;
+        int days = 0;
+        int i = 0;
+        while (i < pattern.length()) {
+            char c = pattern.charAt(i);
+            if (c == '\'') {
+                int end = pattern.indexOf('\'', i + 1);
+                if (end < 0) {
+                    return "작은따옴표가 닫히지 않았습니다." + hint;
+                }
+                i = end + 1;
+            }
+            else if (c == 'y' || c == 'M' || c == 'd') {
+                int end = i;
+                while (end < pattern.length() && pattern.charAt(end) == c) {
+                    end++;
+                }
+                int length = end - i;
+                if (c == 'y') {
+                    years++;
+                    if (length != 4) {
+                        // 두 자리 연도(yy)는 어느 세기인지 정해져 있지 않아 받지 않는다.
+                        return "연은 네 자리 yyyy 로 적습니다." + hint;
+                    }
+                }
+                else if (length > 2) {
+                    return "월과 일은 숫자로만 적습니다 (M, MM, d, dd). 달의 이름은 받지 않습니다." + hint;
+                }
+                else if (c == 'M') {
+                    months++;
+                }
+                else {
+                    days++;
+                }
+                i = end;
+            }
+            else if (c == '.' || c == '-' || c == '/' || c == ' ') {
+                i++;
+            }
+            else {
+                return "쓸 수 없는 글자 '" + c + "' 이(가) 있습니다. 연(y), 월(M), 일(d)과 구분 글자(. - / 빈칸)만 쓰고, 다른 글자는 작은따옴표로 감싸세요."
+                        + hint;
+            }
+        }
+        if (years != 1 || months != 1 || days != 1) {
+            return "연(y), 월(M), 일(d)이 모두 한 번씩 있어야 합니다." + hint;
+        }
+        if (pattern.startsWith(" ") || pattern.endsWith(" ")) {
+            return "앞이나 뒤에 빈칸이 있습니다. 빈칸을 빼세요." + hint;
+        }
+        // 이 모양으로 적은 날짜를 다시 읽을 수 있는지 본다. 구분 글자 없이 이어 붙인 모양(yyyyMd)처럼,
+        // 글자는 맞아도 어떤 날짜도 읽지 못하는 모양이 있다. 한 자리와 두 자리의 월·일을 모두 본다.
+        // 언어 설정은 고정한다. 날짜는 정해 둔 값이고 현재 시각과 무관하다.
+        try {
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern(pattern, Locale.ROOT);
+            for (LocalDate sample : List.of(LocalDate.of(2026, 3, 1), LocalDate.of(2026, 11, 25))) {
+                if (!sample.equals(LocalDate.parse(sample.format(formatter), formatter))) {
+                    return "이 모양으로 적은 날짜가 다른 날짜로 읽힙니다." + hint;
+                }
+            }
+        }
+        catch (IllegalArgumentException | DateTimeParseException e) {
+            return "이 모양으로는 날짜를 읽을 수 없습니다. 연, 월, 일 사이에 구분 글자를 넣거나 월과 일을 두 자리(MM, dd)로 적으세요."
+                    + hint;
+        }
+        return null;
     }
 
     private static boolean isUri(Node node, String uri) {

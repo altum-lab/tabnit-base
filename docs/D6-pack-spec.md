@@ -421,7 +421,7 @@ Pack 을 적재할 때 매핑이 온톨로지와 맞는지 본다. 틀리면 파
 
 12. **CSV 를 읽는 세부.** 7절 "입력 파일"의 목록이다. 맞는지 확인이 필요하다. 그 가운데 판단이 갈릴 수 있는 것: (가) 줄바꿈하지 않는 빈칸(U+00A0)을 앞뒤 빈칸으로 보고 떼는가? 엑셀에서 옮긴 자료에 흔하다. 지금은 떼지 않는다. (나) 쉼표 말고 다른 구분 글자(탭, 세미콜론)를 매핑에 적을 수 있게 하는가? 지금은 쉼표만이다. 세미콜론으로 나눈 파일은 거부되지 않고 열 하나로 읽혀, 반드시 있어야 하는 열이 없다는 것으로 뒤에서 드러난다. (라) 끝에 빈 열이 붙은 열 이름의 줄을 거부하지 않고 그 열을 버리는가? 빈 열을 가진 엑셀 표에서 나오는 흔한 모양이다. 지금은 파일 전체를 거부한다. (마) 큰따옴표 하나가 닫히지 않으면 파일 전체를 거부한다. 어디서 행이 끝나는지 알 수 없기 때문이다. (다) 건너뛴 행의 이유의 코드 (지금은 `CELL_COUNT_MISMATCH`, `TEXT_AFTER_QUOTE`, `INVALID_CHARACTER`)와 파일을 거부한 이유의 코드는 D7 과 함께 확정한다 [AD-153].
 
-13. **매핑 실행에서 구현하면서 정한 것 가운데 남은 것.** 대부분 확정했다 (AD-177 ~ AD-182). 남은 것: (가) 수의 표기 (지수 표기와 전각 숫자를 받지 않는 것), 빈 유효기간 칸, 종료일이 시작일보다 뒤가 아닌 행, 주 개체를 항상 만드는 것. (나) 건너뛴 이유와 거부의 코드 이름 (`BLANK_KEY`, `KEY_TOO_LONG`, `DUPLICATE_ITEM_KEY`, `VALUE_WITHOUT_KEY`, `INVALID_VALUE`, `INVALID_PERIOD`, `SELF_RELATION`, `MISSING_COLUMN`, `UNSUPPORTED_FORMAT`, `CONFLICTING_VALUES`, `CONFLICTING_PERIODS`)은 D7 을 쓸 때 확정한다. 그때까지 바뀔 수 있다.
+13. **매핑 실행에서 구현하면서 정한 것 가운데 남은 것.** 대부분 확정했다 (AD-177 ~ AD-182). 남은 것: (가) 수의 표기 (지수 표기와 전각 숫자를 받지 않는 것), 빈 유효기간 칸, 종료일이 시작일보다 뒤가 아닌 행, 주 개체를 항상 만드는 것. (나) 건너뛴 이유와 거부의 코드 이름 (`BLANK_KEY`, `KEY_TOO_LONG`, `DUPLICATE_ITEM_KEY`, `VALUE_WITHOUT_KEY`, `INVALID_VALUE`, `INVALID_PERIOD`, `SELF_RELATION`, `MISSING_COLUMN`, `UNSUPPORTED_FORMAT`, `CONFLICTING_VALUES`, `CONFLICTING_PERIODS`, `STARTS_AT_EFFECTIVE_DATE`, `ALREADY_PAST`, `CANNOT_END`)은 D7 을 쓸 때 확정한다. 그때까지 바뀔 수 있다.
 14. (닫힘) 아주 긴 키는 그 행만 건너뛴다 [AD-177]. 수를 틀리게 읽게 만드는 자릿수 구분 기호는 Pack 을 적재할 때 거부한다 [AD-178]. 남은 것: Pack 식별자, 유형 이름, 입력 자료의 식별자의 길이는 재지 않는다. 그것들이 아주 길면 200자 안의 키로도 식별자가 한도를 넘을 수 있다 (D5 "결정 필요" 10번).
 
 ### 받아야 하는 것

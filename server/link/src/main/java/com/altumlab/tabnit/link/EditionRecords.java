@@ -66,7 +66,7 @@ public class EditionRecords {
                 .add(new ItemOutput(ItemOutput.Kind.valueOf(rs.getString("kind")), rs.getString("object_id")));
         }, editionId);
         return jdbc.query("""
-                select item_key, row_no, content_hash
+                select item_key, row_no, content_hash, primary_entity_id
                   from edition_item
                  where edition_id = ?
                  order by item_key
@@ -74,7 +74,66 @@ public class EditionRecords {
             List<ItemOutput> made = new ArrayList<>(outputs.getOrDefault(rs.getString("item_key"), List.of()));
             // 종류의 차례는 글자 순이 아니라 정해진 차례(개체, 관계, 속성 값)다.
             made.sort(OUTPUT_ORDER);
-            return new IngestedItem(rs.getString("item_key"), rs.getInt("row_no"), rs.getString("content_hash"), made);
+            return new IngestedItem(rs.getString("item_key"), rs.getInt("row_no"), rs.getString("content_hash"),
+                    rs.getString("primary_entity_id"), made);
+        }, editionId);
+    }
+
+    /**
+     * 판의 변동 이벤트와 변동 대상. 항목의 키의 글자 코드 순이고, 변동 대상은 식별자 순이다 (D2 AD-122).
+     * 첫 판이면 비어 있다 (D2 AD-148).
+     */
+    public List<ChangeEvent> changeEvents(String editionId) {
+        Objects.requireNonNull(editionId, "판의 식별자는 반드시 있어야 합니다");
+        Map<String, List<String>> targets = new TreeMap<>(LinkOrder.STRINGS);
+        jdbc.query("""
+                select t.change_event_id, t.entity_id
+                  from change_target t
+                  join change_event e on e.id = t.change_event_id
+                 where e.edition_id = ?
+                 order by t.change_event_id, t.entity_id
+                """, rs -> {
+            targets.computeIfAbsent(rs.getString("change_event_id"), k -> new ArrayList<>())
+                .add(rs.getString("entity_id"));
+        }, editionId);
+        return jdbc.query("""
+                select id, edition_id, item_key, change_kind, primary_entity_id, status, failed_stage, failure_code
+                  from change_event
+                 where edition_id = ?
+                 order by item_key
+                """, (rs, n) -> new ChangeEvent(rs.getString("id"), rs.getString("edition_id"), rs.getString("item_key"),
+                ChangeKind.valueOf(rs.getString("change_kind")), rs.getString("primary_entity_id"),
+                ChangeEventStatus.valueOf(rs.getString("status")), rs.getString("failed_stage"),
+                rs.getString("failure_code"), targets.getOrDefault(rs.getString("id"), List.of())), editionId);
+    }
+
+    /** 앞 판의 항목과 그 기록. 판 비교에 쓴다. 항목의 키 순이다. */
+    static List<EditionPlan.PreviousItem> previousItems(JdbcTemplate jdbc, String editionId) {
+        Map<String, List<EditionPlan.OutputDetail>> outputs = new TreeMap<>(LinkOrder.STRINGS);
+        jdbc.query("""
+                select item_key, kind, object_id, subject, fact_hash, valid_from, valid_to
+                  from edition_item_output
+                 where edition_id = ?
+                 order by item_key, kind, object_hash
+                """, rs -> {
+            outputs.computeIfAbsent(rs.getString("item_key"), k -> new ArrayList<>())
+                .add(new EditionPlan.OutputDetail(ItemOutput.Kind.valueOf(rs.getString("kind")),
+                        rs.getString("object_id"), rs.getString("subject"), rs.getString("fact_hash"),
+                        rs.getObject("valid_from", java.time.LocalDate.class),
+                        rs.getObject("valid_to", java.time.LocalDate.class)));
+        }, editionId);
+        return jdbc.query("""
+                select item_key, content_hash, primary_entity_id
+                  from edition_item
+                 where edition_id = ?
+                 order by item_key
+                """, (rs, n) -> {
+            List<EditionPlan.OutputDetail> made = new ArrayList<>(
+                    outputs.getOrDefault(rs.getString("item_key"), List.of()));
+            made.sort(Comparator.comparing(EditionPlan.OutputDetail::kind)
+                .thenComparing(EditionPlan.OutputDetail::objectId, LinkOrder.STRINGS));
+            return new EditionPlan.PreviousItem(rs.getString("item_key"), rs.getString("content_hash"),
+                    rs.getString("primary_entity_id"), made);
         }, editionId);
     }
 

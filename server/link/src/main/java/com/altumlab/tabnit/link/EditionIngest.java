@@ -20,8 +20,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  * 하나도 안 들어간다 (D2 AD-150, AD-164). 투입은 받아들여졌든 거부됐든 투입 기록에 남는다 (D2 AD-152).
  * 받은 때와 적용일은 부르는 쪽이 넘긴다. 이 클래스는 현재 시각을 읽지 않는다.
  *
- * <p>지금은 입력 자료마다 첫 판만 받는다. 앞 판과 비교해 끝내는 일(판 비교, C-05)이 생길 때까지 둘째 판은
- * 거부한다 (D2 AD-184).
+ * <p>둘째 판부터는 바로 앞 판과 비교한다. 바뀐 것만 끝내고 다시 넣으며, 바뀐 항목을 변동 이벤트로 함께 저장한다
+ * (보드 C-05, D3 6절).
  */
 public class EditionIngest {
 
@@ -143,6 +143,8 @@ public class EditionIngest {
                  order by edition_no desc
                  limit 1
                 """, EditionRecords.EDITION, attempt.packId(), attempt.inputSourceId());
+        int editionNo = 1;
+        List<EditionPlan.PreviousItem> previousItems = null;
         if (!latest.isEmpty()) {
             Edition previous = latest.get(0);
             if (previous.contentHash().equals(attempt.contentHash())) {
@@ -154,21 +156,23 @@ public class EditionIngest {
                 // 적용일은 바로 앞 판보다 하루 이상 뒤여야 한다 (D2 AD-149).
                 return reject(attempt, "EFFECTIVE_DATE_NOT_AFTER_PREVIOUS", previous.effectiveDate().toString());
             }
-            // 앞 판의 값을 끝내는 일(판 비교)이 없으면 둘째 판을 바르게 넣을 수 없다 (D2 AD-184).
-            return reject(attempt, "EDITION_DIFF_NOT_READY", previous.id());
+            editionNo = previous.editionNo() + 1;
+            previousItems = EditionRecords.previousItems(jdbc, previous.id());
         }
-        int editionNo = 1;
         String editionId = LinkOrder
             .join(List.of(attempt.packId(), attempt.inputSourceId(), Integer.toString(editionNo)));
-        // 매핑 실행은 이 트랜잭션에 함께 든다. 파일이 틀렸거나 저장소가 받지 않으면 예외가 나가고 모두 되돌려진다.
-        MappingOutcome outcome = executor.execute(pack, attempt.inputSourceId(), content, editionNo,
-                attempt.effectiveDate(), attempt.receivedAt());
-        store(attempt, editionId, editionNo, content, outcome);
+        // 계획: 앞 판과 견줘 이을 것, 끝낼 것, 새로 넣을 것을 가린다. 파일이 틀렸거나 끝낼 수 없는 것이 있으면 예외가 나간다.
+        EditionPlan plan = executor.plan(pack, attempt.inputSourceId(), content, editionNo, attempt.effectiveDate(),
+                previousItems);
+        // 적용: 이 트랜잭션에 함께 든다. 저장소가 받지 않으면 예외가 나가고 모두 되돌려진다.
+        executor.apply(plan, attempt.inputSourceId(), editionNo, attempt.receivedAt());
+        store(attempt, editionId, editionNo, content, plan);
         record(attempt, IngestOutcome.ACCEPTED, editionId, null, null);
-        return new IngestResult(IngestOutcome.ACCEPTED, editionId, null, null, outcome);
+        return new IngestResult(IngestOutcome.ACCEPTED, editionId, null, null, plan.outcome);
     }
 
-    private void store(Attempt attempt, String editionId, int editionNo, byte[] content, MappingOutcome outcome) {
+    private void store(Attempt attempt, String editionId, int editionNo, byte[] content, EditionPlan plan) {
+        MappingOutcome outcome = plan.outcome;
         jdbc.update("""
                 insert into edition (id, pack_id, input_source_id, edition_no, effective_date, content_hash, content,
                                      file_name, received_at)
@@ -177,20 +181,45 @@ public class EditionIngest {
                 attempt.contentHash(), content, attempt.fileName(), utc(attempt.receivedAt()));
         List<Object[]> items = new ArrayList<>();
         List<Object[]> outputs = new ArrayList<>();
-        for (IngestedItem item : outcome.items()) {
-            items.add(new Object[] { editionId, item.itemKey(), item.rowNo(), item.contentHash() });
-            for (ItemOutput output : item.outputs()) {
+        for (EditionPlan.PlannedItem planned : plan.items) {
+            IngestedItem item = planned.item();
+            items.add(new Object[] { editionId, item.itemKey(), item.rowNo(), item.contentHash(),
+                    item.primaryEntityId() });
+            for (EditionPlan.OutputDetail output : planned.outputs()) {
                 // 만든 것의 식별자는 길 수 있어 색인에 넣지 않는다. 유일은 그 해시로 지킨다 (D2 AD-187).
                 outputs.add(new Object[] { editionId, item.itemKey(), output.kind().name(), output.objectId(),
-                        LinkHash.sha256Hex(output.objectId().getBytes(java.nio.charset.StandardCharsets.UTF_8)) });
+                        LinkHash.sha256Hex(output.objectId().getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                        output.subject(), output.factHash(), output.validFrom(), output.validTo() });
             }
         }
-        jdbc.batchUpdate("insert into edition_item (edition_id, item_key, row_no, content_hash) values (?, ?, ?, ?)",
-                items);
         jdbc.batchUpdate("""
-                insert into edition_item_output (edition_id, item_key, kind, object_id, object_hash)
+                insert into edition_item (edition_id, item_key, row_no, content_hash, primary_entity_id)
                 values (?, ?, ?, ?, ?)
-                """, outputs);
+                """, items);
+        jdbc.batchUpdate("""
+                insert into edition_item_output (edition_id, item_key, kind, object_id, object_hash, subject, fact_hash,
+                                                 valid_from, valid_to)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, outputs, new int[] { java.sql.Types.VARCHAR, java.sql.Types.VARCHAR, java.sql.Types.VARCHAR,
+                        java.sql.Types.VARCHAR, java.sql.Types.VARCHAR, java.sql.Types.VARCHAR, java.sql.Types.VARCHAR,
+                        java.sql.Types.DATE, java.sql.Types.DATE });
+        // 변동 이벤트: 바뀐 항목마다 하나. 뒤 단계를 아직 하지 않았으므로 PENDING 이다 (D2 AD-154, AD-164).
+        List<Object[]> events = new ArrayList<>();
+        List<Object[]> targets = new ArrayList<>();
+        for (ItemChange change : outcome.changes()) {
+            String eventId = LinkOrder.join(List.of(attempt.packId(), attempt.inputSourceId(),
+                    Integer.toString(editionNo), change.itemKey()));
+            events.add(new Object[] { eventId, editionId, change.itemKey(), change.kind().name(),
+                    change.primaryEntityId(), ChangeEventStatus.PENDING.name() });
+            for (String entityId : change.targetEntityIds()) {
+                targets.add(new Object[] { eventId, entityId });
+            }
+        }
+        jdbc.batchUpdate("""
+                insert into change_event (id, edition_id, item_key, change_kind, primary_entity_id, status)
+                values (?, ?, ?, ?, ?, ?)
+                """, events);
+        jdbc.batchUpdate("insert into change_target (change_event_id, entity_id) values (?, ?)", targets);
         // 알림의 번호는 정해진 차례(행 번호, 종류, 코드, 내용)로 1 부터 매긴다 (D2 AD-153). 결과가 이미 그 차례다.
         List<Object[]> notices = new ArrayList<>();
         int noticeNo = 0;

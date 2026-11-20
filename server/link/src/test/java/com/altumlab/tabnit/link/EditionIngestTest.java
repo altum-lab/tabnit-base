@@ -399,19 +399,20 @@ class EditionIngestTest {
     }
 
     @Test
-    void 판_비교가_생기기_전에는_둘째_판을_거부한다() {
+    void 내용이_다른_다음_파일은_둘째_판이_된다() {
         PackDefinition pack = pack("i-second", full("src"));
         ingest.ingest(pack, "src", "f.csv", bytes(CSV), EFFECTIVE, RECEIVED_AT);
+        byte[] next = bytes("code,title,other\nB-9,새 개체,O-1\n");
 
-        IngestResult second = ingest.ingest(pack, "src", "g.csv", bytes("code,title,other\nB-9,새 개체,O-1\n"),
-                EFFECTIVE.plusDays(1), RECEIVED_AT.plusSeconds(1));
+        IngestResult second = ingest.ingest(pack, "src", "g.csv", next, EFFECTIVE.plusDays(1),
+                RECEIVED_AT.plusSeconds(1));
 
-        // 앞 판의 값을 끝내는 일(판 비교, C-05)이 없으면 둘째 판을 바르게 넣을 수 없다 (D2 AD-184).
-        assertThat(second.outcome()).isEqualTo(IngestOutcome.REJECTED);
-        assertThat(second.reasonCode()).isEqualTo("EDITION_DIFF_NOT_READY");
-        assertThat(records.findEdition("i-second|src|2")).isEmpty();
-        assertThatThrownBy(() -> values.valuesAsOf("i-second|Base|B-9", EFFECTIVE.plusDays(1)))
-            .isInstanceOf(EntityNotFoundException.class);
+        // 판 비교는 EditionDiffTest 가 본다. 여기서는 판과 원본이 남는 것만 본다.
+        assertThat(second.outcome()).isEqualTo(IngestOutcome.ACCEPTED);
+        assertThat(second.editionId()).isEqualTo("i-second|src|2");
+        assertThat(records.findEdition("i-second|src|2").orElseThrow().editionNo()).isEqualTo(2);
+        assertThat(records.originalContent("i-second|src|2")).contains(next);
+        assertThat(records.originalContent("i-second|src|1")).contains(bytes(CSV));
     }
 
     @Test
@@ -498,8 +499,12 @@ class EditionIngestTest {
     @MethodSource("repositoryPacks")
     void 저장소의_Pack의_첫_판이_원본과_함께_남는다(Path dir) throws IOException {
         String packId = dir.getFileName().toString();
-        new PackLoader(LinkTestDatabase.dataSource()).load(dir, RECEIVED_AT);
-        PackDefinition pack = new PackDefinitions(LinkTestDatabase.dataSource()).find(packId).orElseThrow();
+        // Pack 식별자를 바꿀 수 없으므로 다른 시험과 섞이지 않게 빈 데이터베이스를 따로 쓴다.
+        javax.sql.DataSource fresh = LinkTestDatabase.fresh();
+        EditionIngest ingest = new EditionIngest(fresh);
+        EditionRecords records = new EditionRecords(fresh);
+        new PackLoader(fresh).load(dir, RECEIVED_AT);
+        PackDefinition pack = new PackDefinitions(fresh).find(packId).orElseThrow();
 
         // 시나리오에서 입력 자료마다 처음 나오는 판을 차례대로 넣는다. 시험에 Pack 의 이름과 수를 적지 않는다.
         Map<String, String[]> firstEditions = firstEditions(dir);

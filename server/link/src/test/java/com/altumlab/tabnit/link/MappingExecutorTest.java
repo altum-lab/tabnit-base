@@ -636,8 +636,11 @@ class MappingExecutorTest {
     @MethodSource("repositoryPacks")
     void 저장소의_Pack의_첫_판이_코드를_고치지_않고_적재된다(Path dir) throws IOException {
         String packId = dir.getFileName().toString();
-        new PackLoader(LinkTestDatabase.dataSource()).load(dir, RECORDED_AT);
-        PackDefinition pack = new PackDefinitions(LinkTestDatabase.dataSource()).find(packId).orElseThrow();
+        // Pack 식별자를 바꿀 수 없으므로 다른 시험과 섞이지 않게 빈 데이터베이스를 따로 쓴다.
+        javax.sql.DataSource fresh = LinkTestDatabase.fresh();
+        MappingExecutor executor = new MappingExecutor(fresh);
+        new PackLoader(fresh).load(dir, RECORDED_AT);
+        PackDefinition pack = new PackDefinitions(fresh).find(packId).orElseThrow();
 
         // 시나리오에서 입력 자료마다 처음 나오는 판을 차례대로 넣는다. 시험에 Pack 의 이름과 수를 적지 않는다.
         Map<String, String[]> firstEditions = firstEditions(dir);

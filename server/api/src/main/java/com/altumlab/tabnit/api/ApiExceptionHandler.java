@@ -7,14 +7,18 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 /**
  * 오류를 공통 오류 형식으로 낸다: RFC 9457 에 code 와 field 를 더한 것 (D2 AD-79, D7 2절).
  *
  * <p>내부 예외의 문구나 스택은 응답에 넣지 않는다. 서버 쪽의 문제는 기록에 남기고, 응답에는 정해진 문구만 담는다.
+ *
+ * <p>프레임워크가 내는 오류(없는 주소, 허용하지 않는 방식 등)는 부모 클래스가 제 상태(404, 405 등)와
+ * RFC 9457 형식으로 낸다. 이 오류들에는 아직 code 가 없다 (D7 2절 오류).
  */
 @RestControllerAdvice
-class ApiExceptionHandler {
+class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
 	private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
@@ -29,7 +33,7 @@ class ApiExceptionHandler {
 		return problem(HttpStatus.NOT_FOUND, title(HttpStatus.NOT_FOUND), "ENTITY_NOT_FOUND", null, e.getMessage());
 	}
 
-	/** 그 밖의 모든 것은 서버 쪽의 문제다. 원인은 기록에 남기고 응답에는 담지 않는다. */
+	/** 위에도 부모 클래스에도 걸리지 않은 것은 서버 쪽의 문제다. 원인은 기록에 남기고 응답에는 담지 않는다. */
 	@ExceptionHandler(Exception.class)
 	ProblemDetail handle(Exception e) {
 		log.error("요청을 처리하지 못했습니다", e);

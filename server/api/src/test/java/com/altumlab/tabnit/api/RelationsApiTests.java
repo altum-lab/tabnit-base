@@ -206,6 +206,18 @@ class RelationsApiTests {
 	}
 
 	@Test
+	void 없는_주소와_허용하지_않는_방식은_서버_오류가_아니라_제_상태로_답한다() throws Exception {
+		// 프레임워크가 내는 오류를 "서버 쪽의 문제"(500)로 뭉개지 않는다.
+		mvc.perform(get("/api/v1/no-such-thing"))
+			.andExpect(status().isNotFound())
+			.andExpect(content().contentTypeCompatibleWith("application/problem+json"))
+			.andExpect(jsonPath("$.status").value(404));
+		mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/relations"))
+			.andExpect(status().isMethodNotAllowed())
+			.andExpect(jsonPath("$.status").value(405));
+	}
+
+	@Test
 	void 같은_요청을_두_번_하면_응답이_같다() throws Exception {
 		String pack = "api-twice";
 		EntityRef me = entity(pack, "me");

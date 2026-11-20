@@ -6,9 +6,10 @@
 
 ```bash
 bash tools/doctor.sh          # 환경 점검
+bash tools/build.sh           # 전체 빌드 (서버 빌드와 시험, 화면이 있으면 화면까지. Docker 가 켜져 있어야 함)
 cd server && ./gradlew build  # 서버 빌드와 시험 (Docker 가 켜져 있어야 함)
 ./gradlew :api:bootRun        # 서버 실행 → http://localhost:8080/api/ping
-cd ../web && npm ci && npm run dev   # 화면 실행 → http://localhost:5173
+cd ../web && npm ci && npm run dev   # 화면 실행 → http://localhost:5173 (화면 프로젝트가 생긴 뒤부터, D-01)
 ```
 
 ## 폴더

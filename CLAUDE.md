@@ -38,6 +38,8 @@ tools/     점검 스크립트, 개발 보드
 | 하는 일 | 명령 (저장소 맨 위에서) |
 |---|---|
 | 환경 점검 | `bash tools/doctor.sh` |
+| 전체 빌드 (서버, 화면) | `bash tools/build.sh` (Docker가 켜져 있어야 한다) |
+| 받은 그대로 빌드되는지 확인 | `bash tools/check-build.sh` (git에 올린 파일만으로 깨끗한 사본을 만들어 빌드한다) |
 | 서버 전체 빌드와 시험 | `cd server && ./gradlew build` (Docker가 켜져 있어야 한다) |
 | 모듈 하나만 시험 | `cd server && ./gradlew :core:test` |
 | 서버 실행 | `cd server && ./gradlew :api:bootRun` (PostgreSQL 컨테이너가 함께 뜬다) |
@@ -48,6 +50,7 @@ tools/     점검 스크립트, 개발 보드
 | 일반성 검사 (엔진 코드에 Pack 용어) | `bash tools/check-generality.sh --all` |
 | 검증 질문 실행 | `bash verify/run.sh` |
 
+- 화면 명령 세 가지는 `web/` 에 프로젝트가 생긴 뒤부터 쓴다 (D-01). 그 전에는 `tools/build.sh` 가 화면 단계를 건너뛴다.
 - 스키마 변경은 `server/api/src/main/resources/db/migration/` 에 `V번호__설명.sql` 파일을 새로 추가한다. 이미 올라간 파일은 고치지 않는다.
 - 의존 라이브러리의 버전은 직접 적지 않는다. Spring Boot가 관리하는 버전을 쓴다.
 - `git push`, `git commit`, `docker` 명령은 실행 전에 사람에게 묻는다.

@@ -216,6 +216,51 @@ Pack 적재는 정의(온톨로지, 제약, 매핑, 규칙, 검증 질문)만 �
 
 - 기본 키: `pack_id`.
 
+### 매핑의 테이블
+
+매핑 정의(D6 7절)를 담는다. [AD-141] 변경 파일: `V5__pack_mapping.sql`. Turtle 에서 차례가 없는 부분(행이 만드는 개체, 관계)은 내용을 키로 삼는다.
+
+**pack_mapping** — 매핑 하나. 입력 자료 하나에 하나다.
+
+| 열 | 형식 | 뜻 | 근거 |
+|---|---|---|---|
+| `pack_id`, `input_source_id` | text | 기본 키. 입력 자료의 식별자는 출처의 `input_source_id` 가 된다 | [AD-41] |
+| `file_format` | text | `CSV` 또는 `XLSX` | [AD-84] |
+| `sheet_name` | text, 없을 수 있다 | 엑셀일 때 읽을 시트. CSV 이면 없다 | [AD-93] |
+| `primary_entity_type`, `primary_key_column` | text | 행의 주 개체. 유형과 키 열 | [AD-120] |
+
+**pack_mapping_column** — 차례가 있는 열 목록.
+
+| 열 | 형식 | 뜻 | 근거 |
+|---|---|---|---|
+| `pack_id`, `input_source_id`, `kind`, `position` | | 기본 키. `kind` 는 `REQUIRED` (반드시 있어야 하는 열) 또는 `ITEM_KEY` (항목의 키 열). `position` 은 1 부터 | [AD-57] [AD-122] |
+| `column_name` | text | 열 이름 | |
+
+**pack_mapping_entity** — 행이 만드는 개체.
+
+| 열 | 형식 | 뜻 | 근거 |
+|---|---|---|---|
+| `pack_id`, `input_source_id`, `entity_type`, `key_column` | text | 기본 키. 개체 유형과, 입력의 키가 되는 열 | [AD-37] |
+
+**pack_mapping_attribute** — 개체의 속성 값.
+
+| 열 | 형식 | 뜻 | 근거 |
+|---|---|---|---|
+| (위 개체의 키), `attribute_name` | text | 기본 키 | [AD-39] |
+| `column_name` | text | 값을 읽을 열 | |
+| `valid_from_column`, `valid_to_column` | text, 없을 수 있다 | 유효기간을 읽을 열 | [AD-42] |
+| `date_pattern`, `grouping_separator`, `true_value`, `false_value` | text, 없을 수 있다 | 값을 읽는 법 | [AD-94] |
+
+**pack_mapping_relation** — 행이 만드는 관계.
+
+| 열 | 형식 | 뜻 | 근거 |
+|---|---|---|---|
+| `pack_id`, `input_source_id`, `relation_type`, `source_entity_type`, `source_key_column`, `target_entity_type`, `target_key_column` | text | 기본 키 | [AD-29] |
+| `valid_from_column`, `valid_to_column` | text, 없을 수 있다 | 유효기간을 읽을 열 | [AD-42] |
+
+- 참조: 매핑이 가리키는 개체 유형은 `pack_entity_type`, 속성은 `pack_attribute`, 관계 유형은 `pack_relation_type`.
+- "속성 하나는 매핑 하나만 넣는다"[AD-137] 는 테이블이 아니라 pack 의 검증이 지킨다.
+
 ### pack_localized_label
 
 언어별 이름표다. 기본 이름표는 각 테이블의 `label` 열에 있다. [AD-131] 변경 파일: `V4__pack_localized_label.sql`.

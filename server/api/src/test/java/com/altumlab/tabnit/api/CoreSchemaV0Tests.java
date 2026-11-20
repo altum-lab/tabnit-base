@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.sql.Timestamp;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.List;
 
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
@@ -386,6 +385,82 @@ class CoreSchemaV0Tests {
 				() -> insertAttribute("pack-attr-eq", a, "name", "v", "src", 1, "2026-03-01", "2026-03-01"));
 	}
 
+	// ── 끝없는 날짜, 판 번호, 빈 값 ─────────────────────────────────
+
+	@Test
+	void 관계의_유효기간에_끝없는_날짜는_거부된다() {
+		String[] ab = twoEntities("pack-inf");
+
+		// 종료일이 없다는 것은 valid_to 가 비어 있는 것 하나로만 나타낸다.
+		assertRejectedBy("relation_period_finite_ck",
+				() -> insertRelation("pack-inf", ab[0], ab[1], "R", "src", 1, "2026-03-01", "infinity"));
+		assertRejectedBy("relation_period_finite_ck",
+				() -> insertRelation("pack-inf", ab[0], ab[1], "R", "src", 1, "-infinity", "2026-03-01"));
+		assertRejectedBy("relation_period_finite_ck",
+				() -> insertRelation("pack-inf", ab[0], ab[1], "R", "src", 1, "-infinity", null));
+	}
+
+	@Test
+	void 속성값의_유효기간에_끝없는_날짜는_거부된다() {
+		String a = insertEntity("pack-attr-inf", "T", "a");
+
+		assertRejectedBy("attribute_value_period_finite_ck",
+				() -> insertAttribute("pack-attr-inf", a, "name", "v", "src", 1, "2026-03-01", "infinity"));
+		assertRejectedBy("attribute_value_period_finite_ck",
+				() -> insertAttribute("pack-attr-inf", a, "name", "v", "src", 1, "-infinity", null));
+	}
+
+	@Test
+	void 판_번호는_1부터다() {
+		String[] ab = twoEntities("pack-edno");
+
+		assertRejectedBy("relation_edition_no_ck",
+				() -> insertRelation("pack-edno", ab[0], ab[1], "R", "src", 0, "2026-03-01", null));
+		assertRejectedBy("relation_edition_no_ck",
+				() -> insertRelation("pack-edno", ab[0], ab[1], "R", "src", -1, "2026-03-01", null));
+		assertRejectedBy("attribute_value_edition_no_ck",
+				() -> insertAttribute("pack-edno", ab[0], "name", "v", "src", 0, "2026-03-01", null));
+		assertThatCode(() -> insertRelation("pack-edno", ab[0], ab[1], "R", "src", 1, "2026-03-01", null))
+			.doesNotThrowAnyException();
+	}
+
+	@Test
+	void 개체의_Pack과_유형과_키는_빈_글자일_수_없다() {
+		assertRejectedBy("entity_not_blank_ck", () -> insertEntityWithId("blank-1", "", "T", "k"));
+		assertRejectedBy("entity_not_blank_ck", () -> insertEntityWithId("blank-2", "pack-blank", "", "k"));
+		assertRejectedBy("entity_not_blank_ck", () -> insertEntityWithId("blank-3", "pack-blank", "T", ""));
+		assertRejectedBy("entity_not_blank_ck", () -> insertEntityWithId("", "pack-blank", "T", "k"));
+	}
+
+	@Test
+	void 관계의_유형과_입력_자료는_빈_글자일_수_없다() {
+		String[] ab = twoEntities("pack-rel-blank");
+
+		assertRejectedBy("relation_not_blank_ck",
+				() -> insertRelation("pack-rel-blank", ab[0], ab[1], "", "src", 1, "2026-03-01", null));
+		assertRejectedBy("relation_not_blank_ck",
+				() -> insertRelation("pack-rel-blank", ab[0], ab[1], "R", "", 1, "2026-03-01", null));
+	}
+
+	@Test
+	void 속성의_이름과_입력_자료는_빈_글자일_수_없다() {
+		String a = insertEntity("pack-attr-blank", "T", "a");
+
+		assertRejectedBy("attribute_value_not_blank_ck",
+				() -> insertAttribute("pack-attr-blank", a, "", "v", "src", 1, "2026-03-01", null));
+		assertRejectedBy("attribute_value_not_blank_ck",
+				() -> insertAttribute("pack-attr-blank", a, "name", "v", "", 1, "2026-03-01", null));
+	}
+
+	@Test
+	void 속성값은_빈_글자여도_저장된다() {
+		String a = insertEntity("pack-attr-empty", "T", "a");
+
+		// 값이 없는 것(행이 없음)과 빈 글자인 값은 다르다. 빈 글자를 허용할지는 속성의 형식(D6)이 정한다.
+		assertThatCode(() -> insertAttribute("pack-attr-empty", a, "name", "", "src", 1, "2026-03-01", null))
+			.doesNotThrowAnyException();
+	}
+
 	// ── 도우미 ──────────────────────────────────────────────────
 
 	/** 저장이 거부되고, 거부한 것이 그 제약(또는 그 열의 null 금지)인지 본다. */
@@ -418,6 +493,7 @@ class CoreSchemaV0Tests {
 		return new String[] { insertEntity(packId, "T", "a"), insertEntity(packId, "T", "b") };
 	}
 
+	/** 날짜는 글자로 넘겨 데이터베이스에서 바꾼다. 끝없는 날짜(infinity)도 넣어 볼 수 있다. */
 	private void insertRelation(String packId, String sourceId, String targetId, String type, String inputSourceId,
 			int editionNo, String validFrom, String validTo) {
 		String id = String.join("|", sourceId, targetId, type, inputSourceId, String.valueOf(editionNo),
@@ -425,8 +501,8 @@ class CoreSchemaV0Tests {
 		jdbc.update("""
 				insert into relation (id, pack_id, source_entity_id, target_entity_id, relation_type,
 				                      valid_from, valid_to, input_source_id, edition_no, recorded_at)
-				values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", id, packId, sourceId, targetId, type, date(validFrom),
-				date(validTo), inputSourceId, editionNo, RECORDED_AT);
+				values (?, ?, ?, ?, ?, ?::date, ?::date, ?, ?, ?)""", id, packId, sourceId, targetId, type, validFrom,
+				validTo, inputSourceId, editionNo, RECORDED_AT);
 	}
 
 	private void insertAttribute(String packId, String entityId, String name, String value, String inputSourceId,
@@ -435,12 +511,8 @@ class CoreSchemaV0Tests {
 		jdbc.update("""
 				insert into attribute_value (id, pack_id, entity_id, attribute_name, value,
 				                             valid_from, valid_to, input_source_id, edition_no, recorded_at)
-				values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", id, packId, entityId, name, value, date(validFrom),
-				date(validTo), inputSourceId, editionNo, RECORDED_AT);
-	}
-
-	private static LocalDate date(String value) {
-		return value == null ? null : LocalDate.parse(value);
+				values (?, ?, ?, ?, ?, ?::date, ?::date, ?, ?, ?)""", id, packId, entityId, name, value, validFrom,
+				validTo, inputSourceId, editionNo, RECORDED_AT);
 	}
 
 }

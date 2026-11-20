@@ -392,6 +392,12 @@ final class MappingReader {
         if (grouping != null && format != ValueFormat.INTEGER && format != ValueFormat.DECIMAL) {
             problem(item, "tabnit:groupingSeparator 은(는) 수 속성에만 적습니다. 속성 " + name + " 은(는) 수가 아닙니다. 빼세요.");
         }
+        else if (grouping != null) {
+            String fault = groupingSeparatorFault(grouping, format);
+            if (fault != null) {
+                problem(item, "tabnit:groupingSeparator \"" + grouping + "\" 을(를) 쓸 수 없습니다 (속성 " + name + "): " + fault);
+            }
+        }
         if ((trueValue == null) != (falseValue == null)) {
             problem(item, "tabnit:trueValue 와 tabnit:falseValue 는 함께 적습니다 (속성 " + name + "). 둘 다 적으세요.");
         }
@@ -595,6 +601,30 @@ final class MappingReader {
                 }
             }
         }
+    }
+
+    /**
+     * 자릿수 구분 기호가 수를 틀리게 읽게 만드는지 본다 (D2 AD-178). 값에서 이 글자를 뗀 뒤 수로 읽기 때문이다.
+     *
+     * @return 쓸 수 없는 까닭. 쓸 수 있으면 null
+     */
+    static String groupingSeparatorFault(String separator, ValueFormat format) {
+        if (separator.codePointCount(0, separator.length()) != 1) {
+            return "글자 하나만 적으세요.";
+        }
+        char c = separator.charAt(0);
+        if (c >= '0' && c <= '9') {
+            return "숫자는 구분 기호가 될 수 없습니다. 값의 숫자가 사라집니다.";
+        }
+        // 더하기·빼기로 읽히는 글자는 ASCII 가 아니어도 막는다 (U+2212, 전각 부호, 줄표 등). 그런 글자를 떼면 부호가 사라진다.
+        int type = Character.getType(separator.codePointAt(0));
+        if (c == '+' || c == '-' || type == Character.DASH_PUNCTUATION || type == Character.MATH_SYMBOL) {
+            return "부호는 구분 기호가 될 수 없습니다. 값의 부호가 사라집니다.";
+        }
+        if (c == '.' && format == ValueFormat.DECIMAL) {
+            return "소수 속성에서 마침표는 소수점입니다. 다른 글자를 적으세요.";
+        }
+        return null;
     }
 
     /**

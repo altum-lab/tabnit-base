@@ -42,6 +42,7 @@ class PackMappingTest {
                 tabnit:impactDirection tabnit:SourceToTarget .
             ex:title a owl:DatatypeProperty ; rdfs:label "제목" ; rdfs:domain ex:Base ; rdfs:range xsd:string .
             ex:count a owl:DatatypeProperty ; rdfs:label "수" ; rdfs:domain ex:Base ; rdfs:range xsd:integer .
+            ex:ratio a owl:DatatypeProperty ; rdfs:label "비율" ; rdfs:domain ex:Base ; rdfs:range xsd:decimal .
             ex:since a owl:DatatypeProperty ; rdfs:label "시작" ; rdfs:domain ex:Base ; rdfs:range xsd:date .
             ex:active a owl:DatatypeProperty ; rdfs:label "쓰는가" ; rdfs:domain ex:Base ; rdfs:range xsd:boolean .
             ex:otherName a owl:DatatypeProperty ; rdfs:label "다른 이름" ; rdfs:domain ex:Other ; rdfs:range xsd:string .
@@ -300,6 +301,43 @@ class PackMappingTest {
         assertThat(problemsOf(entityTwice)).singleElement()
             .satisfies(p -> assertThat(p.message()).contains("Base").contains("코드"));
         assertThat(problemsOf(attributeTwice)).singleElement().satisfies(p -> assertThat(p.message()).contains("title"));
+    }
+
+    @Test
+    void 수를_틀리게_읽게_만드는_자릿수_구분_기호는_거부한다() throws IOException {
+        String withAttribute = MINIMAL.replace("tabnit:keyColumn \"코드\" ] .",
+                "tabnit:keyColumn \"코드\" ; tabnit:attribute [ ATTRIBUTE ] ] .");
+        // 숫자, 부호, 빈 글자, 두 글자 이상, 소수 속성의 마침표 (D2 AD-178).
+        for (String attribute : List.of("ex:count ; tabnit:column \"c\" ; tabnit:groupingSeparator \"0\"",
+                "ex:count ; tabnit:column \"c\" ; tabnit:groupingSeparator \"9\"",
+                "ex:count ; tabnit:column \"c\" ; tabnit:groupingSeparator \"-\"",
+                "ex:count ; tabnit:column \"c\" ; tabnit:groupingSeparator \"+\"",
+                // ASCII 가 아닌 부호: 빼기 기호(U+2212), 전각 빼기(U+FF0D), 전각 더하기(U+FF0B), 줄표(U+2013).
+                "ex:count ; tabnit:column \"c\" ; tabnit:groupingSeparator \"\\u2212\"",
+                "ex:count ; tabnit:column \"c\" ; tabnit:groupingSeparator \"\\uFF0D\"",
+                "ex:count ; tabnit:column \"c\" ; tabnit:groupingSeparator \"\\uFF0B\"",
+                "ex:count ; tabnit:column \"c\" ; tabnit:groupingSeparator \"\\u2013\"",
+                "ex:count ; tabnit:column \"c\" ; tabnit:groupingSeparator \"\"",
+                "ex:count ; tabnit:column \"c\" ; tabnit:groupingSeparator \",,\"",
+                "ex:ratio ; tabnit:column \"c\" ; tabnit:groupingSeparator \".\"")) {
+            Path dir = pack("m-separator", "m.ttl", withAttribute.replace("ATTRIBUTE", "tabnit:property " + attribute));
+            assertThat(problemsOf(dir)).as(attribute).singleElement().satisfies(p -> {
+                assertThat(p.item()).isEqualTo("m");
+                assertThat(p.message()).contains("tabnit:groupingSeparator");
+            });
+        }
+        // 받는 것: 쉼표, 빈칸, 작은따옴표, 정수 속성의 마침표, 소수 속성의 쉼표.
+        int accepted = 0;
+        for (String attribute : List.of("ex:count ; tabnit:column \"c\" ; tabnit:groupingSeparator \",\"",
+                "ex:count ; tabnit:column \"c\" ; tabnit:groupingSeparator \" \"",
+                "ex:count ; tabnit:column \"c\" ; tabnit:groupingSeparator \"'\"",
+                "ex:count ; tabnit:column \"c\" ; tabnit:groupingSeparator \".\"",
+                "ex:ratio ; tabnit:column \"c\" ; tabnit:groupingSeparator \",\"")) {
+            // 경우마다 다른 Pack 으로 적재한다. 같은 Pack 의 매핑을 고쳐 다시 넣는 것은 다른 규칙에 걸린다.
+            Path dir = pack("m-separator-ok-" + (++accepted), "m.ttl",
+                    withAttribute.replace("ATTRIBUTE", "tabnit:property " + attribute));
+            assertThat(loader.load(dir, LOADED_AT).outcome()).as(attribute).isEqualTo(PackLoadResult.Outcome.LOADED);
+        }
     }
 
     @Test

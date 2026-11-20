@@ -175,7 +175,7 @@ class MappingExecutorTest {
     }
 
     @Test
-    void 값이_틀려_건너뛴_행은_항목의_키가_겹치는지_볼_때_세지_않는다() {
+    void 값이_틀려_건너뛴_행도_항목의_키가_겹치는지_볼_때_센다() {
         MappingDefinition mapping = new MappingDefinition("src", MappingFileFormat.CSV, null, null, List.of(),
                 List.of("code"), BASE_BY_CODE,
                 List.of(new MappedEntity("Base", "code",
@@ -185,8 +185,78 @@ class MappingExecutorTest {
 
         MappingOutcome outcome = run(pack, "src", 1, "code,count\nB-1,5\nB-1,x\n");
 
-        assertThat(outcome.items()).extracting(IngestedItem::itemKey).containsExactly("B-1");
-        assertThat(outcome.notices()).containsExactly(skipped(3, "INVALID_VALUE", "count", "x"));
+        // 어느 행이 맞는지 고르지 않는다. 멀쩡한 행도 받지 않는다 (D2 AD-181).
+        assertThat(outcome.items()).isEmpty();
+        assertThat(outcome.notices()).containsExactly(skipped(2, "DUPLICATE_ITEM_KEY", null, "B-1"),
+                skipped(3, "DUPLICATE_ITEM_KEY", null, "B-1"), skipped(3, "INVALID_VALUE", "count", "x"));
+        assertThatThrownBy(() -> values.valuesAsOf("x-dup-invalid|Base|B-1", EFFECTIVE))
+            .isInstanceOf(EntityNotFoundException.class);
+    }
+
+    @Test
+    void 키가_같은_행_셋_가운데_둘이_틀려도_셋_모두_건너뛴다() {
+        MappingDefinition mapping = new MappingDefinition("src", MappingFileFormat.CSV, null, null, List.of(),
+                List.of("code"), BASE_BY_CODE,
+                List.of(new MappedEntity("Base", "code",
+                        List.of(new MappedAttribute("count", "count", null, null, null, null, null, null)))),
+                List.of());
+        PackDefinition pack = pack("x-dup-three", mapping);
+
+        MappingOutcome outcome = run(pack, "src", 1, "code,count\nB-1,x\nB-1,5\nB-1,y\nB-2,7\n");
+
+        assertThat(outcome.items()).extracting(IngestedItem::itemKey).containsExactly("B-2");
+        // 키가 겹치면서 값도 틀린 행은 알림을 둘 받는다.
+        assertThat(outcome.notices()).containsExactly(skipped(2, "DUPLICATE_ITEM_KEY", null, "B-1"),
+                skipped(2, "INVALID_VALUE", "count", "x"), skipped(3, "DUPLICATE_ITEM_KEY", null, "B-1"),
+                skipped(4, "DUPLICATE_ITEM_KEY", null, "B-1"), skipped(4, "INVALID_VALUE", "count", "y"));
+    }
+
+    @Test
+    void 가장_긴_키_둘을_잇는_관계도_저장된다() {
+        MappingDefinition mapping = new MappingDefinition("src", MappingFileFormat.CSV, null, null, List.of(),
+                List.of("code"), BASE_BY_CODE,
+                List.of(new MappedEntity("Base", "code",
+                        List.of(new MappedAttribute("title", "title", null, null, null, null, null, null)))),
+                List.of(new MappedRelation("peers", BASE_BY_CODE, new MappedEntityRef("Base", "peer"), null, null)));
+        PackDefinition pack = pack("x-longest", mapping);
+        // 4바이트 글자 200자: 키 하나가 800바이트다. 되풀이가 없어 압축되지 않는다.
+        StringBuilder left = new StringBuilder();
+        StringBuilder right = new StringBuilder();
+        for (int i = 0; i < MappingExecutor.MAX_KEY_LENGTH; i++) {
+            left.appendCodePoint(0x20000 + (i * 7919 + 11) % 40000);
+            right.appendCodePoint(0x20000 + (i * 6113 + 29) % 40000);
+        }
+
+        MappingOutcome outcome = run(pack, "src", 1, "code,title,peer\n" + left + ",이름," + right + "\n");
+
+        assertThat(outcome.notices()).isEmpty();
+        assertThat(relations.relationsAsOf("x-longest|Base|" + left, EFFECTIVE)).singleElement()
+            .satisfies(r -> assertThat(r.targetEntityId()).isEqualTo("x-longest|Base|" + right));
+        assertThat(valuesOf("x-longest|Base|" + left)).containsExactly(Map.entry("title", "이름"));
+    }
+
+    @Test
+    void 키_열의_값이_200자를_넘는_행은_건너뛰고_나머지는_넣는다() {
+        MappingDefinition mapping = new MappingDefinition("src", MappingFileFormat.CSV, null, null, List.of(),
+                List.of("line"), BASE_BY_CODE, List.of(new MappedEntity("Base", "code", List.of())),
+                List.of(new MappedRelation("links", BASE_BY_CODE, new MappedEntityRef("Other", "other"), null, null)));
+        PackDefinition pack = pack("x-long", mapping);
+        // 되풀이가 없어 압축되지 않는 글자. 길이는 글자(코드 포인트)로 센다: 보충 문자 하나는 한 글자다.
+        StringBuilder mixed = new StringBuilder();
+        for (int i = 0; mixed.length() < 4000; i++) {
+            mixed.append(Integer.toString(i * 7919 + 13, 36)).append("가힣".charAt(i % 2));
+        }
+        String at = mixed.substring(0, 200);
+        String over = mixed.substring(0, 201);
+        String emoji = "\uD83D\uDE00".repeat(200);
+
+        MappingOutcome outcome = run(pack, "src", 1, "line,code,other\n1," + at + "," + emoji + "\n2," + over + ",O-1\n3,B-3,"
+                + over + "\n" + over + ",B-4,O-1\n5,B-5,O-1\n");
+
+        assertThat(outcome.items()).extracting(IngestedItem::itemKey).containsExactly("1", "5");
+        assertThat(relations.relationsAsOf("x-long|Base|" + at, EFFECTIVE)).hasSize(1);
+        assertThat(outcome.notices()).containsExactly(skipped(3, "KEY_TOO_LONG", "code", "201"),
+                skipped(4, "KEY_TOO_LONG", "other", "201"), skipped(5, "KEY_TOO_LONG", "line", "201"));
     }
 
     // ── 값을 읽는 법 ─────────────────────────────────────────────

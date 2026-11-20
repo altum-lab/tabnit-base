@@ -44,6 +44,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  */
 public class MappingExecutor {
 
+    /** 키 열의 값 하나가 가질 수 있는 가장 긴 길이. 글자(코드 포인트)로 센다 (D2 AD-177). */
+    static final int MAX_KEY_LENGTH = 200;
+
     private static final Comparator<IngestNotice> NOTICE_ORDER = Comparator.comparingInt(IngestNotice::rowNo)
         .thenComparing(IngestNotice::kind, LinkOrder.STRINGS)
         .thenComparing(IngestNotice::code, LinkOrder.STRINGS)
@@ -260,12 +263,15 @@ public class MappingExecutor {
             for (SkippedRow skipped : file.skipped()) {
                 notices.add(new IngestNotice("SKIPPED_ROW", skipped.rowNo(), skipped.code(), null, skipped.detail()));
             }
-            // 행마다 읽는다. 틀린 행은 건너뛴다.
-            TreeMap<String, List<RowPlan>> byItemKey = new TreeMap<>(LinkOrder.STRINGS);
+            // 행마다 읽는다. 틀린 행은 건너뛴다. 항목의 키를 읽을 수 있었던 행은 뒤에서 건너뛰어도 키가 겹치는지 볼 때 센다
+            // (D2 AD-181).
+            TreeMap<String, List<Integer>> rowNosByItemKey = new TreeMap<>(LinkOrder.STRINGS);
+            TreeMap<String, RowPlan> readByItemKey = new TreeMap<>(LinkOrder.STRINGS);
             for (TableRow row : file.rows()) {
                 try {
-                    RowPlan read = read(row);
-                    byItemKey.computeIfAbsent(read.itemKey, k -> new ArrayList<>()).add(read);
+                    String itemKey = itemKey(row);
+                    rowNosByItemKey.computeIfAbsent(itemKey, k -> new ArrayList<>()).add(row.rowNo());
+                    readByItemKey.put(itemKey, read(row, itemKey));
                 }
                 catch (RowSkipped skipped) {
                     notices.add(skipped.notice);
@@ -273,14 +279,14 @@ public class MappingExecutor {
             }
             // 항목의 키가 겹치는 행은 모두 건너뛴다. 앞에 있는 행이 이기지 않는다 (D2 AD-157).
             List<RowPlan> rows = new ArrayList<>();
-            byItemKey.forEach((itemKey, sameKey) -> {
-                if (sameKey.size() == 1) {
-                    rows.add(sameKey.get(0));
-                }
-                else {
-                    for (RowPlan duplicate : sameKey) {
-                        notices.add(new IngestNotice("SKIPPED_ROW", duplicate.rowNo, "DUPLICATE_ITEM_KEY", null, itemKey));
+            rowNosByItemKey.forEach((itemKey, rowNos) -> {
+                if (rowNos.size() > 1) {
+                    for (int rowNo : rowNos) {
+                        notices.add(new IngestNotice("SKIPPED_ROW", rowNo, "DUPLICATE_ITEM_KEY", null, itemKey));
                     }
+                }
+                else if (readByItemKey.containsKey(itemKey)) {
+                    rows.add(readByItemKey.get(itemKey));
                 }
             });
 
@@ -300,28 +306,43 @@ public class MappingExecutor {
             return plan;
         }
 
-        private RowPlan read(TableRow row) {
-            int rowNo = row.rowNo();
-            // 항목의 키와 주 개체의 키가 비면 그 행을 건너뛴다 (D2 AD-94).
+        /** 항목의 키를 읽는다. 키 열이 비면 그 행을 건너뛴다 (D2 AD-94). */
+        private String itemKey(TableRow row) {
             List<String> keyValues = new ArrayList<>();
             for (String column : mapping.itemKeyColumns()) {
-                String value = file.value(row, column);
+                String value = key(row, column);
                 if (value.isEmpty()) {
-                    throw new RowSkipped(rowNo, "BLANK_KEY", column, null);
+                    throw new RowSkipped(row.rowNo(), "BLANK_KEY", column, null);
                 }
                 keyValues.add(value);
             }
-            if (file.value(row, mapping.primaryEntity().keyColumn()).isEmpty()) {
+            return LinkOrder.join(keyValues);
+        }
+
+        /** 키 열의 값을 읽는다. 너무 길면 그 행을 건너뛴다. 저장소가 받지 못해 실행 전체가 실패하지 않게 한다 (D2 AD-177). */
+        private String key(TableRow row, String column) {
+            String value = file.value(row, column);
+            int length = value.codePointCount(0, value.length());
+            if (length > MAX_KEY_LENGTH) {
+                throw new RowSkipped(row.rowNo(), "KEY_TOO_LONG", column, Integer.toString(length));
+            }
+            return value;
+        }
+
+        private RowPlan read(TableRow row, String itemKey) {
+            int rowNo = row.rowNo();
+            // 주 개체의 키가 비면 그 행을 건너뛴다 (D2 AD-94).
+            if (key(row, mapping.primaryEntity().keyColumn()).isEmpty()) {
                 throw new RowSkipped(rowNo, "BLANK_KEY", mapping.primaryEntity().keyColumn(), null);
             }
-            RowPlan plan = new RowPlan(rowNo, LinkOrder.join(keyValues));
+            RowPlan plan = new RowPlan(rowNo, itemKey);
             // 주 개체는 행이 나타내는 개체다 (D2 AD-120). 개체 정의가 없고 관계의 끝으로만 적혀 있어도, 관계의 다른 끝이
             // 비어 있어도 만든다.
             EntityRef primary = ref(mapping.primaryEntity(), file.value(row, mapping.primaryEntity().keyColumn()));
             plan.entities.put(primary.id(), primary);
 
             for (MappedEntity mapped : mapping.entities()) {
-                String key = file.value(row, mapped.keyColumn());
+                String key = key(row, mapped.keyColumn());
                 if (key.isEmpty()) {
                     // 주 개체가 아닌 개체의 키가 비면 그 개체만 만들지 않는다. 그런데 속성 칸에 값이 있으면 자료가 어긋난 것이다
                     // (D2 AD-175).
@@ -354,8 +375,8 @@ public class MappingExecutor {
                 }
             }
             for (MappedRelation mapped : mapping.relations()) {
-                String sourceKey = file.value(row, mapped.source().keyColumn());
-                String targetKey = file.value(row, mapped.target().keyColumn());
+                String sourceKey = key(row, mapped.source().keyColumn());
+                String targetKey = key(row, mapped.target().keyColumn());
                 if (sourceKey.isEmpty() || targetKey.isEmpty()) {
                     // 관계의 끝을 가리키는 열이 빈 칸이면 그 관계를 만들지 않는다 (D2 AD-94).
                     continue;

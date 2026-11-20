@@ -52,6 +52,30 @@ jobs:
           npm ci
           npm run build
 
+      # 규격(docs/api/openapi.yaml)만 고치고 호출 코드를 다시 만들지 않은 변경을 잡는다.
+      - name: 호출 코드가 규격과 같은지
+        if: hashFiles('web/package-lock.json') != ''
+        working-directory: web
+        run: npm run gen:api:check
+
+      # 시험용 서버와 PostgreSQL 컨테이너를 스스로 띄워 실제 API 에 붙는다 (web/playwright.config.ts).
+      - name: 화면 흐름 시험
+        if: hashFiles('web/playwright.config.ts') != ''
+        working-directory: web
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test
+
+      - name: 화면 시험 결과 올리기
+        if: failure() && hashFiles('web/playwright.config.ts') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            web/playwright-report/
+            web/test-results/
+          retention-days: 7
+
       - name: 시험 결과 올리기
         if: failure() && hashFiles('server/gradlew') != ''
         uses: actions/upload-artifact@v7

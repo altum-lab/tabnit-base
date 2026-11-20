@@ -24,7 +24,7 @@ Tabnit Base v1.0. 문서나 규정이 바뀌면(변동) 그 영향이 닿는 대
 ## 3. 저장소 구조와 명령
 
 ```
-docs/      설계 문서 D1~D9
+docs/      설계 문서 D1~D9, API 규격 (docs/api/openapi.yaml)
 packs/     Pack (제조 안전, 퇴직연금, 시험용). 가상 데이터만
 server/    Gradle 다중 모듈: common, core, pack, link, rules, api
 web/       관리 화면 (Vite, React, TypeScript)
@@ -45,13 +45,14 @@ tools/     점검 스크립트, 개발 보드
 | 서버 실행 | `cd server && ./gradlew :api:bootRun` (PostgreSQL 컨테이너가 함께 뜬다) |
 | 화면 실행 | `cd web && npm run dev` |
 | 화면 빌드 | `cd web && npm run build` |
-| 화면 시험 | `cd web && npx playwright test` |
+| 화면 시험 | `cd web && npx playwright test` (Docker가 켜져 있어야 한다. 시험용 서버와 PostgreSQL 컨테이너를 스스로 띄운다) |
+| 화면의 호출 코드 다시 만들기 | `cd web && npm run gen:api` (`docs/api/openapi.yaml` 에서 만든다. `npm run gen:api:check` 는 만든 것이 올라간 것과 같은지 본다) |
 | 지침 파일 검사 (맨 위와 모듈별 CLAUDE.md) | `bash tools/check-guides.sh` |
 | 금지어 검사 | `bash tools/check-forbidden.sh --all` |
 | 일반성 검사 (엔진 코드에 Pack 용어) | `bash tools/check-generality.sh --all` |
 | 검증 질문 실행 | `bash verify/run.sh` |
 
-- 화면 명령 세 가지는 `web/` 에 프로젝트가 생긴 뒤부터 쓴다 (D-01). 그 전에는 `tools/build.sh` 가 화면 단계를 건너뛴다.
+- 화면 명령은 `cd web && npm ci` 를 한 번 한 뒤에 쓴다. 화면 시험은 개발 중인 서버와 부딪히지 않도록 전용 포트(서버 18080, 화면 15173)를 쓴다.
 - 스키마 변경은 `server/api/src/main/resources/db/migration/` 에 `V번호__설명.sql` 파일을 새로 추가한다. 이미 올라간 파일은 고치지 않는다.
 - 의존 라이브러리의 버전은 직접 적지 않는다. Spring Boot가 관리하는 버전을 쓴다.
 - `git push`, `git commit`, `docker` 명령은 실행 전에 사람에게 묻는다.

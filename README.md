@@ -9,7 +9,7 @@ bash tools/doctor.sh          # 환경 점검
 bash tools/build.sh           # 전체 빌드 (서버 빌드와 시험, 화면이 있으면 화면까지. Docker 가 켜져 있어야 함)
 cd server && ./gradlew build  # 서버 빌드와 시험 (Docker 가 켜져 있어야 함)
 ./gradlew :api:bootRun        # 서버 실행 → http://localhost:8080/api/v1/relations?entityId=... (계약은 docs/D7, docs/api/openapi.yaml)
-cd ../web && npm ci && npm run dev   # 화면 실행 → http://localhost:5173 (화면 프로젝트가 생긴 뒤부터, D-01)
+cd ../web && npm ci && npm run dev   # 화면 실행 → http://localhost:5173 (/api 요청은 8080 의 서버로 넘어간다)
 ```
 
 ## 폴더

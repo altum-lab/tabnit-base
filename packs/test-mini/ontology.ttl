@@ -1,0 +1,112 @@
+# 온톨로지: 개체 유형 넷(하위 유형 둘 포함 여섯), 관계 유형 넷, 속성 여덟.
+# 영향 방향 네 가지와 속성의 형식 다섯 가지를 모두 한 번 이상 쓴다.
+# 모든 이름은 지어낸 것이다.
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl:    <http://www.w3.org/2002/07/owl#> .
+@prefix xsd:    <http://www.w3.org/2001/XMLSchema#> .
+@prefix tabnit: <urn:tabnit:vocab:> .
+@prefix ex:     <urn:tabnit:pack:test-mini:> .
+
+# ── 개체 유형 ─────────────────────────────────────────────
+
+ex:운영지침 a owl:Class ;
+    rdfs:label "운영지침" ;
+    tabnit:displayNameProperty ex:지침제목 .
+
+ex:의료사업 a owl:Class ;
+    rdfs:label "의료사업" ;
+    tabnit:displayNameProperty ex:사업명 .
+
+ex:협력기관 a owl:Class ;
+    rdfs:label "협력기관" ;
+    tabnit:displayNameProperty ex:기관명 .
+
+# 하위 유형: 협력기관에 걸린 관계 유형, 속성, 규칙이 그대로 적용된다.
+ex:보건기관 a owl:Class ;
+    rdfs:label "보건기관" ;
+    rdfs:subClassOf ex:협력기관 .
+
+ex:민간기관 a owl:Class ;
+    rdfs:label "민간기관" ;
+    rdfs:subClassOf ex:협력기관 .
+
+ex:전담팀 a owl:Class ;
+    rdfs:label "전담팀" ;
+    tabnit:displayNameProperty ex:팀명 .
+
+# ── 관계 유형 ─────────────────────────────────────────────
+
+# 지침이 바뀌면 그 지침이 적용되는 사업이 영향을 받는다.
+ex:지침적용 a owl:ObjectProperty ;
+    rdfs:label "지침 적용" ;
+    rdfs:domain ex:운영지침 ;
+    rdfs:range  ex:의료사업 ;
+    tabnit:impactDirection tabnit:SourceToTarget .
+
+# 사업이 바뀌면 그 사업에 참여하는 기관이 영향을 받는다. 관계는 기관에서 사업으로 향한다.
+ex:사업참여 a owl:ObjectProperty ;
+    rdfs:label "사업 참여" ;
+    rdfs:domain ex:협력기관 ;
+    rdfs:range  ex:의료사업 ;
+    tabnit:impactDirection tabnit:TargetToSource .
+
+# 연계된 사업은 어느 쪽이 바뀌어도 서로 영향을 받는다.
+ex:사업연계 a owl:ObjectProperty ;
+    rdfs:label "사업 연계" ;
+    rdfs:domain ex:의료사업 ;
+    rdfs:range  ex:의료사업 ;
+    tabnit:impactDirection tabnit:Both .
+
+# 연락 창구일 뿐이다. 이 관계로는 영향이 퍼지지 않는다.
+ex:연락담당 a owl:ObjectProperty ;
+    rdfs:label "연락 담당" ;
+    rdfs:domain ex:전담팀 ;
+    rdfs:range  ex:협력기관 ;
+    tabnit:impactDirection tabnit:None .
+
+# ── 속성 ─────────────────────────────────────────────────
+
+ex:지침제목 a owl:DatatypeProperty ;
+    rdfs:label "지침 제목" ;
+    rdfs:domain ex:운영지침 ;
+    rdfs:range  xsd:string .
+
+ex:점검주기일 a owl:DatatypeProperty ;
+    rdfs:label "점검 주기 (일)" ;
+    rdfs:domain ex:운영지침 ;
+    rdfs:range  xsd:integer .
+
+ex:사업명 a owl:DatatypeProperty ;
+    rdfs:label "사업 이름" ;
+    rdfs:domain ex:의료사업 ;
+    rdfs:range  xsd:string .
+
+ex:운영여부 a owl:DatatypeProperty ;
+    rdfs:label "운영 여부" ;
+    rdfs:domain ex:의료사업 ;
+    rdfs:range  xsd:boolean .
+
+ex:연간목표인원 a owl:DatatypeProperty ;
+    rdfs:label "연간 목표 인원" ;
+    rdfs:domain ex:의료사업 ;
+    rdfs:range  xsd:integer .
+
+ex:기관명 a owl:DatatypeProperty ;
+    rdfs:label "기관 이름" ;
+    rdfs:domain ex:협력기관 ;
+    rdfs:range  xsd:string .
+
+ex:협약일 a owl:DatatypeProperty ;
+    rdfs:label "협약일" ;
+    rdfs:domain ex:협력기관 ;
+    rdfs:range  xsd:date .
+
+ex:분담률 a owl:DatatypeProperty ;
+    rdfs:label "분담률" ;
+    rdfs:domain ex:협력기관 ;
+    rdfs:range  xsd:decimal .
+
+ex:팀명 a owl:DatatypeProperty ;
+    rdfs:label "팀 이름" ;
+    rdfs:domain ex:전담팀 ;
+    rdfs:range  xsd:string .

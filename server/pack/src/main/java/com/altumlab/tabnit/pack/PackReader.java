@@ -27,7 +27,7 @@ import org.apache.jena.sparql.graph.GraphFactory;
  * <p>읽는 것은 D6 에 적힌 항목뿐이다. D6 에 없는 문장은 무시하지 않고 문제로 알린다 (D2 AD-88).
  * 문제는 찾는 대로 모아 한 번에 모두 알린다. RDF 를 읽는 라이브러리는 이 클래스 안에서만 쓴다 (D2 AD-15).
  *
- * <p>이 작업(SK-04)에서 읽는 파일은 pack.ttl 과 ontology.ttl 이다.
+ * <p>읽는 파일은 pack.ttl, ontology.ttl, 그리고 mappings 폴더의 매핑 정의다 (매핑은 {@link MappingReader}).
  */
 final class PackReader {
 
@@ -41,14 +41,14 @@ final class PackReader {
 
     private static final String OWL = "http://www.w3.org/2002/07/owl#";
 
-    private static final String XSD = "http://www.w3.org/2001/XMLSchema#";
+    static final String XSD = "http://www.w3.org/2001/XMLSchema#";
 
-    private static final String VOCAB = "urn:tabnit:vocab:";
+    static final String VOCAB = "urn:tabnit:vocab:";
 
     private static final String PACK_ADDRESS = "urn:tabnit:pack:";
 
     /** 이름 없는 정의나 값을 문구에 적을 때 쓰는 글자. 주소(urn:…)와 겹치지 않는다. */
-    private static final String UNNAMED = "(이름 없음)";
+    static final String UNNAMED = "(이름 없음)";
 
     private static final String LANG_STRING = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString";
 
@@ -123,6 +123,11 @@ final class PackReader {
         }
         checkReferences(entityTypes, relationTypes, attributes);
 
+        // 매핑은 온톨로지를 읽었을 때만 본다. 온톨로지를 읽지 못했으면 가리키는 곳마다 "정의되지 않았습니다"가 따라붙는다.
+        List<MappingDefinition> mappings = ontologyRead
+                ? MappingReader.read(directory, prefix, entityTypes, relationTypes, attributes, problems)
+                : List.of();
+
         if (!problems.isEmpty()) {
             // 같은 문제를 두 번 알리지 않고, 차례를 정해 둔다.
             TreeSet<PackProblem> ordered = new TreeSet<>(PackOrder.PROBLEMS);
@@ -131,7 +136,7 @@ final class PackReader {
         }
         return new Result(new PackDefinition(packId, label[0], maxDepth[0], loadedAt, List.copyOf(entityTypes.values()),
                 List.copyOf(relationTypes.values()), List.copyOf(attributes.values()),
-                localizedLabels.stream().sorted(PackOrder.LABELS).toList()), List.of());
+                localizedLabels.stream().sorted(PackOrder.LABELS).toList(), mappings), List.of());
     }
 
     // ── pack.ttl ────────────────────────────────────────────────
@@ -380,7 +385,7 @@ final class PackReader {
     }
 
     /** ancestor 가 type 자신이거나 그 상위 유형(여러 단계 위 포함)인가. 돌아오는 정의가 있어도 끝난다. */
-    private static boolean isSameOrAncestor(String ancestor, String type, Map<String, EntityTypeDefinition> entityTypes) {
+    static boolean isSameOrAncestor(String ancestor, String type, Map<String, EntityTypeDefinition> entityTypes) {
         TreeSet<String> seen = new TreeSet<>(PackOrder.STRINGS);
         ArrayDeque<String> open = new ArrayDeque<>();
         open.add(type);
@@ -470,7 +475,7 @@ final class PackReader {
     }
 
     /** 값을 문구에 적는다. 이름 없는 값(빈 노드)의 라벨은 읽을 때마다 달라지므로 적지 않는다. */
-    private static String show(Node node) {
+    static String show(Node node) {
         if (node.isURI()) {
             return shorten(node.getURI());
         }
@@ -501,7 +506,7 @@ final class PackReader {
     }
 
     /** 경고도 오류로 본다. 처음 만난 곳에서 멈추고 줄과 칸을 알린다. 기록은 남기지 않는다. */
-    private static final class StopAtFirst implements ErrorHandler {
+    static final class StopAtFirst implements ErrorHandler {
 
         @Override
         public void warning(String message, long line, long col) {
@@ -558,9 +563,9 @@ final class PackReader {
             }
             Node value = objects.get(0);
             boolean text = value.isLiteral() && (XSD + "string").equals(value.getLiteralDatatypeURI());
-            if (!text || value.getLiteralLexicalForm().isEmpty()) {
+            if (!text || value.getLiteralLexicalForm().isEmpty() || value.getLiteralLexicalForm().indexOf('\u0000') >= 0) {
                 problem(file, item, shown + " 은(는) 비어 있지 않은 글자 값이어야 합니다 (지금 " + show(value)
-                        + "). 따옴표로 감싼 글자를 적으세요.");
+                        + "). 따옴표로 감싼 글자를 적으세요. NUL 글자는 쓸 수 없습니다.");
                 return null;
             }
             return value.getLiteralLexicalForm();
@@ -581,10 +586,11 @@ final class PackReader {
             for (Node value : objects(LABEL)) {
                 boolean plain = value.isLiteral() && (XSD + "string").equals(value.getLiteralDatatypeURI());
                 boolean tagged = value.isLiteral() && LANG_STRING.equals(value.getLiteralDatatypeURI());
-                if (!(plain || tagged) || value.getLiteralLexicalForm().isEmpty()) {
+                if (!(plain || tagged) || value.getLiteralLexicalForm().isEmpty()
+                        || value.getLiteralLexicalForm().indexOf('\u0000') >= 0) {
                     problem(file, item, "rdfs:label 은(는) 비어 있지 않은 글자 값이어야 합니다 (지금 " + show(value)
                             + (tagged ? "@" + value.getLiteralLanguage().toLowerCase(Locale.ROOT) : "")
-                            + "). 따옴표로 감싼 글자를 적으세요.");
+                            + "). 따옴표로 감싼 글자를 적으세요. NUL 글자는 쓸 수 없습니다.");
                     wrong = true;
                     continue;
                 }

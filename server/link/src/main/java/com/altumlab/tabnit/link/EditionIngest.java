@@ -98,15 +98,14 @@ public class EditionIngest {
         Attempt attempt = new Attempt(pack.packId(), inputSourceId, fileName, effectiveDate, receivedAt,
                 LinkHash.sha256Hex(content));
         if (content.length > maxFileBytes) {
-            return transaction
-                .execute(status -> reject(attempt, "FILE_TOO_LARGE", Integer.toString(content.length)));
+            return recordRejection(attempt, "FILE_TOO_LARGE", Integer.toString(content.length));
         }
         try {
             return transaction.execute(status -> decide(pack, attempt, content));
         }
         catch (TableFileRejectedException e) {
             // 파일 수준의 문제. 판의 트랜잭션은 되돌려졌다. 투입 기록은 따로 남긴다.
-            return transaction.execute(status -> reject(attempt, e.code(), e.detail()));
+            return recordRejection(attempt, e.code(), e.detail());
         }
         catch (RuntimeException e) {
             // 저장소가 받지 않았다. 되돌려진 뒤에 투입 기록을 남기고 알린다 (D2 AD-185).
@@ -118,6 +117,17 @@ public class EditionIngest {
             }
             throw new IngestFailedException("입력 자료 " + inputSourceId + " 의 투입을 저장하지 못했습니다. 판과 원본을 포함해 "
                     + "이 투입에서 넣은 것은 남지 않았습니다. 까닭: " + e.getMessage(), e);
+        }
+    }
+
+    /** 거부를 따로 여는 트랜잭션으로 투입 기록에 남긴다. 기록하지 못하면 무엇을 거부하려 했는지 담아 알린다. */
+    private IngestResult recordRejection(Attempt attempt, String reasonCode, String reasonDetail) {
+        try {
+            return transaction.execute(status -> reject(attempt, reasonCode, reasonDetail));
+        }
+        catch (RuntimeException e) {
+            throw new IngestFailedException("입력 자료 " + attempt.inputSourceId() + " 의 투입을 거부했지만 (이유의 코드 "
+                    + reasonCode + ") 투입 기록에 남기지 못했습니다. 데이터베이스의 상태를 확인한 뒤 다시 넣으세요.", e);
         }
     }
 

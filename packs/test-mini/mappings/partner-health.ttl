@@ -1,12 +1,12 @@
 # 입력 자료 "partner-health": 보건기관 의 목록. 행 하나가 보건기관 하나다.
-# 행마다 참여하는 사업과 연락을 맡은 전담팀이 함께 적혀 있다.
+# 행마다 참여하는 사업과 연락을 맡은 전담팀의 코드가 함께 적혀 있다.
 @prefix tabnit: <urn:tabnit:vocab:> .
 @prefix ex:     <urn:tabnit:pack:test-mini:> .
 
 ex:매핑-partner-health a tabnit:Mapping ;
     tabnit:inputSourceId "partner-health" ;
     tabnit:fileFormat tabnit:Csv ;
-    tabnit:requiredColumns ( "기관코드" "기관명" "협약일" "분담률" "참여사업코드" "연락팀코드" "연락팀명" ) ;
+    tabnit:requiredColumns ( "기관코드" "기관명" "협약일" "분담률" "참여사업코드" "연락팀코드" ) ;
     tabnit:itemKeyColumns ( "기관코드" ) ;
     # 이 행이 나타내는 개체. 이 행에서 나온 변동의 근거 조항이 된다 (D2 AD-120).
     tabnit:primaryEntity [ tabnit:entityType ex:보건기관 ; tabnit:keyColumn "기관코드" ] ;
@@ -18,16 +18,13 @@ ex:매핑-partner-health a tabnit:Mapping ;
         tabnit:attribute [ tabnit:property ex:협약일 ; tabnit:column "협약일" ; tabnit:datePattern "yyyy.M.d" ] ;
         tabnit:attribute [ tabnit:property ex:분담률 ; tabnit:column "분담률" ]
     ] ;
-    tabnit:entity [
-        tabnit:entityType ex:전담팀 ;
-        tabnit:keyColumn "연락팀코드" ;
-        tabnit:attribute [ tabnit:property ex:팀명 ; tabnit:column "연락팀명" ]
-    ] ;
     tabnit:relation [
         tabnit:relationType ex:사업참여 ;
         tabnit:sourceEntity [ tabnit:entityType ex:보건기관 ; tabnit:keyColumn "기관코드" ] ;
         tabnit:targetEntity [ tabnit:entityType ex:의료사업 ; tabnit:keyColumn "참여사업코드" ]
     ] ;
+    # 전담팀은 이 자료에서 코드로 가리키기만 한다. 팀의 이름은 입력 자료 "team" 이 넣는다.
+    # 속성 하나는 입력 자료 하나만 넣는다 (D2 AD-137). 가리킨 팀이 아직 없으면 만든다 (D2 AD-59).
     tabnit:relation [
         tabnit:relationType ex:연락담당 ;
         tabnit:sourceEntity [ tabnit:entityType ex:전담팀 ; tabnit:keyColumn "연락팀코드" ] ;

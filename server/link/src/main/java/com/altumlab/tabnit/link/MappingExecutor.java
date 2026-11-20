@@ -44,7 +44,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  */
 public class MappingExecutor {
 
-    /** 키 열의 값 하나가 가질 수 있는 가장 긴 길이. 글자(코드 포인트)로 센다 (D2 AD-177). */
+    /** 키 열의 값 하나와, 이은 항목의 키가 가질 수 있는 가장 긴 길이. 글자(코드 포인트)로 센다 (D2 AD-177, AD-187). */
     static final int MAX_KEY_LENGTH = 200;
 
     private static final Comparator<IngestNotice> NOTICE_ORDER = Comparator.comparingInt(IngestNotice::rowNo)
@@ -137,7 +137,7 @@ public class MappingExecutor {
         }
         List<String> missing = needed.stream().filter(column -> !file.hasColumn(column)).toList();
         if (!missing.isEmpty()) {
-            throw new TableFileRejectedException("MISSING_COLUMN", "파일에 있어야 하는 열이 없습니다: "
+            throw new TableFileRejectedException("MISSING_COLUMN", String.join(", ", missing), "파일에 있어야 하는 열이 없습니다: "
                     + String.join(", ", missing) + ". 파일의 열 이름을 확인하거나, 열 이름이 바뀌었으면 매핑을 고친 뒤 다시 넣으세요.");
         }
     }
@@ -206,6 +206,9 @@ public class MappingExecutor {
         final List<AttributeStatement> attributes = new ArrayList<>();
 
         final List<RelationStatement> relations = new ArrayList<>();
+
+        /** 이 행이 적은 것. 항목의 내용 해시에 쓴다. */
+        final List<String> facts = new ArrayList<>();
 
         final TreeSet<ItemOutput> outputs = new TreeSet<>(OUTPUT_ORDER);
 
@@ -300,7 +303,7 @@ public class MappingExecutor {
 
             List<IngestedItem> items = new ArrayList<>();
             for (RowPlan row : rows) {
-                items.add(new IngestedItem(row.itemKey, row.rowNo, List.copyOf(row.outputs)));
+                items.add(new IngestedItem(row.itemKey, row.rowNo, contentHash(row), List.copyOf(row.outputs)));
             }
             plan.outcome = new MappingOutcome(items, List.copyOf(notices));
             return plan;
@@ -316,7 +319,13 @@ public class MappingExecutor {
                 }
                 keyValues.add(value);
             }
-            return LinkOrder.join(keyValues);
+            // 이은 항목의 키도 같은 길이까지다. 키 열이 여럿이면 값마다는 짧아도 이은 것이 길 수 있다 (D2 AD-187).
+            String itemKey = LinkOrder.join(keyValues);
+            int length = itemKey.codePointCount(0, itemKey.length());
+            if (length > MAX_KEY_LENGTH) {
+                throw new RowSkipped(row.rowNo(), "KEY_TOO_LONG", null, Integer.toString(length));
+            }
+            return itemKey;
         }
 
         /** 키 열의 값을 읽는다. 너무 길면 그 행을 건너뛴다. 저장소가 받지 못해 실행 전체가 실패하지 않게 한다 (D2 AD-177). */
@@ -372,6 +381,9 @@ public class MappingExecutor {
                     }
                     Period period = period(row, attribute.validFromColumn(), attribute.validToColumn());
                     plan.attributes.add(new AttributeStatement(rowNo, entity, attribute.attributeName(), value, period));
+                    plan.facts.add(LinkOrder.join(List.of("A", entity.entityType(), entity.entityKey(),
+                            attribute.attributeName(), value,
+                            stated(row, attribute.validFromColumn(), attribute.validToColumn()))));
                 }
             }
             for (MappedRelation mapped : mapping.relations()) {
@@ -391,6 +403,9 @@ public class MappingExecutor {
                 plan.entities.put(source.id(), source);
                 plan.entities.put(target.id(), target);
                 plan.relations.add(new RelationStatement(rowNo, source, target, mapped.relationType(), period));
+                plan.facts.add(LinkOrder.join(List.of("R", source.entityType(), source.entityKey(),
+                        target.entityType(), target.entityKey(), mapped.relationType(),
+                        stated(row, mapped.validFromColumn(), mapped.validToColumn()))));
             }
             return plan;
         }
@@ -408,6 +423,32 @@ public class MappingExecutor {
                 throw new RowSkipped(row.rowNo(), "INVALID_PERIOD", toColumn, period.shown());
             }
             return period;
+        }
+
+        /**
+         * 유효기간의 칸에 적힌 날짜를 읽은 표기로. 빈 칸은 빈 글자다. 판의 적용일로 채우지 않는다: 같은 행이 다음 판에서
+         * 적용일만 달라졌다고 바뀐 것으로 잡히면 안 된다 (D2 AD-156).
+         */
+        private String stated(TableRow row, String fromColumn, String toColumn) {
+            LocalDate from = date(row, fromColumn);
+            LocalDate to = date(row, toColumn);
+            return (from == null ? "" : from.toString()) + "~" + (to == null ? "" : to.toString());
+        }
+
+        /**
+         * 항목의 내용 해시: 그 행이 적은 것(개체, 속성 값, 관계)을 읽은 뒤의 표기로 모아 글자 코드 순으로 늘어놓은 것의
+         * SHA-256 이다. 매핑이 쓰지 않는 열, 행의 차례, 같은 값의 다른 표기에는 달라지지 않는다 (D2 AD-156).
+         * 다른 행과 부딪혀 넣지 못한 값도 그 행이 적은 것이므로 든다. Pack 의 식별자는 넣지 않는다 (유형과 키만).
+         */
+        private static String contentHash(RowPlan row) {
+            TreeSet<String> facts = new TreeSet<>(LinkOrder.STRINGS);
+            // 줄은 줄바꿈으로 잇는다. 값 안의 줄바꿈은 역빗금과 n 으로 바꿔, 값 하나가 여러 줄로 읽히지 않게 한다.
+            // 이은 글자에서 역빗금 뒤에는 세로 막대나 역빗금만 오므로 헷갈리지 않는다.
+            row.facts.forEach(fact -> facts.add(fact.replace("\n", "\\n")));
+            row.entities.values()
+                .forEach(entity -> facts
+                    .add(LinkOrder.join(List.of("E", entity.entityType(), entity.entityKey())).replace("\n", "\\n")));
+            return LinkHash.sha256Hex(String.join("\n", facts).getBytes(java.nio.charset.StandardCharsets.UTF_8));
         }
 
         private LocalDate date(TableRow row, String column) {

@@ -11,9 +11,21 @@ public class TableFileRejectedException extends RuntimeException {
 
     private final String code;
 
+    private final String detail;
+
     public TableFileRejectedException(String code, String message) {
+        this(code, null, message);
+    }
+
+    public TableFileRejectedException(String code, String detail, String message) {
         super(message);
         this.code = code;
+        this.detail = detail;
+    }
+
+    /** 걸린 값. 예: 없는 열의 이름들. 없으면 null. 문구가 아니라 값이다 (투입 기록에 남긴다). */
+    public String detail() {
+        return detail;
     }
 
     /** 이유의 코드. 예: `NOT_UTF8`, `NO_HEADER`, `BLANK_COLUMN_NAME`, `DUPLICATE_COLUMN_NAME`, `UNCLOSED_QUOTE`. */

@@ -1,0 +1,132 @@
+package com.altumlab.tabnit.pack;
+
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.TreeMap;
+import javax.sql.DataSource;
+import org.springframework.dao.DataAccessException;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.TransactionException;
+import org.springframework.transaction.support.TransactionTemplate;
+
+/**
+ * Pack 적재: 폴더를 읽고, 검증하고, 정의를 저장소에 넣는다 (D6 9절).
+ *
+ * <p>적재하는 것은 정의뿐이다. 개체와 관계는 넣지 않는다 (D2 AD-45). 문제가 하나라도 있으면 아무것도 넣지 않는다.
+ * 적재는 트랜잭션 하나라서 전부 되거나 전부 안 된다.
+ */
+public class PackLoader {
+
+    private final JdbcTemplate jdbc;
+
+    private final PackTables tables;
+
+    private final TransactionTemplate transaction;
+
+    public PackLoader(DataSource dataSource) {
+        Objects.requireNonNull(dataSource, "데이터 원본은 반드시 있어야 합니다");
+        this.jdbc = new JdbcTemplate(dataSource);
+        this.tables = new PackTables(jdbc);
+        this.transaction = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
+    }
+
+    /**
+     * Pack 폴더 하나를 적재한다.
+     *
+     * @param packDirectory Pack 폴더. 폴더 이름이 Pack 식별자다
+     * @param loadedAt 적재한 때. 밖에서 받아 넘긴다
+     * @return 처음 적재했는지, 고친 것으로 바꿨는지, 같아서 그대로 뒀는지
+     * @throws PackInvalidException Pack 이 형식에 맞지 않거나 정의가 서로 맞지 않을 때. 문제 전부를 담는다
+     * @throws PackChangeRejectedException 이미 적재된 Pack 을 받을 수 없는 방식으로 고쳤을 때
+     * @throws PackStorageException 저장소에 쓰지 못했을 때
+     */
+    public PackLoadResult load(Path packDirectory, Instant loadedAt) {
+        Objects.requireNonNull(packDirectory, "Pack 폴더는 반드시 있어야 합니다");
+        Objects.requireNonNull(loadedAt, "적재한 때는 반드시 있어야 합니다");
+        PackReader.Result read = PackReader.read(packDirectory, loadedAt);
+        if (!read.problems().isEmpty()) {
+            throw new PackInvalidException(packDirectory.toString(), read.problems());
+        }
+        PackDefinition pack = read.definition();
+        try {
+            return transaction.execute(status -> store(pack));
+        }
+        catch (DataAccessException | TransactionException e) {
+            throw new PackStorageException("Pack 을 저장하지 못했습니다. Pack: " + pack.packId()
+                    + ". 저장소의 상태를 확인한 뒤 다시 적재하세요. 저장된 정의는 적재 전과 같습니다.", e);
+        }
+    }
+
+    private PackLoadResult store(PackDefinition pack) {
+        // 같은 Pack 을 동시에 적재하면 한쪽이 기다린다. 트랜잭션이 끝나면 풀린다.
+        jdbc.query("select pg_advisory_xact_lock(hashtext(?))", rs -> {
+        }, "tabnit-pack:" + pack.packId());
+        Optional<PackDefinition> existing = tables.read(pack.packId());
+        if (existing.isEmpty()) {
+            tables.insert(pack);
+            return new PackLoadResult(pack.packId(), PackLoadResult.Outcome.LOADED);
+        }
+        if (existing.get().sameContentAs(pack)) {
+            return new PackLoadResult(pack.packId(), PackLoadResult.Outcome.UNCHANGED);
+        }
+        List<String> reasons = rejectedChanges(existing.get(), pack);
+        if (!reasons.isEmpty()) {
+            throw new PackChangeRejectedException(pack.packId(), reasons);
+        }
+        tables.delete(pack.packId());
+        tables.insert(pack);
+        return new PackLoadResult(pack.packId(), PackLoadResult.Outcome.UPDATED);
+    }
+
+    /**
+     * 고친 Pack 에서 받지 않는 변경을 찾는다 (D6 9절 "고친 Pack 을 다시 적재할 때", D2 AD-95).
+     *
+     * <p>받는 것: 정의를 더함, 이름표·영향 방향·최대 깊이의 기본값을 바꿈. 그 밖의 변경은 받지 않는다.
+     * D6 은 지우는 것을 "자료가 쓰고 있을 때" 거부한다고 적었다. 이 작업(SK-04)은 자료가 쓰는지 보지 않고
+     * 지우는 것을 모두 거부한다.
+     */
+    private static List<String> rejectedChanges(PackDefinition before, PackDefinition after) {
+        List<String> reasons = new ArrayList<>();
+        Map<String, EntityTypeDefinition> types = new TreeMap<>(PackOrder.STRINGS);
+        after.entityTypes().forEach(t -> types.put(t.name(), t));
+        for (EntityTypeDefinition old : before.entityTypes()) {
+            EntityTypeDefinition now = types.get(old.name());
+            if (now == null) {
+                reasons.add("개체 유형 " + old.name() + " 이(가) 없어졌습니다. 이름을 바꾸거나 지우는 것은 받지 않습니다.");
+            }
+            else if (!now.parents().equals(old.parents())
+                    || !Objects.equals(now.displayNameAttribute(), old.displayNameAttribute())) {
+                reasons.add("개체 유형 " + old.name() + " 의 상위 유형이나 표시 이름 속성이 바뀌었습니다. 이 변경은 받지 않습니다.");
+            }
+        }
+        Map<String, RelationTypeDefinition> relations = new TreeMap<>(PackOrder.STRINGS);
+        after.relationTypes().forEach(r -> relations.put(r.name(), r));
+        for (RelationTypeDefinition old : before.relationTypes()) {
+            RelationTypeDefinition now = relations.get(old.name());
+            if (now == null) {
+                reasons.add("관계 유형 " + old.name() + " 이(가) 없어졌습니다. 이름을 바꾸거나 지우는 것은 받지 않습니다.");
+            }
+            else if (!now.sourceType().equals(old.sourceType()) || !now.targetType().equals(old.targetType())) {
+                reasons.add("관계 유형 " + old.name() + " 의 출발 유형이나 도착 유형이 바뀌었습니다. 이 변경은 받지 않습니다.");
+            }
+        }
+        Map<String, AttributeDefinition> attributes = new TreeMap<>(PackOrder.STRINGS);
+        after.attributes().forEach(a -> attributes.put(a.name(), a));
+        for (AttributeDefinition old : before.attributes()) {
+            AttributeDefinition now = attributes.get(old.name());
+            if (now == null) {
+                reasons.add("속성 " + old.name() + " 이(가) 없어졌습니다. 이름을 바꾸거나 지우는 것은 받지 않습니다.");
+            }
+            else if (now.valueFormat() != old.valueFormat() || !now.entityType().equals(old.entityType())) {
+                reasons.add("속성 " + old.name() + " 의 형식이나 개체 유형이 바뀌었습니다. 이 변경은 받지 않습니다.");
+            }
+        }
+        return reasons;
+    }
+}

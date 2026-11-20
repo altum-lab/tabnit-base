@@ -97,6 +97,17 @@ class RelationAsOfQueryTest {
     }
 
     @Test
+    void 도착_쪽_개체로_조회해도_종료일_당일에는_빠진다() {
+        String pack = "pack-target-end";
+        EntityRef a = entity(pack, "a");
+        EntityRef b = entity(pack, "b");
+        String r = relation(a, b, "R", "2026-03-01", "2026-06-01");
+
+        assertThat(idsAsOf(b, "2026-05-31")).containsExactly(r);
+        assertThat(idsAsOf(b, "2026-06-01")).isEmpty();
+    }
+
+    @Test
     void 돌려주는_관계에는_유효기간과_출처와_기록한_때가_담긴다() {
         String pack = "pack-fields";
         EntityRef a = entity(pack, "a");
@@ -174,6 +185,21 @@ class RelationAsOfQueryTest {
     }
 
     @Test
+    void 판_번호는_수가_아니라_글자_코드_순으로_비교된다() {
+        // 식별자 순은 식별자 문자열의 글자 코드 순이다 (D2 AD-65). 그래서 판 10 이 판 2 보다 앞에 온다.
+        // 자릿수를 맞출지는 D5 "결정 필요" 9번에 열려 있다. 정해지면 이 시험을 함께 고친다.
+        String pack = "pack-edition-order";
+        EntityRef me = entity(pack, "me");
+        EntityRef other = entity(pack, "other");
+        String edition2 = store.saveRelation(
+                new NewRelation(me, other, "R", period("2026-01-01", null), new Provenance("src", 2)), RECORDED_AT);
+        String edition10 = store.saveRelation(
+                new NewRelation(me, other, "R", period("2026-01-01", null), new Provenance("src", 10)), RECORDED_AT);
+
+        assertThat(idsAsOf(me, "2026-06-01")).containsExactly(edition10, edition2);
+    }
+
+    @Test
     void 같은_요청을_두_번_하면_결과와_순서가_같다() {
         String pack = "pack-twice";
         EntityRef me = entity(pack, "me");
@@ -184,7 +210,10 @@ class RelationAsOfQueryTest {
         List<Relation> first = query.relationsAsOf(me.id(), date("2026-06-01"));
         List<Relation> second = query.relationsAsOf(me.id(), date("2026-06-01"));
 
-        assertThat(first).hasSize(5);
+        // 섞어 넣었지만 상대 개체의 식별자 순으로 나온다.
+        assertThat(first).extracting(Relation::targetEntityId)
+                .containsExactly("pack-twice|T|k1", "pack-twice|T|k2", "pack-twice|T|k3", "pack-twice|T|k4",
+                        "pack-twice|T|k5");
         assertThat(second).isEqualTo(first);
     }
 

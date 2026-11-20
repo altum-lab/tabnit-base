@@ -5,8 +5,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * SK-05 관계 저장: 개체와 관계를 유효기간, 출처와 함께 저장한다 (보드 CORE-01, D5 3절).
@@ -190,6 +198,103 @@ class RelationStoreTest {
         assertThat(new RelationQuery(CoreTestDatabase.dataSource()).relationsAsOf(a.id(), LocalDate.parse("2026-03-01")))
                 .extracting(Relation::id)
                 .containsExactly(id);
+    }
+
+    // ── 겹침의 그 밖의 경우 ────────────────────────────────────────
+
+    @Test
+    void 종료일_없는_관계_안에_들어가는_기간은_거부한다() {
+        EntityRef a = saved("pack-inside", "a");
+        EntityRef b = saved("pack-inside", "b");
+        String open = store.saveRelation(new NewRelation(a, b, "R", period("2026-03-01", null), SRC_1), RECORDED_AT);
+
+        assertThatThrownBy(
+                () -> store.saveRelation(new NewRelation(a, b, "R", period("2026-04-01", "2026-05-01"), SRC_1),
+                        RECORDED_AT))
+                .isInstanceOf(RelationRejectedException.class)
+                .hasMessageContaining(open)
+                .hasMessageContaining("종료일 없음");
+    }
+
+    @Test
+    void 종료일_없는_같은_관계를_다시_저장해도_행이_늘지_않는다() {
+        EntityRef a = saved("pack-open-again", "a");
+        EntityRef b = saved("pack-open-again", "b");
+        NewRelation relation = new NewRelation(a, b, "R", period("2026-03-01", null), SRC_1);
+
+        assertThat(store.saveRelation(relation, RECORDED_AT)).isEqualTo(store.saveRelation(relation, RECORDED_AT));
+        assertThat(count("relation", "pack-open-again")).isEqualTo(1);
+    }
+
+    @Test
+    void 끝없는_날짜는_거부하고_종료일을_비우라고_알린다() {
+        EntityRef a = saved("pack-endless", "a");
+        EntityRef b = saved("pack-endless", "b");
+
+        assertThatThrownBy(() -> store.saveRelation(
+                new NewRelation(a, b, "R", new ValidityPeriod(LocalDate.parse("2026-03-01"), LocalDate.MAX), SRC_1),
+                RECORDED_AT))
+                .isInstanceOf(RelationRejectedException.class)
+                .hasMessageContaining("끝없는 날짜")
+                .hasMessageContaining("종료일을 비워");
+        assertThatThrownBy(() -> store.saveRelation(
+                new NewRelation(a, b, "R", new ValidityPeriod(LocalDate.MIN, null), SRC_1), RECORDED_AT))
+                .isInstanceOf(RelationRejectedException.class)
+                .hasMessageContaining("끝없는 날짜");
+        assertThat(count("relation", "pack-endless")).isZero();
+    }
+
+    // ── 트랜잭션 안에서, 그리고 동시에 ─────────────────────────────────
+
+    @Test
+    void 트랜잭션_안에서_겹쳐도_무엇과_겹치는지_알리고_앞의_저장은_되돌려진다() {
+        EntityRef a = saved("pack-tx", "a");
+        EntityRef b = saved("pack-tx", "b");
+        String existing = store.saveRelation(
+                new NewRelation(a, b, "R", period("2026-03-01", "2026-06-01"), SRC_1), RECORDED_AT);
+        EntityRef c = saved("pack-tx", "c");
+        TransactionTemplate tx = new TransactionTemplate(
+                new DataSourceTransactionManager(CoreTestDatabase.dataSource()));
+
+        // 호출하는 쪽이 여러 저장을 한 트랜잭션으로 묶은 경우다. 첫 저장은 되고 둘째가 겹친다.
+        assertThatThrownBy(() -> tx.executeWithoutResult(status -> {
+            store.saveRelation(new NewRelation(a, c, "R", period("2026-03-01", null), SRC_1), RECORDED_AT);
+            store.saveRelation(new NewRelation(a, b, "R", period("2026-05-31", "2026-07-01"), SRC_1), RECORDED_AT);
+        }))
+                .isInstanceOf(RelationRejectedException.class)
+                .hasMessageContaining("겹칩니다")
+                .hasMessageContaining(existing);
+
+        // 트랜잭션이 되돌려져 첫 저장(a → c)도 남지 않는다.
+        assertThat(count("relation", "pack-tx")).isEqualTo(1);
+    }
+
+    @Test
+    void 같은_관계를_동시에_저장해도_모두_같은_식별자를_받고_행은_하나다() throws Exception {
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            for (int round = 0; round < 20; round++) {
+                String pack = "pack-race-" + round;
+                EntityRef a = saved(pack, "a");
+                EntityRef b = saved(pack, "b");
+                NewRelation relation = new NewRelation(a, b, "R", period("2026-03-01", null), SRC_1);
+                CyclicBarrier together = new CyclicBarrier(2);
+                Callable<String> save = () -> {
+                    together.await();
+                    return new RelationStore(CoreTestDatabase.dataSource()).saveRelation(relation, RECORDED_AT);
+                };
+
+                List<Future<String>> results = pool.invokeAll(List.of(save, save));
+
+                // 어느 쪽이 먼저 들어가든 둘 다 같은 답을 받는다. 순차로 두 번 저장한 것과 같다.
+                assertThat(results.get(0).get()).isEqualTo(relation.id());
+                assertThat(results.get(1).get()).isEqualTo(relation.id());
+                assertThat(count("relation", pack)).isEqualTo(1);
+            }
+        }
+        finally {
+            pool.shutdownNow();
+        }
     }
 
     // ── 도우미 ──────────────────────────────────────────────────

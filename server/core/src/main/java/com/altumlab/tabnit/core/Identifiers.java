@@ -33,10 +33,14 @@ final class Identifiers {
         return id.toString();
     }
 
-    /** 식별자를 이루는 값은 비어 있을 수 없다 (D2 AD-75). */
+    /** 식별자를 이루는 값은 빈 글자일 수 없다 (D2 AD-75). 빈칸만 있는 값은 막지 않는다. */
     static String requireNotBlank(String value, String name) {
         if (value == null || value.isEmpty()) {
             throw new IllegalArgumentException(name + "은(는) 비어 있을 수 없습니다. 값을 넣어 다시 보내세요.");
+        }
+        if (value.indexOf('\u0000') >= 0) {
+            // 저장소의 글자 열은 NUL 글자를 받지 않는다. 저장소까지 가기 전에 여기서 알린다.
+            throw new IllegalArgumentException(name + "에 NUL 글자(\\u0000)가 들어 있습니다. 그 글자를 빼고 다시 보내세요.");
         }
         return value;
     }

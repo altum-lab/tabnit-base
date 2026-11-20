@@ -1,13 +1,12 @@
 package com.altumlab.tabnit.core;
 
-import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.Collectors;
 import javax.sql.DataSource;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -18,9 +17,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * 관계를 지우지 않는다. 같은 것을 다시 저장해도 행이 늘지 않는다.
  */
 public class RelationStore {
-
-    /** PostgreSQL 의 배제 제약 위반. 같은 관계의 유효기간이 겹칠 때 난다 (D2 AD-67). */
-    private static final String EXCLUSION_VIOLATION = "23P01";
 
     private final JdbcTemplate jdbc;
 
@@ -35,11 +31,16 @@ public class RelationStore {
         Objects.requireNonNull(entity, "개체는 반드시 있어야 합니다");
         Objects.requireNonNull(recordedAt, "기록한 때는 반드시 있어야 합니다");
         String id = entity.id();
-        jdbc.update("""
-                insert into entity (id, pack_id, entity_type, entity_key, recorded_at)
-                values (?, ?, ?, ?, ?)
-                on conflict (id) do nothing""", id, entity.packId(), entity.entityType(), entity.entityKey(),
-                Timestamp.from(recordedAt));
+        try {
+            jdbc.update("""
+                    insert into entity (id, pack_id, entity_type, entity_key, recorded_at)
+                    values (?, ?, ?, ?, ?)
+                    on conflict (id) do nothing""", id, entity.packId(), entity.entityType(), entity.entityKey(),
+                    Timestamp.from(recordedAt));
+        }
+        catch (DataAccessException e) {
+            throw new CoreStorageException("개체를 저장하지 못했습니다: " + id + ". 저장소의 상태를 확인한 뒤 다시 시도하세요.", e);
+        }
         return id;
     }
 
@@ -65,44 +66,79 @@ public class RelationStore {
             throw new RelationRejectedException(
                     "출발 개체와 도착 개체가 같은 관계는 저장할 수 없습니다: " + sourceId + ". 입력 자료에서 두 개체를 확인하세요.");
         }
-        requireEntity(sourceId, "출발 개체");
-        requireEntity(targetId, "도착 개체");
-
+        ValidityPeriod period = relation.period();
+        requireFinite(period);
         String id = relation.id();
+        try {
+            requireEntity(sourceId, "출발 개체");
+            requireEntity(targetId, "도착 개체");
+            return insert(relation, id, sourceId, targetId, recordedAt);
+        }
+        catch (DataAccessException e) {
+            throw new CoreStorageException("관계를 저장하지 못했습니다: " + id + ". 저장소의 상태를 확인한 뒤 다시 시도하세요.", e);
+        }
+    }
+
+    private String insert(NewRelation relation, String id, String sourceId, String targetId, Instant recordedAt) {
         ValidityPeriod period = relation.period();
         Provenance provenance = relation.provenance();
 
-        // 넣기와 "이미 있는가"의 판단을 문장 하나로 한다. 같은 식별자를 두 곳에서 동시에 저장해도
-        // 한쪽만 들어가고, 다른 쪽은 아래에서 이미 있는 행과 견주어 같은 답을 얻는다.
+        // 넣기와 "이미 있는가, 겹치는가"의 판단을 문장 하나로 한다.
+        // 대상을 적지 않은 on conflict do nothing 은 기본 키, 유일 제약, 유효기간 겹침(배제 제약) 가운데
+        // 어느 것에 걸려도 오류 없이 0 행을 돌려준다. 그래서
+        //  - 같은 관계를 두 곳에서 동시에 저장해도 한쪽만 들어가고 다른 쪽은 아래에서 같은 답을 얻는다.
+        //  - 오류가 나지 않으므로 호출하는 쪽의 트랜잭션이 깨지지 않고, 무엇과 겹치는지 이어서 조회할 수 있다.
+        // 0 행이면 반드시 아래에서 까닭을 가린다. 조용히 넘어가는 경우는 없다.
         int inserted;
         try {
             inserted = jdbc.update("""
                     insert into relation (id, pack_id, source_entity_id, target_entity_id, relation_type,
                                           valid_from, valid_to, input_source_id, edition_no, recorded_at)
                     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    on conflict (id) do nothing""", id, source.packId(), sourceId, targetId,
+                    on conflict do nothing""", id, relation.source().packId(), sourceId, targetId,
                     relation.relationType(), period.from(), period.to(), provenance.inputSourceId(),
                     provenance.editionNo(), Timestamp.from(recordedAt));
         }
         catch (DataIntegrityViolationException e) {
-            if (e.getMostSpecificCause() instanceof SQLException sql
-                    && EXCLUSION_VIOLATION.equals(sql.getSQLState())) {
-                throw overlap(relation, sourceId, targetId, e);
-            }
+            // on conflict 가 다루지 않는 제약(참조, 검사)에 걸렸다. 앞의 확인을 지나온 뒤라 드문 경우다.
             throw new RelationRejectedException(
                     "관계를 저장하지 못했습니다: " + id + ". 저장소의 제약에 걸렸습니다. 관리자에게 이 식별자와 함께 알려 주세요.", e);
         }
-        if (inserted == 0) {
-            // 같은 식별자(출발, 도착, 유형, 출처, 시작일)의 관계가 이미 있다.
-            // 종료일까지 같으면 같은 관계를 다시 저장한 것이므로 그대로 둔다. 다르면 기간이 겹친다.
-            List<ValidityPeriod> existing = jdbc.query("select valid_from, valid_to from relation where id = ?",
-                    (rs, n) -> new ValidityPeriod(rs.getObject(1, LocalDate.class), rs.getObject(2, LocalDate.class)),
-                    id);
-            if (existing.isEmpty() || !existing.get(0).equals(period)) {
-                throw overlap(relation, sourceId, targetId, null);
-            }
+        if (inserted == 1) {
+            return id;
         }
-        return id;
+
+        // 들어가지 않았다. 같은 관계(식별자와 종료일이 같은 것)가 이미 있으면 다시 저장한 것이므로 그대로 둔다.
+        List<ValidityPeriod> sameId = jdbc.query("select valid_from, valid_to from relation where id = ?",
+                (rs, n) -> new ValidityPeriod(rs.getObject(1, LocalDate.class), rs.getObject(2, LocalDate.class)), id);
+        if (!sameId.isEmpty() && sameId.get(0).equals(period)) {
+            return id;
+        }
+
+        // 아니면 같은 관계의 유효기간이 겹친 것이다. 무엇과 겹치는지 찾아 알린다.
+        List<String> overlapping = jdbc.query("""
+                select id, valid_from, valid_to from relation
+                where source_entity_id = ? and target_entity_id = ? and relation_type = ?
+                  and input_source_id = ? and edition_no = ?
+                  and daterange(valid_from, valid_to, '[)') && daterange(?, ?, '[)')
+                order by id collate "C\"""",
+                (rs, n) -> rs.getString(1) + " ("
+                        + describe(rs.getObject(2, LocalDate.class), rs.getObject(3, LocalDate.class)) + ")",
+                sourceId, targetId, relation.relationType(), provenance.inputSourceId(), provenance.editionNo(),
+                period.from(), period.to());
+        throw overlap(period, overlapping);
+    }
+
+    /** 끝없는 날짜는 받지 않는다. 종료일이 없다는 것은 종료일을 비우는 것 하나로만 나타낸다 (D2 AD-75). */
+    private static void requireFinite(ValidityPeriod period) {
+        if (isEndless(period.from()) || isEndless(period.to())) {
+            throw new RelationRejectedException("끝없는 날짜는 유효기간에 쓸 수 없습니다: "
+                    + describe(period.from(), period.to()) + ". 종료일이 없으면 종료일을 비워 다시 보내세요.");
+        }
+    }
+
+    private static boolean isEndless(LocalDate date) {
+        return LocalDate.MAX.equals(date) || LocalDate.MIN.equals(date);
     }
 
     private void requireEntity(String entityId, String role) {
@@ -113,25 +149,12 @@ public class RelationStore {
         }
     }
 
-    /** 무엇과 겹치는지 찾아 오류에 담는다. 데이터베이스의 오류 문구는 내보내지 않는다. */
-    private RelationRejectedException overlap(NewRelation relation, String sourceId, String targetId,
-            Throwable cause) {
-        ValidityPeriod period = relation.period();
-        Provenance provenance = relation.provenance();
-        List<String> overlapping = jdbc.query("""
-                select id, valid_from, valid_to from relation
-                where source_entity_id = ? and target_entity_id = ? and relation_type = ?
-                  and input_source_id = ? and edition_no = ?
-                  and daterange(valid_from, valid_to, '[)') && daterange(?, ?, '[)')
-                order by id""",
-                (rs, n) -> rs.getString(1) + " ("
-                        + describe(rs.getObject(2, LocalDate.class), rs.getObject(3, LocalDate.class)) + ")",
-                sourceId, targetId, relation.relationType(), provenance.inputSourceId(), provenance.editionNo(),
-                period.from(), period.to());
-        String message = "같은 관계의 유효기간이 겹칩니다. 저장하려는 기간: " + describe(period.from(), period.to())
-                + ". 겹치는 관계: " + overlapping.stream().collect(Collectors.joining(", "))
-                + ". 앞 관계에 종료일을 넣어 끝내거나 기간을 고쳐 다시 보내세요.";
-        return cause == null ? new RelationRejectedException(message) : new RelationRejectedException(message, cause);
+    /** 무엇과 겹치는지 오류에 담는다. 데이터베이스의 오류 문구는 내보내지 않는다. */
+    private static RelationRejectedException overlap(ValidityPeriod period, List<String> overlapping) {
+        return new RelationRejectedException(
+                "같은 관계의 유효기간이 겹칩니다. 저장하려는 기간: " + describe(period.from(), period.to()) + "."
+                        + (overlapping.isEmpty() ? "" : " 겹치는 관계: " + String.join(", ", overlapping) + ".")
+                        + " 기간을 고쳐 다시 보내세요.");
     }
 
     private static String describe(LocalDate from, LocalDate to) {

@@ -34,6 +34,12 @@ class IdentifiersTest {
     }
 
     @Test
+    void NUL_글자가_든_값은_거부한다() {
+        assertThatThrownBy(() -> new EntityRef("p", "T", "a\u0000b")).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("NUL");
+    }
+
+    @Test
     void 비어_있는_값은_거부한다() {
         assertThatThrownBy(() -> new EntityRef("", "T", "k")).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Pack");

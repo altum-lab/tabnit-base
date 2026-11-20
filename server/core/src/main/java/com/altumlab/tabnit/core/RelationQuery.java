@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Objects;
 import javax.sql.DataSource;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
@@ -44,15 +45,22 @@ public class RelationQuery {
      * @param asOf 기준 날짜
      * @return 유효한 관계. 없으면 빈 목록
      * @throws EntityNotFoundException 그런 개체가 없을 때
+     * @throws CoreStorageException 저장소에서 읽지 못했을 때
      */
     public List<Relation> relationsAsOf(String entityId, LocalDate asOf) {
         Objects.requireNonNull(entityId, "개체의 식별자는 반드시 있어야 합니다");
         Objects.requireNonNull(asOf, "기준 날짜는 반드시 있어야 합니다");
-        Integer found = jdbc.queryForObject("select count(*) from entity where id = ?", Integer.class, entityId);
-        if (found == null || found == 0) {
-            throw new EntityNotFoundException(entityId);
+        try {
+            Integer found = jdbc.queryForObject("select count(*) from entity where id = ?", Integer.class, entityId);
+            if (found == null || found == 0) {
+                throw new EntityNotFoundException(entityId);
+            }
+            return jdbc.query(RELATIONS_AS_OF, RelationQuery::toRelation, entityId, entityId, asOf, asOf, entityId);
         }
-        return jdbc.query(RELATIONS_AS_OF, RelationQuery::toRelation, entityId, entityId, asOf, asOf, entityId);
+        catch (DataAccessException e) {
+            throw new CoreStorageException("관계를 조회하지 못했습니다. 개체: " + entityId + ", 기준 날짜: " + asOf
+                    + ". 값을 확인하고, 문제가 없으면 저장소의 상태를 확인한 뒤 다시 시도하세요.", e);
+        }
     }
 
     private static Relation toRelation(ResultSet rs, int rowNum) throws SQLException {

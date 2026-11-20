@@ -60,18 +60,20 @@ for m in $modules; do
   have="$({ grep -E '^읽을 문서:' "$top/$dir/CLAUDE.md" || true; } | sed 's/관련 작업.*//' | doc_ids)"
   if [ -z "$want" ]; then
     bad "CLAUDE.md: '작업 전에 읽을 것' 절의 표에 모듈 '$m' 이 없습니다."
-  elif [ -n "$have" ] && [ "$want" != "$have" ]; then
-    bad "$dir/CLAUDE.md: 읽을 문서가 맨 위 CLAUDE.md 5절과 다릅니다 (5절: $want / 이 파일: $have)."
+  elif [ "$want" != "$have" ]; then
+    bad "$dir/CLAUDE.md: 읽을 문서가 맨 위 CLAUDE.md 5절과 다릅니다 (5절: $want / 이 파일: ${have:-없음})."
   fi
 done
 
 # 4) 저장소의 모든 폴더별 지침 파일에 읽을 문서와 금지 사항이 있는가
-guides="$(cd "$top" && git ls-files -co --exclude-standard -- '*/CLAUDE.md' | grep -v '^\.claude/' | sort)"
+# 경로에 한글이나 빈칸이 있어도 그대로 읽도록 NUL 로 끊어 받는다
 count=0
-for g in $guides; do
+while IFS= read -r -d '' g; do
+  case "$g" in .claude/*) continue ;; esac
   check_guide "$g"
   count=$((count + 1))
-done
+done < <(cd "$top" && git -c core.quotepath=false ls-files -z -co --exclude-standard -- '*/CLAUDE.md' | sort -z)
+[ "$count" -gt 0 ] || bad "폴더별 지침 파일을 하나도 찾지 못했습니다. git 저장소 안에서 돌리고 있는지 확인하세요."
 
 if [ "$fail" -ne 0 ]; then
   echo "지침 파일 검사 실패. 위의 [필요] 항목을 고치세요." >&2

@@ -1,0 +1,26 @@
+# 입력 자료 "program": 의료사업의 목록. 행 하나가 의료사업 하나다.
+# "연계사업코드" 가 비어 있지 않으면 그 사업과의 연계 관계를 만든다.
+@prefix tabnit: <urn:tabnit:vocab:> .
+@prefix ex:     <urn:tabnit:pack:test-mini:> .
+
+ex:매핑-program a tabnit:Mapping ;
+    tabnit:inputSourceId "program" ;
+    tabnit:fileFormat tabnit:Csv ;
+    tabnit:requiredColumns ( "사업코드" "사업명" "운영여부" "연간목표인원" "연계사업코드" ) ;
+    tabnit:itemKeyColumns ( "사업코드" ) ;
+    tabnit:entity [
+        tabnit:entityType ex:의료사업 ;
+        tabnit:keyColumn "사업코드" ;
+        tabnit:attribute [ tabnit:property ex:사업명 ; tabnit:column "사업명" ] ;
+        # 입력에는 "예", "아니오" 로 적혀 있다.
+        tabnit:attribute [ tabnit:property ex:운영여부 ; tabnit:column "운영여부" ;
+                           tabnit:trueValue "예" ; tabnit:falseValue "아니오" ] ;
+        # 입력에는 "1,200" 처럼 자릿수 구분 기호가 있다.
+        tabnit:attribute [ tabnit:property ex:연간목표인원 ; tabnit:column "연간목표인원" ;
+                           tabnit:groupingSeparator "," ]
+    ] ;
+    tabnit:relation [
+        tabnit:relationType ex:사업연계 ;
+        tabnit:sourceEntity [ tabnit:entityType ex:의료사업 ; tabnit:keyColumn "사업코드" ] ;
+        tabnit:targetEntity [ tabnit:entityType ex:의료사업 ; tabnit:keyColumn "연계사업코드" ]
+    ] .

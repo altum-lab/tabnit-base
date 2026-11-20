@@ -1,0 +1,29 @@
+# 제약 (SHACL). 적재가 끝난 뒤 전체 자료에 걸어 위반을 보고한다 (D2 AD-92).
+# 제약을 어긴 자료도 그대로 들어간다.
+@prefix sh:     <http://www.w3.org/ns/shacl#> .
+@prefix xsd:    <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:     <urn:tabnit:pack:test-mini:> .
+
+# 운영지침에는 제목이 있어야 하고, 점검 주기는 1일 이상이어야 한다.
+ex:운영지침제약 a sh:NodeShape ;
+    sh:targetClass ex:운영지침 ;
+    sh:property [
+        sh:path ex:지침제목 ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+    ] ;
+    sh:property [
+        sh:path ex:점검주기일 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+    ] .
+
+# 협력기관의 분담률은 0 이상 1 이하다. 하위 유형(보건기관, 민간기관)에도 걸린다.
+ex:협력기관제약 a sh:NodeShape ;
+    sh:targetClass ex:협력기관 ;
+    sh:property [
+        sh:path ex:분담률 ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 1 ;
+    ] .

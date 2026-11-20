@@ -1,0 +1,33 @@
+# 입력 자료 "partner-private": 민간기관 의 목록. 행 하나가 민간기관 하나다.
+# 행마다 참여하는 사업과 연락을 맡은 전담팀이 함께 적혀 있다.
+@prefix tabnit: <urn:tabnit:vocab:> .
+@prefix ex:     <urn:tabnit:pack:test-mini:> .
+
+ex:매핑-partner-private a tabnit:Mapping ;
+    tabnit:inputSourceId "partner-private" ;
+    tabnit:fileFormat tabnit:Csv ;
+    tabnit:requiredColumns ( "기관코드" "기관명" "협약일" "분담률" "참여사업코드" "연락팀코드" "연락팀명" ) ;
+    tabnit:itemKeyColumns ( "기관코드" ) ;
+    tabnit:entity [
+        tabnit:entityType ex:민간기관 ;
+        tabnit:keyColumn "기관코드" ;
+        tabnit:attribute [ tabnit:property ex:기관명 ; tabnit:column "기관명" ] ;
+        # 입력에는 "2025.4.1" 처럼 적혀 있다.
+        tabnit:attribute [ tabnit:property ex:협약일 ; tabnit:column "협약일" ; tabnit:datePattern "yyyy.M.d" ] ;
+        tabnit:attribute [ tabnit:property ex:분담률 ; tabnit:column "분담률" ]
+    ] ;
+    tabnit:entity [
+        tabnit:entityType ex:전담팀 ;
+        tabnit:keyColumn "연락팀코드" ;
+        tabnit:attribute [ tabnit:property ex:팀명 ; tabnit:column "연락팀명" ]
+    ] ;
+    tabnit:relation [
+        tabnit:relationType ex:사업참여 ;
+        tabnit:sourceEntity [ tabnit:entityType ex:민간기관 ; tabnit:keyColumn "기관코드" ] ;
+        tabnit:targetEntity [ tabnit:entityType ex:의료사업 ; tabnit:keyColumn "참여사업코드" ]
+    ] ;
+    tabnit:relation [
+        tabnit:relationType ex:연락담당 ;
+        tabnit:sourceEntity [ tabnit:entityType ex:전담팀 ; tabnit:keyColumn "연락팀코드" ] ;
+        tabnit:targetEntity [ tabnit:entityType ex:민간기관 ; tabnit:keyColumn "기관코드" ]
+    ] .

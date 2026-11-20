@@ -1,0 +1,15 @@
+# 입력 자료 "guideline-program": 어느 운영지침이 어느 의료사업에 적용되는가. 행 하나가 관계 하나다.
+# 두 개체는 이 자료에 참조로만 나온다. 속성은 다른 입력 자료가 넣는다.
+@prefix tabnit: <urn:tabnit:vocab:> .
+@prefix ex:     <urn:tabnit:pack:test-mini:> .
+
+ex:매핑-guideline-program a tabnit:Mapping ;
+    tabnit:inputSourceId "guideline-program" ;
+    tabnit:fileFormat tabnit:Csv ;
+    tabnit:requiredColumns ( "지침번호" "사업코드" ) ;
+    tabnit:itemKeyColumns ( "지침번호" "사업코드" ) ;
+    tabnit:relation [
+        tabnit:relationType ex:지침적용 ;
+        tabnit:sourceEntity [ tabnit:entityType ex:운영지침 ; tabnit:keyColumn "지침번호" ] ;
+        tabnit:targetEntity [ tabnit:entityType ex:의료사업 ; tabnit:keyColumn "사업코드" ]
+    ] .

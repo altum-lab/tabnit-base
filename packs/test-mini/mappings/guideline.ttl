@@ -1,0 +1,15 @@
+# 입력 자료 "guideline": 운영지침의 목록. 행 하나가 운영지침 하나다.
+@prefix tabnit: <urn:tabnit:vocab:> .
+@prefix ex:     <urn:tabnit:pack:test-mini:> .
+
+ex:매핑-guideline a tabnit:Mapping ;
+    tabnit:inputSourceId "guideline" ;
+    tabnit:fileFormat tabnit:Csv ;
+    tabnit:requiredColumns ( "지침번호" "제목" "점검주기일" ) ;
+    tabnit:itemKeyColumns ( "지침번호" ) ;
+    tabnit:entity [
+        tabnit:entityType ex:운영지침 ;
+        tabnit:keyColumn "지침번호" ;
+        tabnit:attribute [ tabnit:property ex:지침제목 ; tabnit:column "제목" ] ;
+        tabnit:attribute [ tabnit:property ex:점검주기일 ; tabnit:column "점검주기일" ]
+    ] .

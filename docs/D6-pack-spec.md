@@ -197,7 +197,7 @@ ex:TypeAShape a sh:NodeShape ;
 
 매핑은 입력 자료의 열을 개체, 속성 값, 관계로 옮기는 규칙이다. 입력 자료 하나에 매핑 정의 하나다. [보드 PACK-01.2] [AD-41]
 
-매핑 정의는 이 제품의 어휘로 Turtle 에 적는다. [AD-90] 어휘의 낱말 하나하나는 아직 적지 않았다. 아래의 "담을 것"을 낱말로 옮기는 일은 매핑 작업(C-02) 전에 이 절에 더한다 ("결정 필요" 4번).
+매핑 정의는 이 제품의 어휘로 Turtle 에 적는다. [AD-90] 낱말은 시험용 Pack(`packs/test-mini/mappings/`)을 적어 보면서 정한 제안이다. 아래 "담을 것" 다음의 "매핑 어휘"에 있다 ("결정 필요" 4번).
 
 ### 담을 것
 
@@ -216,6 +216,50 @@ ex:TypeAShape a sh:NodeShape ;
 - 매핑이 가리키는 유형과 속성은 온톨로지에 있어야 한다. 없으면 Pack 을 읽지 않는다. [보드 PACK-01.2]
 - 매핑은 Pack 에 있다. 특정 파일의 열 이름을 코드에 넣지 않는다. [link]
 - 행 하나가 개체 여럿과 관계 여럿을 만들 수 있다. 행이 만든 모든 개체가 그 행의 변동 대상이 된다. [AD-43]
+
+### 매핑 어휘 (제안)
+
+시험용 Pack 의 매핑 다섯 개를 적어 보면서 정한 낱말이다. 모두 제안이다.
+
+```turtle
+ex:매핑-이름 a tabnit:Mapping ;
+    tabnit:inputSourceId "source-id" ;
+    tabnit:fileFormat tabnit:Csv ;
+    tabnit:requiredColumns ( "열1" "열2" ) ;
+    tabnit:itemKeyColumns ( "열1" ) ;
+    tabnit:entity [
+        tabnit:entityType ex:TypeA ;
+        tabnit:keyColumn "열1" ;
+        tabnit:attribute [ tabnit:property ex:name ; tabnit:column "열2" ]
+    ] ;
+    tabnit:relation [
+        tabnit:relationType ex:relatesTo ;
+        tabnit:sourceEntity [ tabnit:entityType ex:TypeA ; tabnit:keyColumn "열1" ] ;
+        tabnit:targetEntity [ tabnit:entityType ex:TypeB ; tabnit:keyColumn "열3" ]
+    ] .
+```
+
+| 낱말 | 뜻 |
+|---|---|
+| `tabnit:Mapping` | 매핑 정의 하나. 입력 자료 하나에 하나다 |
+| `tabnit:inputSourceId` | 입력 자료의 식별자 |
+| `tabnit:fileFormat` | `tabnit:Csv` 또는 `tabnit:Xlsx`. 엑셀이면 `tabnit:sheetName` 으로 시트를 적는다 |
+| `tabnit:requiredColumns` | 반드시 있어야 하는 열의 목록 |
+| `tabnit:itemKeyColumns` | 항목의 키 열의 목록. 적힌 차례대로 이어 붙여 항목의 키를 만든다 |
+| `tabnit:entity` | 행이 만드는 개체. 여럿 적을 수 있다 |
+| `tabnit:entityType`, `tabnit:keyColumn` | 개체 유형과, 입력의 키가 되는 열 |
+| `tabnit:attribute` | 속성 값 하나. `tabnit:property` (속성)와 `tabnit:column` (열) |
+| `tabnit:relation` | 행이 만드는 관계. 여럿 적을 수 있다 |
+| `tabnit:relationType`, `tabnit:sourceEntity`, `tabnit:targetEntity` | 관계 유형과 출발 개체, 도착 개체. 개체는 유형과 키 열로 가리킨다 |
+| `tabnit:validFromColumn`, `tabnit:validToColumn` | 유효기간의 시작일과 종료일을 읽을 열. 관계와 속성 값에 적을 수 있다. 없으면 시작일은 판의 적용일이다 |
+| `tabnit:datePattern` | 날짜 열의 모양 (예: `yyyy.M.d`) |
+| `tabnit:groupingSeparator` | 수 열의 자릿수 구분 기호 (예: `,`) |
+| `tabnit:trueValue`, `tabnit:falseValue` | 참·거짓 열에서 참과 거짓으로 볼 글자 |
+
+- **차례가 뜻을 갖는 목록은 Turtle 의 목록 `( ... )` 으로 적는다.** 값을 쉼표로 늘어놓으면 차례가 없어, 항목의 키가 읽을 때마다 달라질 수 있다. (제안)
+- **관계의 끝에 적힌 개체는 없으면 만든다.** 속성 없이 식별자만 가진 개체가 된다. 속성은 다른 입력 자료가 넣을 수 있다. 이것이 "참조로만 등장한 개체"다. [AD-59] (제안)
+- 관계의 끝을 가리키는 열이 빈 칸이면 그 관계를 만들지 않는다. [AD-94]
+- 행이 만드는 개체의 유형은 매핑에 고정으로 적는다. 열의 값에 따라 유형을 고르는 것은 지금 없다 ("결정 필요" 4번).
 
 ### 값을 읽는 법
 
@@ -278,7 +322,7 @@ ex:TypeAShape a sh:NodeShape ;
 1. **하위 유형이 닿는 곳.** 하위 유형을 따르고 상위 유형을 여럿 허용하기로 했다 [AD-88]. 그러면 다음을 정해야 한다. (가) 영향 범위의 "개체 유형별 수"와 목록의 정렬은 구체적인 유형으로만 하는가? (나) 화면과 API 가 유형으로 거를 때 상위 유형으로 거르면 하위 유형의 개체도 나오는가? (다) 온톨로지를 아는 것은 pack 이고 core 는 유형의 이름만 저장한다. 관계의 출발·도착 유형이 맞는지 확인하는 것은 link 가 적재할 때 pack 의 공개 API 로 하는 것으로 보았다. 맞는가? (라) 규칙이 상위 유형에 걸릴 때의 평가는 D8 에서 정한다.
 2. **제약의 보고.** 제약을 적재 뒤 전체 자료에 걸어 보고하기로 했다 [AD-92]. (가) 언제 거는가 (판을 적재할 때마다인가, 요청할 때인가)? (나) 어느 기준 날짜의 자료에 거는가? 유효기간이 끝난 관계와 속성 값도 보는가? (다) SHACL 의 어디까지 지원하는가 (개수, 자료형, 값의 범위, 유형. SPARQL 로 적는 제약은 지원하지 않는 것으로 제안한다)? (라) 위반을 어디에 저장하고 어디서 보여 주는가? 보여 주는 화면과 API 가 D7 과 보드에 없다. (마) 위반이 변동이나 조치로 이어지는가? (바) Jena 의 SHACL 검사는 RDF 그래프에 건다. 저장소의 개체와 관계를 RDF 로 바꾸는 일이 필요한데, 당김 범위인 RDF 내보내기(A-11)와 겹친다.
 3. **엑셀을 읽는 세부.** (가) 서식을 글자로 바꿀 때 쓰는 지역 설정을 무엇으로 고정하는가? (나) 저장된 계산 결과가 없는 수식 칸은 건너뛰는가? (다) 매핑이 지정한 시트 하나만 읽고 숨긴 행과 열도 읽는 것이 맞는가? (라) 같은 내용의 CSV 와 xlsx 는 같은 판으로 보는가? 판의 `content_hash` [D5 5절] 를 파일의 바이트로 하면 다른 판이 된다.
-4. **매핑 어휘의 낱말.** 7절의 "담을 것"을 `tabnit:` 어휘의 낱말로 옮겨야 한다. 예시가 있어야 정하기 쉬우므로 제조 안전 Pack 의 입력 자료를 받은 뒤에 쓴다.
+4. **매핑 어휘.** 시험용 Pack 을 적어 보면서 낱말을 제안으로 정했다 (7절). 적다가 나온 질문이다. (가) **열의 값으로 유형 고르기.** 시험용 Pack 은 협력기관의 하위 유형(보건기관, 민간기관)을 한 파일의 "구분" 열로 가를 수 없어 입력 자료를 둘로 나눴다. 열의 값에 따라 유형을 고르는 낱말을 두는가? (나) **같은 개체의 속성 값이 여러 행에 나올 때.** 전담팀처럼 여러 행이 같은 개체를 가리키며 같은 이름을 적는다. 값이 같으면 한 번만 저장하고, 다르면 겹침으로 거부해 뒤의 행을 건너뛰는 것으로 보았다 [AD-53]. 맞는가? (다) **같은 개체의 속성을 두 입력 자료가 넣을 때.** 두 자료가 같은 속성에 다른 값을 넣으면 뒤에 들어온 쪽이 거부된다 [AD-53]. 어느 자료가 그 속성의 주인인지 매핑에 적게 하는가? (라) **참조로만 만들어진 개체.** 관계의 끝에만 나오고 어느 자료도 속성을 넣지 않은 개체를 알려 주는가?
 5. **새 라이브러리의 확인.** Apache Jena [AD-87] 와 Apache POI [AD-93] 를 들이기 전에 지금 버전의 문서로 Java 21 지원, 필요한 모듈, 라이선스를 확인한다. Spring Boot 가 버전을 관리하지 않는 라이브러리라 버전을 직접 적어야 한다. "의존 라이브러리의 버전은 직접 적지 않는다"[AD-13]의 예외로 적어야 하는가?
 
 ### 받아야 하는 것

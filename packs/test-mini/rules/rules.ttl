@@ -1,0 +1,60 @@
+# 규칙. 형식은 D8 2절이다. 낱말은 아직 제안이다.
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix tabnit: <urn:tabnit:vocab:> .
+@prefix ex:     <urn:tabnit:pack:test-mini:> .
+
+# 운영지침이 바뀌거나 없어지면, 그 지침이 적용되던 운영 중인 사업의 운영 계획을 점검한다.
+ex:규칙-0001 a tabnit:Rule ;
+    tabnit:ruleNo "0001" ;
+    rdfs:label "지침 변경에 따른 사업 운영 계획 점검" ;
+    tabnit:priority 1 ;
+    tabnit:whenChangeKind tabnit:Changed , tabnit:Removed ;
+    tabnit:appliesTo tabnit:ImpactTarget ;
+    tabnit:targetType ex:의료사업 ;
+    tabnit:condition [
+        tabnit:subject tabnit:ChangeTarget ;
+        tabnit:typeIs ex:운영지침
+    ] ;
+    tabnit:condition [
+        tabnit:subject tabnit:ImpactTarget ;
+        tabnit:property ex:운영여부 ;
+        tabnit:operator tabnit:Equals ;
+        tabnit:value true
+    ] ;
+    tabnit:actionText "바뀐 운영지침에 맞춰 사업 운영 계획을 점검한다" ;
+    tabnit:dueInDays 14 .
+
+# 어떤 변동이든 그 영향이 협력기관에 닿으면 안내한다. 하위 유형(보건기관, 민간기관)에도 걸린다.
+# 분담률이 절반 이상인 기관만 대상이다. 분담률 값이 없는 기관은 해당하지 않는다.
+ex:규칙-0002 a tabnit:Rule ;
+    tabnit:ruleNo "0002" ;
+    rdfs:label "분담률이 큰 협력기관에 변경 안내" ;
+    tabnit:priority 2 ;
+    tabnit:appliesTo tabnit:ImpactTarget ;
+    tabnit:targetType ex:협력기관 ;
+    tabnit:condition [
+        tabnit:subject tabnit:ImpactTarget ;
+        tabnit:property ex:분담률 ;
+        tabnit:operator tabnit:GreaterThanOrEqual ;
+        tabnit:value 0.5
+    ] ;
+    tabnit:actionText "협력기관에 변경 내용을 안내한다" ;
+    tabnit:dueInDays 30 .
+
+# 점검 주기가 30일 이하인 운영지침이 바뀌면, 그 지침 자신의 점검 일정을 다시 잡는다.
+# 대상이 변동 대상 자신이라 근거 경로가 비어 있다 (D2 AD-102).
+ex:규칙-0003 a tabnit:Rule ;
+    tabnit:ruleNo "0003" ;
+    rdfs:label "주기가 짧은 지침의 점검 일정 다시 잡기" ;
+    tabnit:priority 1 ;
+    tabnit:whenChangeKind tabnit:Changed ;
+    tabnit:appliesTo tabnit:ChangeTarget ;
+    tabnit:targetType ex:운영지침 ;
+    tabnit:condition [
+        tabnit:subject tabnit:ChangeTarget ;
+        tabnit:property ex:점검주기일 ;
+        tabnit:operator tabnit:LessThanOrEqual ;
+        tabnit:value 30
+    ] ;
+    tabnit:actionText "지침의 점검 일정을 다시 잡는다" ;
+    tabnit:dueInDays 7 .

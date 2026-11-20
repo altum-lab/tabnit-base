@@ -15,7 +15,7 @@ React와 TypeScript. 변동 감지, 영향 범위, 조치와 확정, 관계 지�
 - 문구는 한국어. 용어는 D1의 용어집을 따른다.
 - 화면 흐름 시험(Playwright)이 깨지는 변경은 끝난 것이 아니다.
 - 고친 화면은 `playwright` MCP 로 실제로 열어 확인한다. 관계 지도의 성능은 `chrome-devtools` MCP 의 성능 기록으로 잰다.
-- 호출 코드는 `npm run gen:api` 로 규격에서 다시 만든다 (D-02 에서 이 명령을 만든다).
+- 호출 코드는 `npm run gen:api` 로 규격(`docs/api/openapi.yaml`)에서 다시 만든다. 만들어진 `src/api/schema.d.ts` 는 손으로 고치지 않는다. 서버는 `src/api/client.ts` 의 `api` 로만 부른다.
 
 ## 하지 않는 것
 - 설정 화면(Pack, 커넥터), 사용자 관리 화면은 1월 범위다.

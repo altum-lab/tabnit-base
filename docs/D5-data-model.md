@@ -197,19 +197,72 @@
 
 Pack 적재는 정의(온톨로지, 제약, 매핑, 규칙, 검증 질문)만 저장한다. [AD-45]
 
-정의는 항목별 테이블(개체 유형, 관계 유형, 속성, 매핑, 규칙, 검증 질문)로 나눠 담는다. [AD-69] 그 테이블은 Pack 의 형식(D6)이 정해져야 쓸 수 있다. D6 은 작성 전이다. 이 초안에는 Pack 하나에 한 행인 테이블만 적는다. 스키마 v0 에는 넣지 않는다. [AD-73]
+정의는 항목별 테이블로 나눠 담는다. [AD-69] Pack 자신, 개체 유형, 상위 유형, 관계 유형, 속성의 다섯 테이블은 D6 4절 ~ 5절의 항목을 그대로 열로 옮긴 것이다. [AD-125] 변경 파일: `V3__pack_definition.sql` (SK-04). 매핑, 규칙, 검증 질문, 제약의 테이블은 그 작업에서 더한다.
 
-### pack
+- 주인 모듈은 pack 이다. 다른 모듈은 pack 의 공개 API 로만 읽는다. [AD-18]
+- 이름 열의 정렬 규칙은 `"C"` 다 (1절 순서). 모든 참조는 같은 Pack 안에서만 걸린다. [AD-74]
+- 이름과 이름표는 빈 글자일 수 없다. [AD-75]
+- 같은 Pack 을 다시 넣어도 중복되지 않는다. 적재는 전부 되거나 전부 안 된다. [pack]
+- 한 Pack 안에서 개체 유형, 관계 유형, 속성의 이름이 서로 겹치지 않는 것 [D6 5절] 은 테이블이 아니라 pack 의 검증이 지킨다. 세 종류가 한 주소 공간을 쓰므로 정의 파일에서 겹칠 수 없다.
+
+### pack_definition
 
 | 열 | 형식 | 뜻 | 근거 |
 |---|---|---|---|
-| `pack_id` | text | Pack 의 식별자 | 제안 |
-| `default_max_depth` | integer | 영향 범위의 최대 깊이 기본값 | [AD-35] |
-| `loaded_at` | timestamptz | 적재한 때. 밖에서 받아 넘긴 시각 | 제안 |
+| `pack_id` | text | Pack 의 식별자 | [D6 4절] |
+| `label` | text | 사람이 읽는 이름 | [D6 4절] |
+| `default_max_depth` | integer | 영향 범위의 최대 깊이 기본값. 1 이상 | [AD-35] |
+| `loaded_at` | timestamptz | 적재한 때. 밖에서 받아 넘긴 시각. 기본값을 두지 않는다 | [AD-125] |
 
-- 유일: `pack_id`.
-- 같은 Pack 을 다시 넣어도 중복되지 않는다. 적재는 전부 되거나 전부 안 된다. [pack]
-- 나머지 정의 테이블은 D6 이 확정된 뒤에 이 절에 추가한다. D6 의 초안은 있다. 하위 유형의 위아래 [AD-88], 제약 [AD-92], 규칙의 항목(D8 2절)도 거기에 들어간다. 관계 유형의 영향 방향 [AD-33], 속성의 형식 [AD-71], 개체 유형의 표시 이름 속성 [AD-70], 매핑의 항목 키 열 [AD-57] 이 거기에 들어간다.
+- 기본 키: `pack_id`.
+
+### pack_entity_type
+
+| 열 | 형식 | 뜻 | 근거 |
+|---|---|---|---|
+| `pack_id` | text | 어느 Pack 의 정의인가 | |
+| `name` | text | 개체 유형의 이름. `entity.entity_type` 에 들어가는 글자다 | [AD-89] |
+| `label` | text | 화면에 보일 이름 | [D6 5절] |
+| `display_name_attribute` | text, 없을 수 있다 | 표시 이름으로 쓸 속성. 유형이 스스로 적은 값이다. 없으면 상위 유형의 값을 받는다 | [AD-70] [AD-88] |
+
+- 기본 키: `(pack_id, name)`. 참조: `pack_id` 는 `pack_definition`, `display_name_attribute` 는 `pack_attribute`.
+- 개체 유형과 속성은 서로를 가리킨다. `display_name_attribute` 의 참조는 트랜잭션 끝에서 확인한다.
+
+### pack_entity_type_parent
+
+| 열 | 형식 | 뜻 | 근거 |
+|---|---|---|---|
+| `pack_id` | text | | |
+| `name` | text | 하위 유형 | [AD-88] |
+| `parent_name` | text | 상위 유형. 한 유형에 여럿일 수 있다 | [AD-88] |
+
+- 기본 키: 세 열 모두. 참조: `name` 과 `parent_name` 은 `pack_entity_type`. 자기 자신을 상위로 둘 수 없다.
+- 여러 단계를 돌아오는 정의는 테이블이 막지 못한다. pack 의 검증이 거부한다. [AD-88]
+
+### pack_relation_type
+
+| 열 | 형식 | 뜻 | 근거 |
+|---|---|---|---|
+| `pack_id` | text | | |
+| `name` | text | 관계 유형의 이름. `relation.relation_type` 에 들어가는 글자다 | [AD-89] |
+| `label` | text | 화면에 보일 이름 | [D6 5절] |
+| `source_type` | text | 출발 개체의 유형. 하나 | [AD-91] |
+| `target_type` | text | 도착 개체의 유형. 하나 | [AD-91] |
+| `impact_direction` | text | `SOURCE_TO_TARGET`, `TARGET_TO_SOURCE`, `BOTH`, `NONE` 가운데 하나 | [AD-33] |
+
+- 기본 키: `(pack_id, name)`. 참조: `source_type` 과 `target_type` 은 `pack_entity_type`.
+
+### pack_attribute
+
+| 열 | 형식 | 뜻 | 근거 |
+|---|---|---|---|
+| `pack_id` | text | | |
+| `name` | text | 속성의 이름. `attribute_value.attribute_name` 에 들어가는 글자다 | [AD-89] |
+| `label` | text | 화면에 보일 이름 | [D6 5절] |
+| `entity_type` | text | 이 속성을 갖는 개체 유형. 그 하위 유형도 갖는다 | [AD-88] |
+| `value_format` | text | `STRING`, `INTEGER`, `DECIMAL`, `DATE`, `BOOLEAN` 가운데 하나 | [AD-71] |
+
+- 기본 키: `(pack_id, name)`. 참조: `entity_type` 은 `pack_entity_type`.
 
 ## 5. link 의 테이블
 

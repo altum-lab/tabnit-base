@@ -46,6 +46,7 @@ tools/     점검 스크립트, 개발 보드
 | 화면 실행 | `cd web && npm run dev` |
 | 화면 빌드 | `cd web && npm run build` |
 | 화면 시험 | `cd web && npx playwright test` |
+| 지침 파일 검사 (맨 위와 모듈별 CLAUDE.md) | `bash tools/check-guides.sh` |
 | 금지어 검사 | `bash tools/check-forbidden.sh --all` |
 | 일반성 검사 (엔진 코드에 Pack 용어) | `bash tools/check-generality.sh --all` |
 | 검증 질문 실행 | `bash verify/run.sh` |

@@ -1,0 +1,32 @@
+# 운영체제, 편집기
+.DS_Store
+.idea/
+.vscode/
+*.iml
+
+# 서버 (Gradle)
+.gradle/
+build/
+out/
+!gradle/wrapper/gradle-wrapper.jar
+
+# 화면 (Node)
+node_modules/
+dist/
+web/test-results/
+web/playwright-report/
+
+# 비밀과 개인 설정: 절대 올리지 않는다
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key
+tools/forbidden-words.local.txt
+.claude/settings.local.json
+.claude/worktrees/
+.playwright-mcp/
+
+# 개발 보드의 자료
+tools/board/data/

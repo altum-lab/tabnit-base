@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "tabnit-db": {
+      "command": "npx",
+      "args": ["-y", "@bytebase/dbhub@latest", "--config", "tools/dbhub.toml"],
+      "env": { "TABNIT_DEV_DB_PASSWORD": "${TABNIT_DEV_DB_PASSWORD:-secret}" }
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest", "--isolated", "--no-usage-statistics", "--no-performance-crux"]
+    }
+  }
+}

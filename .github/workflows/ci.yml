@@ -1,0 +1,61 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: 금지어 검사
+        env:
+          FORBIDDEN_WORDS: ${{ secrets.FORBIDDEN_WORDS }}
+        run: bash tools/check-forbidden.sh --all
+
+      - name: 일반성 검사 (엔진 코드에 Pack 용어)
+        run: bash tools/check-generality.sh --all
+
+      - uses: actions/setup-java@v5
+        if: hashFiles('server/gradlew') != ''
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: 서버 빌드와 시험
+        if: hashFiles('server/gradlew') != ''
+        working-directory: server
+        run: ./gradlew build --no-daemon
+
+      - uses: actions/setup-node@v6
+        if: hashFiles('web/package-lock.json') != ''
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: 화면 빌드
+        if: hashFiles('web/package-lock.json') != ''
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: 시험 결과 올리기
+        if: failure() && hashFiles('server/gradlew') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-reports
+          path: server/**/build/reports/tests/
+          retention-days: 7

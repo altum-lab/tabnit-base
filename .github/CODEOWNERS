@@ -1,0 +1,24 @@
+# 모듈 주인. 이 폴더를 고치는 PR 은 주인의 승인이 있어야 병합된다.
+# @altumlab/... 은 GitHub 팀이다. 팀을 아직 안 만들었으면 @계정이름 으로 바꾼다.
+# 아래로 갈수록 우선한다.
+
+*                       @altumlab/tabnit-lead
+
+/server/common/         @altumlab/tabnit-common
+/server/pack/           @altumlab/tabnit-pack
+/server/core/           @altumlab/tabnit-core @altumlab/tabnit-lead
+/server/link/           @altumlab/tabnit-link
+/server/rules/          @altumlab/tabnit-rules @altumlab/tabnit-lead
+/server/api/            @altumlab/tabnit-web
+/web/                   @altumlab/tabnit-web
+/verify/                @altumlab/tabnit-integration
+/deploy/                @altumlab/tabnit-integration
+/.github/               @altumlab/tabnit-integration @altumlab/tabnit-lead
+
+# 설계 문서, 지침 파일, Pack 의 정답은 대표만 승인한다
+/docs/                  @altumlab/tabnit-lead
+/packs/                 @altumlab/tabnit-lead
+CLAUDE.md               @altumlab/tabnit-lead
+**/CLAUDE.md            @altumlab/tabnit-lead
+/.claude/               @altumlab/tabnit-lead
+/.mcp.json              @altumlab/tabnit-lead

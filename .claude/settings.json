@@ -1,0 +1,97 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew *)",
+      "Bash(npm run *)",
+      "Bash(npm ci)",
+      "Bash(npx playwright test *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git branch *)",
+      "Bash(git worktree list)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr diff *)",
+      "Bash(gh pr checks *)",
+      "Bash(gh issue view *)",
+      "Bash(bash tools/doctor.sh)",
+      "Bash(bash tools/check-forbidden.sh *)",
+      "Bash(bash tools/check-generality.sh *)",
+      "Bash(bash verify/run.sh *)",
+      "mcp__tabnit-db__execute_sql",
+      "mcp__tabnit-db__search_objects",
+      "mcp__tabnit-db__explain_sql"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./secrets/**)",
+      "Read(./tools/forbidden-words.local.txt)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(rm -rf *)",
+      "Bash(curl *)",
+      "Bash(wget *)"
+    ],
+    "ask": [
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(gh pr create *)",
+      "Bash(docker *)",
+      "Edit(/docs/**)",
+      "Edit(/packs/**)",
+      "Edit(/CLAUDE.md)",
+      "Edit(/**/CLAUDE.md)",
+      "Edit(/.claude/**)",
+      "Edit(/.github/**)",
+      "Edit(/.mcp.json)"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "tabnit-db",
+    "chrome-devtools"
+  ],
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-edit.sh\"",
+            "timeout": 20
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "jdtls-lsp@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": true,
+    "security-guidance@claude-plugins-official": true,
+    "pr-review-toolkit@claude-plugins-official": true,
+    "context7@claude-plugins-official": true,
+    "playwright@claude-plugins-official": true,
+    "modern-web-guidance@claude-plugins-official": true,
+    "skill-creator@claude-plugins-official": true
+  },
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": false,
+    "network": {
+      "allowedDomains": [
+        "registry.npmjs.org",
+        "repo.maven.apache.org",
+        "plugins.gradle.org",
+        "services.gradle.org",
+        "github.com",
+        "api.github.com"
+      ]
+    },
+    "excludedCommands": [
+      "docker *",
+      "./gradlew *"
+    ]
+  }
+}

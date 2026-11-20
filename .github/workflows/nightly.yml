@@ -1,0 +1,47 @@
+name: nightly
+
+# 밤 통합: 매일 새벽 2시 (한국 시간) 에 전체 빌드와 시험을 돌린다.
+on:
+  schedule:
+    - cron: '0 17 * * *'   # UTC 17:00 = 한국 02:00
+  workflow_dispatch:
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: 서버 전체 시험 (캐시 없이 처음부터)
+        if: hashFiles('server/gradlew') != ''
+        working-directory: server
+        run: ./gradlew clean build --no-daemon --no-build-cache
+
+      - name: 같은 시험을 한 번 더 (결과가 같은지)
+        if: hashFiles('server/gradlew') != ''
+        working-directory: server
+        run: ./gradlew test --rerun-tasks --no-daemon
+
+      - name: 검증 질문 실행
+        if: hashFiles('verify/run.sh') != ''
+        run: bash verify/run.sh
+
+      - name: 요약
+        if: always()
+        run: |
+          {
+            echo "## 밤 통합 $(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M')"
+            echo "- 결과: ${{ job.status }}"
+            echo "- 커밋: ${GITHUB_SHA::7}"
+            n=$(find server -path '*/build/test-results/test/*.xml' 2>/dev/null | wc -l | xargs)
+            echo "- 시험 결과 파일: ${n}개"
+            echo
+            echo "아침 회의 전에 개발 보드의 '검증과 통합 숫자'에 적습니다."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# 커밋 전 검사. 켜기: git config core.hooksPath .githooks
+set -e
+top="$(git rev-parse --show-toplevel)"
+bash "$top/tools/check-forbidden.sh" --staged
+[ -x "$top/tools/check-generality.sh" ] && bash "$top/tools/check-generality.sh" --staged
+# 큰 파일 막기 (5MB 초과)
+big=""
+while IFS= read -r f; do
+  if [ -f "$top/$f" ] && [ "$(wc -c < "$top/$f")" -gt 5242880 ]; then big="$big$f
+"; fi
+done <<LIST
+$(git diff --cached --name-only --diff-filter=AM)
+LIST
+if [ -n "$big" ]; then echo "5MB 를 넘는 파일은 올리지 않습니다:"; printf '%s' "$big" | sed 's/^/    /'; exit 1; fi
+exit 0

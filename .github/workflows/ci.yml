@@ -62,8 +62,10 @@ jobs:
       - name: 화면 흐름 시험
         if: hashFiles('web/playwright.config.ts') != ''
         working-directory: web
+        # 시스템 패키지(--with-deps)는 받지 않는다. 실행 환경의 이미지에 이미 들어 있고,
+        # apt 로 받으면 미러 속도에 따라 몇 분씩 걸린다. 브라우저만 받는다.
         run: |
-          npx playwright install --with-deps chromium
+          npx playwright install chromium
           npx playwright test
 
       - name: 화면 시험 결과 올리기

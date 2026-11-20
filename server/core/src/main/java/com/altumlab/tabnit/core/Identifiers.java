@@ -42,6 +42,18 @@ final class Identifiers {
             // 저장소의 글자 열은 NUL 글자를 받지 않는다. 저장소까지 가기 전에 여기서 알린다.
             throw new IllegalArgumentException(name + "에 NUL 글자(\\u0000)가 들어 있습니다. 그 글자를 빼고 다시 보내세요.");
         }
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            boolean paired = Character.isHighSurrogate(c) && i + 1 < value.length()
+                    && Character.isLowSurrogate(value.charAt(i + 1));
+            if (paired) {
+                i++;
+            }
+            else if (Character.isSurrogate(c)) {
+                // 짝 없는 대리 문자는 글자가 아니다. 저장소에 그대로 담을 수 없고 순서도 정해지지 않는다.
+                throw new IllegalArgumentException(name + "에 깨진 글자(짝 없는 대리 문자)가 들어 있습니다. 그 글자를 빼고 다시 보내세요.");
+            }
+        }
         return value;
     }
 }

@@ -7,7 +7,7 @@ package com.altumlab.tabnit.pack;
  * @param column 값을 읽을 열
  * @param validFromColumn 유효기간의 시작일을 읽을 열. 없으면 시작일은 판의 적용일이다
  * @param validToColumn 유효기간의 종료일을 읽을 열
- * @param datePattern 날짜 열의 모양
+ * @param datePattern 날짜 열의 모양. 적지 않았으면 null 이고 매핑의 기본 모양을 따른다
  * @param groupingSeparator 수 열의 자릿수 구분 기호
  * @param trueValue 참으로 볼 글자
  * @param falseValue 거짓으로 볼 글자

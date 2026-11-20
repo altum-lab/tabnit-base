@@ -72,6 +72,7 @@ class PackMappingTest {
                 ex:m a tabnit:Mapping ;
                     tabnit:inputSourceId "full" ;
                     tabnit:fileFormat tabnit:Csv ;
+                    tabnit:defaultDatePattern "yyyy'년' M'월' d'일'" ;
                     tabnit:requiredColumns ( "코드" "제목" "상대" ) ;
                     tabnit:itemKeyColumns ( "코드" "상대" ) ;
                     tabnit:primaryEntity [ tabnit:entityType ex:Sub ; tabnit:keyColumn "코드" ] ;
@@ -98,7 +99,7 @@ class PackMappingTest {
 
         MappedEntityRef sub = new MappedEntityRef("Sub", "코드");
         assertThat(mappings).containsExactly(new MappingDefinition("full", MappingFileFormat.CSV, null,
-                List.of("코드", "제목", "상대"), List.of("코드", "상대"), sub,
+                "yyyy'년' M'월' d'일'", List.of("코드", "제목", "상대"), List.of("코드", "상대"), sub,
                 // 속성은 이름의 글자 코드 순이다.
                 List.of(new MappedEntity("Sub", "코드",
                         List.of(new MappedAttribute("active", "쓰는가", null, null, null, null, "예", "아니오"),
@@ -349,6 +350,69 @@ class PackMappingTest {
             assertThat(p.file()).isEqualTo("mappings/broken.ttl");
             assertThat(p.message()).containsPattern("\\d+행");
         });
+    }
+
+    @Test
+    void 날짜의_모양에는_연월일의_숫자와_구분_글자만_쓴다() throws IOException {
+        String withDate = MINIMAL.replace("tabnit:keyColumn \"코드\" ] .",
+                "tabnit:keyColumn \"코드\" ; tabnit:attribute [ tabnit:property ex:since ; tabnit:column \"c\" ; "
+                        + "tabnit:datePattern \"PATTERN\" ] ] .");
+        int n = 0;
+        for (String pattern : List.of("yyyy.M.d", "yyyy-MM-dd", "yyyy/M/d", "yyyy. M. d", "yyyy'년' M'월' d'일'", "d.M.yyyy",
+                "yyyyMMdd", "yyyy''M''d")) {
+            Path dir = pack("m-date-ok-" + n++, "m.ttl", withDate.replace("PATTERN", pattern));
+            assertThat(loader.load(dir, LOADED_AT).outcome()).as(pattern).isEqualTo(PackLoadResult.Outcome.LOADED);
+            // 받은 모양으로는 날짜를 실제로 적고 다시 읽을 수 있어야 한다.
+            java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern(pattern,
+                    java.util.Locale.ROOT);
+            for (java.time.LocalDate date : List.of(java.time.LocalDate.of(1998, 1, 9), java.time.LocalDate.of(2031, 12, 31))) {
+                assertThat(java.time.LocalDate.parse(date.format(formatter), formatter)).as(pattern).isEqualTo(date);
+            }
+        }
+        // 달의 이름, 요일, 시·분, 연·월·일 가운데 빠진 것, 감싸지 않은 다른 글자, 두 번 적은 것.
+        // 구분 글자 없이 이어 붙여 어떤 날짜도 읽지 못하는 것, 두 자리 연도, 앞뒤의 빈칸도 받지 않는다.
+        for (String pattern : List.of("d MMM yyyy", "yyyy-MM-dd E", "yyyy-MM-dd HH:mm", "HH:mm", "M.d", "yyyy.M",
+                "yyyy,M,d", "yyyy년 M월 d일", "yyyy.M.d.d", "yyyy-DDD", "yyyyMd", "dMyyyy", "yy.M.d", " yyyy.M.d",
+                "yyyy.M.d ", "yyyy'년")) {
+            Path dir = pack("m-date-bad", "m.ttl", withDate.replace("PATTERN", pattern));
+            assertThat(problemsOf(dir)).as(pattern).singleElement().satisfies(p -> {
+                assertThat(p.item()).isEqualTo("m");
+                assertThat(p.message()).contains("datePattern");
+            });
+        }
+    }
+
+    @Test
+    void 날짜의_기본_모양은_매핑에_하나_적고_같은_규칙으로_확인한다() throws IOException {
+        Path good = pack("m-default-date", "m.ttl",
+                MINIMAL.replace("tabnit:fileFormat tabnit:Csv ;", "tabnit:fileFormat tabnit:Csv ; tabnit:defaultDatePattern \"yyyy.M.d\" ;"));
+        Path bad = pack("m-default-date-bad", "m.ttl",
+                MINIMAL.replace("tabnit:fileFormat tabnit:Csv ;", "tabnit:fileFormat tabnit:Csv ; tabnit:defaultDatePattern \"MMM d, yyyy\" ;"));
+        Path twice = pack("m-default-date-two", "m.ttl", MINIMAL.replace("tabnit:fileFormat tabnit:Csv ;",
+                "tabnit:fileFormat tabnit:Csv ; tabnit:defaultDatePattern \"yyyy.M.d\" , \"yyyy-M-d\" ;"));
+
+        loader.load(good, LOADED_AT);
+
+        assertThat(definitions.find("m-default-date").orElseThrow().mappings().get(0).defaultDatePattern())
+            .isEqualTo("yyyy.M.d");
+        // 다시 넣으면 그대로이고, 기본 모양만 바꾼 것은 매핑을 바꾼 것이다.
+        assertThat(loader.load(good, LOADED_AT.plusSeconds(10)).outcome()).isEqualTo(PackLoadResult.Outcome.UNCHANGED);
+        assertThatThrownBy(() -> loader.load(pack("m-default-date", "m.ttl", MINIMAL.replace("tabnit:fileFormat tabnit:Csv ;",
+                "tabnit:fileFormat tabnit:Csv ; tabnit:defaultDatePattern \"yyyy-M-d\" ;")), LOADED_AT.plusSeconds(20)))
+            .isInstanceOf(PackChangeRejectedException.class);
+        assertThat(problemsOf(bad)).singleElement().satisfies(p -> assertThat(p.message()).contains("defaultDatePattern"));
+        assertThat(problemsOf(twice)).singleElement().satisfies(p -> assertThat(p.message()).contains("defaultDatePattern"));
+    }
+
+    @Test
+    void 입력_자료의_식별자는_영어_소문자로_시작하고_소문자와_숫자와_붙임표만_쓴다() throws IOException {
+        for (String id : List.of("Src", "1src", "s rc", " ", "자료", "s_rc", "src.")) {
+            Path dir = pack("m-source-id", "m.ttl", MINIMAL.replace("\"src\"", "\"" + id + "\""));
+            assertThat(problemsOf(dir)).as(id).singleElement()
+                .satisfies(p -> assertThat(p.message()).contains("inputSourceId"));
+        }
+        assertThat(loader.load(pack("m-source-id-ok", "m.ttl", MINIMAL.replace("\"src\"", "\"src-2-go\"")), LOADED_AT)
+            .outcome()).isEqualTo(PackLoadResult.Outcome.LOADED);
     }
 
     // ── 매핑끼리 (D2 AD-41, AD-137) ─────────────────────────────────

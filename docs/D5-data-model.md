@@ -227,6 +227,7 @@ Pack 적재는 정의(온톨로지, 제약, 매핑, 규칙, 검증 질문)만 �
 | `pack_id`, `input_source_id` | text | 기본 키. 입력 자료의 식별자는 출처의 `input_source_id` 가 된다 | [AD-41] |
 | `file_format` | text | `CSV` 또는 `XLSX` | [AD-84] |
 | `sheet_name` | text, 없을 수 있다 | 엑셀일 때 읽을 시트. CSV 이면 없다 | [AD-93] |
+| `default_date_pattern` | text, 없을 수 있다 | 날짜의 기본 모양. 변경 파일 `V6__pack_mapping_default_date_pattern.sql` 에서 더했다 | [AD-143] |
 | `primary_entity_type`, `primary_key_column` | text | 행의 주 개체. 유형과 키 열 | [AD-120] |
 
 **pack_mapping_column** — 차례가 있는 열 목록.

@@ -127,16 +127,17 @@ public class PackLoader {
                 reasons.add("속성 " + old.name() + " 의 형식이나 개체 유형이 바뀌었습니다. 이 변경은 받지 않습니다. 새 이름의 속성을 더하세요.");
             }
         }
-        // 매핑을 더하는 것은 받는다. 이미 있는 매핑을 바꾸거나 지우는 것은 D6 의 표에 없다. 받지 않는다.
+        // 매핑을 더하는 것은 받는다. 판이 하나도 들어오지 않은 입력 자료의 매핑은 바꾸거나 지울 수 있어야 하지만
+        // (D2 AD-142), 판이 있는지 답하는 link 의 공개 API 가 아직 없어 지금은 바꾸거나 지우는 것을 모두 거부한다.
         Map<String, MappingDefinition> mappings = new TreeMap<>(PackOrder.STRINGS);
         after.mappings().forEach(m -> mappings.put(m.inputSourceId(), m));
         for (MappingDefinition old : before.mappings()) {
             MappingDefinition now = mappings.get(old.inputSourceId());
             if (now == null) {
-                reasons.add("입력 자료 " + old.inputSourceId() + " 의 매핑이 없어졌습니다. 매핑을 지우는 것은 받지 않습니다.");
+                reasons.add("입력 자료 " + old.inputSourceId() + " 의 매핑이 없어졌습니다. 매핑을 지우는 것은 아직 받지 않습니다.");
             }
             else if (!now.equals(old)) {
-                reasons.add("입력 자료 " + old.inputSourceId() + " 의 매핑이 바뀌었습니다. 이미 적재한 매핑을 바꾸는 것은 받지 않습니다.");
+                reasons.add("입력 자료 " + old.inputSourceId() + " 의 매핑이 바뀌었습니다. 이미 적재한 매핑을 바꾸는 것은 아직 받지 않습니다. 새 식별자의 입력 자료를 더하세요.");
             }
         }
         return reasons;

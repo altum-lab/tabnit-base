@@ -1,12 +1,14 @@
 package com.altumlab.tabnit.pack;
 
 import java.nio.file.Files;
+import java.text.Normalizer;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -77,7 +79,13 @@ final class PackReader {
     /** 이 Pack 의 정의가 쓰는 주소의 앞부분 (D2 AD-89). */
     private final String prefix;
 
+    /** ontology.ttl 을 문법 오류 없이 읽었는가. */
+    private boolean ontologyRead;
+
     private final List<PackProblem> problems = new ArrayList<>();
+
+    /** 언어별 이름표. 정의를 읽으면서 모은다. */
+    private final List<LocalizedLabel> localizedLabels = new ArrayList<>();
 
     private PackReader(Path directory) {
         this.directory = directory;
@@ -92,6 +100,11 @@ final class PackReader {
             return new Result(null, List.of(new PackProblem("", "",
                     "Pack 폴더가 없거나 이름이 없습니다: " + normalized + ". 폴더의 경로를 확인하세요. 폴더 이름이 Pack 식별자입니다.")));
         }
+        String packId = normalized.getFileName().toString();
+        if (!packId.matches("[a-z][a-z0-9-]*")) {
+            return new Result(null, List.of(new PackProblem("", packId, "Pack 식별자(폴더 이름) " + packId
+                    + " 을(를) 쓸 수 없습니다. 영어 소문자로 시작하고 영어 소문자, 숫자, 붙임표(-)만 쓰세요.")));
+        }
         return new PackReader(normalized).read(loadedAt);
     }
 
@@ -104,6 +117,10 @@ final class PackReader {
         TreeMap<String, RelationTypeDefinition> relationTypes = new TreeMap<>(PackOrder.STRINGS);
         TreeMap<String, AttributeDefinition> attributes = new TreeMap<>(PackOrder.STRINGS);
         readOntology(entityTypes, relationTypes, attributes);
+        if (ontologyRead && entityTypes.isEmpty() && problems.stream().noneMatch(p -> p.file().equals(ONTOLOGY_FILE))) {
+            problem(ONTOLOGY_FILE, "", "개체 유형이 하나도 없습니다. owl:Class 를 하나 이상 정의하세요. 정의의 주소가 <" + prefix
+                    + "이름> 의 꼴인지도 확인하세요.");
+        }
         checkReferences(entityTypes, relationTypes, attributes);
 
         if (!problems.isEmpty()) {
@@ -113,7 +130,8 @@ final class PackReader {
             return new Result(null, List.copyOf(ordered));
         }
         return new Result(new PackDefinition(packId, label[0], maxDepth[0], loadedAt, List.copyOf(entityTypes.values()),
-                List.copyOf(relationTypes.values()), List.copyOf(attributes.values())), List.of());
+                List.copyOf(relationTypes.values()), List.copyOf(attributes.values()),
+                localizedLabels.stream().sorted(PackOrder.LABELS).toList()), List.of());
     }
 
     // ── pack.ttl ────────────────────────────────────────────────
@@ -145,7 +163,7 @@ final class PackReader {
                 problem(PACK_FILE, packId, "tabnit:packId 가 \"" + id + "\" 인데 폴더 이름은 " + packId
                         + " 입니다. 둘을 같게 맞추세요.");
             }
-            label[0] = s.oneText(LABEL, "rdfs:label", PACK_FILE, packId);
+            label[0] = s.label(PACK_FILE, packId, "");
             maxDepth[0] = s.maxDepth(packId);
             s.rejectOthers(PACK_FILE, packId, RDF_TYPE, VOCAB + "packId", LABEL, VOCAB + "defaultMaxDepth");
         }
@@ -165,6 +183,7 @@ final class PackReader {
         if (subjects == null) {
             return;
         }
+        ontologyRead = true;
         for (Statements s : subjects.values()) {
             if (s.subject.equals(prefix)) {
                 problem(ONTOLOGY_FILE, packId, "D6 에 없는 정의입니다: Pack 자신에 대한 문장(" + String.join(", ", s.predicates())
@@ -184,7 +203,11 @@ final class PackReader {
                         + "). owl:Class, owl:ObjectProperty, owl:DatatypeProperty 가운데 하나만 적으세요.");
                 continue;
             }
-            String label = s.oneText(LABEL, "rdfs:label", ONTOLOGY_FILE, name);
+            if (!Normalizer.isNormalized(name, Normalizer.Form.NFC)) {
+                // 알리고 계속 읽는다. 여기서 건너뛰면 이 정의를 가리키는 곳마다 "정의되지 않았습니다"가 따라붙는다.
+                problem(ONTOLOGY_FILE, name, "이름이 조합형(유니코드 NFC)이 아닙니다. 눈에 같은 이름이 서로 다른 정의가 되지 않도록 조합형으로 다시 적으세요.");
+            }
+            String label = s.label(ONTOLOGY_FILE, name, name);
             switch (types.get(0)) {
                 case OWL_CLASS -> {
                     List<String> parents = s.names(RDFS + "subClassOf", "rdfs:subClassOf", name);
@@ -230,6 +253,14 @@ final class PackReader {
             String display = type.displayNameAttribute();
             if (display != null && !attributes.containsKey(display)) {
                 problem(ONTOLOGY_FILE, type.name(), "표시 이름으로 쓸 속성 " + display + " 이(가) 정의되지 않았습니다. 그 속성을 정의하거나 이름을 고치세요.");
+            }
+            else if (display != null) {
+                // 표시 이름 속성은 그 유형이나 그 상위 유형의 속성이어야 한다 (D2 AD-132).
+                String owner = attributes.get(display).entityType();
+                if (owner != null && entityTypes.containsKey(owner) && !isSameOrAncestor(owner, type.name(), entityTypes)) {
+                    problem(ONTOLOGY_FILE, type.name(), "표시 이름으로 쓸 속성 " + display + " 은(는) 유형 " + owner
+                            + " 의 속성입니다. 이 유형이나 그 상위 유형의 속성을 적으세요.");
+                }
             }
         }
         for (RelationTypeDefinition relation : relationTypes.values()) {
@@ -346,6 +377,24 @@ final class PackReader {
         if (type != null && !entityTypes.containsKey(type)) {
             problem(ONTOLOGY_FILE, item, what + " " + type + " 이(가) 정의되지 않았습니다. 그 유형을 정의하거나 이름을 고치세요.");
         }
+    }
+
+    /** ancestor 가 type 자신이거나 그 상위 유형(여러 단계 위 포함)인가. 돌아오는 정의가 있어도 끝난다. */
+    private static boolean isSameOrAncestor(String ancestor, String type, Map<String, EntityTypeDefinition> entityTypes) {
+        TreeSet<String> seen = new TreeSet<>(PackOrder.STRINGS);
+        ArrayDeque<String> open = new ArrayDeque<>();
+        open.add(type);
+        while (!open.isEmpty()) {
+            String current = open.remove();
+            if (current.equals(ancestor)) {
+                return true;
+            }
+            EntityTypeDefinition definition = entityTypes.get(current);
+            if (definition != null && seen.add(current)) {
+                open.addAll(definition.parents());
+            }
+        }
+        return false;
     }
 
     /**
@@ -508,14 +557,66 @@ final class PackReader {
                 return null;
             }
             Node value = objects.get(0);
-            boolean text = value.isLiteral() && ((XSD + "string").equals(value.getLiteralDatatypeURI())
-                    || LANG_STRING.equals(value.getLiteralDatatypeURI()));
+            boolean text = value.isLiteral() && (XSD + "string").equals(value.getLiteralDatatypeURI());
             if (!text || value.getLiteralLexicalForm().isEmpty()) {
                 problem(file, item, shown + " 은(는) 비어 있지 않은 글자 값이어야 합니다 (지금 " + show(value)
                         + "). 따옴표로 감싼 글자를 적으세요.");
                 return null;
             }
             return value.getLiteralLexicalForm();
+        }
+
+        /**
+         * 이름표를 읽는다 (D2 AD-131). 언어 표시 없는 것이 꼭 하나 있어야 하고 그것을 돌려준다.
+         * 언어 표시가 붙은 것은 언어마다 하나씩 더 적을 수 있고, 언어별 이름표로 모은다. 틀리면 문제를 남기고 null.
+         */
+        String label(String file, String item, String name) {
+            // 문장을 읽는 차례는 정해져 있지 않다. 처음 만난 틀린 값에서 멈추면 알리는 문제가 그 차례에 달라지므로,
+            // 값을 모두 보고 틀린 것을 모두 알린다.
+            String base = null;
+            int bases = 0;
+            boolean wrong = false;
+            TreeMap<String, String> byLanguage = new TreeMap<>(PackOrder.STRINGS);
+            TreeSet<String> repeated = new TreeSet<>(PackOrder.STRINGS);
+            for (Node value : objects(LABEL)) {
+                boolean plain = value.isLiteral() && (XSD + "string").equals(value.getLiteralDatatypeURI());
+                boolean tagged = value.isLiteral() && LANG_STRING.equals(value.getLiteralDatatypeURI());
+                if (!(plain || tagged) || value.getLiteralLexicalForm().isEmpty()) {
+                    problem(file, item, "rdfs:label 은(는) 비어 있지 않은 글자 값이어야 합니다 (지금 " + show(value)
+                            + (tagged ? "@" + value.getLiteralLanguage().toLowerCase(Locale.ROOT) : "")
+                            + "). 따옴표로 감싼 글자를 적으세요.");
+                    wrong = true;
+                    continue;
+                }
+                if (plain) {
+                    bases++;
+                    base = value.getLiteralLexicalForm();
+                    continue;
+                }
+                String language = value.getLiteralLanguage().toLowerCase(Locale.ROOT);
+                if (!language.matches("[a-z0-9]+(-[a-z0-9]+)*")) {
+                    problem(file, item, "rdfs:label 의 언어 표시 @" + language + " 을(를) 읽을 수 없습니다. ko, en, ko-kr 처럼 적으세요.");
+                    wrong = true;
+                }
+                else if (byLanguage.put(language, value.getLiteralLexicalForm()) != null) {
+                    repeated.add(language);
+                }
+            }
+            for (String language : repeated) {
+                problem(file, item, "rdfs:label 에 언어 @" + language + " 의 이름표가 둘 이상입니다. 언어마다 하나만 적으세요.");
+                wrong = true;
+            }
+            // 틀린 값이 있으면 그것부터 고치게 한다. 기본 이름표의 수는 값이 모두 맞을 때 본다.
+            if (!wrong && bases != 1) {
+                problem(file, item, "rdfs:label 은(는) 언어 표시 없는 것을 꼭 하나 적습니다 (지금 " + bases
+                        + "개). 기본 이름표를 하나 적고, 다른 언어의 이름표에는 언어 표시(@en)를 붙이세요.");
+                wrong = true;
+            }
+            if (wrong) {
+                return null;
+            }
+            byLanguage.forEach((language, text) -> localizedLabels.add(new LocalizedLabel(name, language, text)));
+            return base;
         }
 
         int maxDepth(String item) {
@@ -546,6 +647,10 @@ final class PackReader {
                             + "이름> 의 꼴로 적으세요.");
                 }
                 else {
+                    if (!Normalizer.isNormalized(name, Normalizer.Form.NFC)) {
+                        problem(ONTOLOGY_FILE, item, shown + " 의 값 " + name
+                                + " 이(가) 조합형(유니코드 NFC)이 아닙니다. 눈에 같아도 다른 이름입니다. 조합형으로 다시 적으세요.");
+                    }
                     names.add(name);
                 }
             }

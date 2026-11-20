@@ -43,11 +43,16 @@ final class PackTables {
                 (rs, n) -> new AttributeDefinition(rs.getString("name"), rs.getString("label"),
                         rs.getString("entity_type"), ValueFormat.valueOf(rs.getString("value_format"))),
                 packId);
+        List<LocalizedLabel> localizedLabels = jdbc.query("""
+                select name, language, label from pack_localized_label
+                where pack_id = ? order by name collate "C", language collate "C\"""",
+                (rs, n) -> new LocalizedLabel(rs.getString("name"), rs.getString("language"), rs.getString("label")),
+                packId);
         List<PackDefinition> found = jdbc.query(
                 "select pack_id, label, default_max_depth, loaded_at from pack_definition where pack_id = ?",
                 (rs, n) -> new PackDefinition(rs.getString("pack_id"), rs.getString("label"),
                         rs.getInt("default_max_depth"), rs.getTimestamp("loaded_at").toInstant(), entityTypes,
-                        relationTypes, attributes),
+                        relationTypes, attributes, localizedLabels),
                 packId);
         return found.stream().findFirst();
     }
@@ -71,6 +76,10 @@ final class PackTables {
                     pack.packId(), attribute.name(), attribute.label(), attribute.entityType(),
                     attribute.valueFormat().name());
         }
+        for (LocalizedLabel label : pack.localizedLabels()) {
+            jdbc.update("insert into pack_localized_label (pack_id, name, language, label) values (?, ?, ?, ?)",
+                    pack.packId(), label.name(), label.language(), label.label());
+        }
         for (RelationTypeDefinition relation : pack.relationTypes()) {
             jdbc.update("""
                     insert into pack_relation_type (pack_id, name, label, source_type, target_type, impact_direction)
@@ -80,6 +89,7 @@ final class PackTables {
     }
 
     void delete(String packId) {
+        jdbc.update("delete from pack_localized_label where pack_id = ?", packId);
         jdbc.update("delete from pack_relation_type where pack_id = ?", packId);
         jdbc.update("delete from pack_entity_type_parent where pack_id = ?", packId);
         // 개체 유형이 속성을 가리키는 참조는 트랜잭션 끝에서 확인한다.

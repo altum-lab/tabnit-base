@@ -206,7 +206,8 @@ ex:TypeAShape a sh:NodeShape ;
 | 입력 자료의 식별자 | 판이 쌓이는 단위. 출처의 `input_source_id` 가 된다 | [AD-41] [D5 1절] |
 | 파일의 종류 | CSV 인지 xlsx 인지. xlsx 면 어느 시트인지 | [AD-84] |
 | 반드시 있어야 하는 열 | 없으면 파일 전체를 거부한다 | [link] |
-| 항목의 키 열 | 판 비교에서 행을 같은 항목으로 알아보는 열. 하나 또는 여럿 | [AD-57] |
+| 항목의 키 열 | 판 비교에서 행을 같은 항목으로 알아보는 열. 하나 또는 여럿. 값을 적힌 차례로, 식별자와 같은 규칙으로 이은 글자가 항목의 키다 | [AD-57] [AD-122] |
+| 행의 주 개체 | 이 행이 나타내는 개체 하나. 반드시 적는다. 이 행에서 나온 변동의 근거 조항이 된다. 관계만 담은 자료는 관계의 한쪽 끝을 적는다 | [AD-120] |
 | 행이 만드는 개체 | 개체 유형과, 입력의 키가 되는 열 | [AD-37] |
 | 개체의 속성 값 | 어느 열이 어느 속성의 값인지 | [AD-39] |
 | 행이 만드는 관계 | 관계 유형, 출발 개체, 도착 개체 | [AD-29] |
@@ -227,6 +228,7 @@ ex:매핑-이름 a tabnit:Mapping ;
     tabnit:fileFormat tabnit:Csv ;
     tabnit:requiredColumns ( "열1" "열2" ) ;
     tabnit:itemKeyColumns ( "열1" ) ;
+    tabnit:primaryEntity [ tabnit:entityType ex:TypeA ; tabnit:keyColumn "열1" ] ;
     tabnit:entity [
         tabnit:entityType ex:TypeA ;
         tabnit:keyColumn "열1" ;
@@ -246,6 +248,7 @@ ex:매핑-이름 a tabnit:Mapping ;
 | `tabnit:fileFormat` | `tabnit:Csv` 또는 `tabnit:Xlsx`. 엑셀이면 `tabnit:sheetName` 으로 시트를 적는다 |
 | `tabnit:requiredColumns` | 반드시 있어야 하는 열의 목록 |
 | `tabnit:itemKeyColumns` | 항목의 키 열의 목록. 적힌 차례대로 이어 붙여 항목의 키를 만든다 |
+| `tabnit:primaryEntity` | 행의 주 개체. 유형과 키 열로 가리킨다. 반드시 하나 적는다. 없으면 Pack 을 읽지 않는다 [AD-120] |
 | `tabnit:entity` | 행이 만드는 개체. 여럿 적을 수 있다 |
 | `tabnit:entityType`, `tabnit:keyColumn` | 개체 유형과, 입력의 키가 되는 열 |
 | `tabnit:attribute` | 속성 값 하나. `tabnit:property` (속성)와 `tabnit:column` (열) |
@@ -268,6 +271,7 @@ ex:매핑-이름 a tabnit:Mapping ;
 - 모양에 맞지 않는 값은 그 행을 건너뛰고 행 번호와 이유를 남긴다. [AD-94] [AD-71]
 - **빈 칸은 값이 없는 것이다.** 그 속성 값이나 관계를 만들지 않는다. 빈칸만 있는 칸도 빈 칸으로 본다. [AD-94]
 - 앞 판에 값이 있었는데 새 판에서 비었으면 앞 값을 새 판의 적용일로 끝낸다. [AD-94] [AD-42]
+- 새 판에서 행이 없어지면 그 행이 넣었던 속성 값도 새 판의 적용일로 끝낸다. 같은 개체의 같은 값을 다른 행이 여전히 넣고 있으면 끝내지 않는다. [AD-121]
 - 키 열이나 반드시 있어야 하는 열이 비어 있으면 그 행을 건너뛰고 이유를 남긴다. [AD-94]
 
 ### 입력 파일

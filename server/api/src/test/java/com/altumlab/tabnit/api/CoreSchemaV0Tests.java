@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -21,6 +22,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
  *
  * <p>빈 PostgreSQL 컨테이너에 변경 파일을 처음부터 적용한 뒤, 테이블과 열이 D5 3절과 같은지,
  * D5 가 정한 제약(유일, 참조, 유효기간, 겹침 거부, 정렬 규칙)이 걸려 있는지 본다.
+ *
+ * <p>거부를 확인하는 시험은 어느 제약이 거부했는지까지 본다. 다른 제약 때문에 우연히 통과하지 않게 하려는 것이다.
  *
  * <p>시험 자료는 지어낸 값이다. 시험마다 다른 Pack 식별자를 써서 서로 섞이지 않게 한다.
  */
@@ -46,23 +49,47 @@ class CoreSchemaV0Tests {
 		assertThat(tables).containsExactly("attribute_value", "entity", "relation");
 	}
 
+	// 열마다 "이름 형식 null허용 정렬규칙 기본값" 을 본다.
+	// 식별자와 이름 열은 정렬 규칙이 C 이고, 어느 열에도 기본값이 없다 (기록한 때 포함).
+
 	@Test
 	void 개체_테이블의_열이_D5와_같다() {
-		assertThat(columnsOf("entity"))
-			.containsExactlyInAnyOrder("id", "pack_id", "entity_type", "entity_key", "recorded_at");
+		assertThat(columnsOf("entity")).containsExactlyInAnyOrder(
+				"id text NO C -",
+				"pack_id text NO C -",
+				"entity_type text NO C -",
+				"entity_key text NO C -",
+				"recorded_at timestamp with time zone NO - -");
 	}
 
 	@Test
 	void 속성값_테이블의_열이_D5와_같다() {
-		assertThat(columnsOf("attribute_value")).containsExactlyInAnyOrder("id", "pack_id", "entity_id",
-				"attribute_name", "value", "valid_from", "valid_to", "input_source_id", "edition_no", "recorded_at");
+		assertThat(columnsOf("attribute_value")).containsExactlyInAnyOrder(
+				"id text NO C -",
+				"pack_id text NO C -",
+				"entity_id text NO C -",
+				"attribute_name text NO C -",
+				"value text NO - -",
+				"valid_from date NO - -",
+				"valid_to date YES - -",
+				"input_source_id text NO C -",
+				"edition_no integer NO - -",
+				"recorded_at timestamp with time zone NO - -");
 	}
 
 	@Test
 	void 관계_테이블의_열이_D5와_같다() {
-		assertThat(columnsOf("relation")).containsExactlyInAnyOrder("id", "pack_id", "source_entity_id",
-				"target_entity_id", "relation_type", "valid_from", "valid_to", "input_source_id", "edition_no",
-				"recorded_at");
+		assertThat(columnsOf("relation")).containsExactlyInAnyOrder(
+				"id text NO C -",
+				"pack_id text NO C -",
+				"source_entity_id text NO C -",
+				"target_entity_id text NO C -",
+				"relation_type text NO C -",
+				"valid_from date NO - -",
+				"valid_to date YES - -",
+				"input_source_id text NO C -",
+				"edition_no integer NO - -",
+				"recorded_at timestamp with time zone NO - -");
 	}
 
 	@Test
@@ -75,19 +102,25 @@ class CoreSchemaV0Tests {
 	// ── 개체 ───────────────────────────────────────────────────
 
 	@Test
-	void 같은_개체를_두_번_넣으면_거부된다() {
-		insertEntity("pack-dup", "T", "k1");
+	void 식별자가_같은_개체는_거부된다() {
+		insertEntity("pack-dup-id", "T", "k1");
 
-		assertThatThrownBy(() -> insertEntity("pack-dup", "T", "k1"))
-			.isInstanceOf(DataIntegrityViolationException.class);
+		assertRejectedBy("entity_pk", () -> insertEntity("pack-dup-id", "T", "k1"));
+	}
+
+	@Test
+	void 식별자가_달라도_Pack과_유형과_키가_같은_개체는_거부된다() {
+		insertEntity("pack-dup-key", "T", "k1");
+
+		assertRejectedBy("entity_key_uq",
+				() -> insertEntityWithId("다른-식별자", "pack-dup-key", "T", "k1"));
 	}
 
 	@Test
 	void 기록한_때_없이는_저장되지_않는다() {
-		assertThatThrownBy(() -> jdbc.update(
+		assertRejectedBy("recorded_at", () -> jdbc.update(
 				"insert into entity (id, pack_id, entity_type, entity_key) values (?, ?, ?, ?)", "pack-norec|T|k1",
-				"pack-norec", "T", "k1"))
-			.isInstanceOf(DataIntegrityViolationException.class);
+				"pack-norec", "T", "k1"));
 	}
 
 	@Test
@@ -105,31 +138,76 @@ class CoreSchemaV0Tests {
 		assertThat(second).isEqualTo(first);
 	}
 
-	// ── 관계: 참조 ──────────────────────────────────────────────
+	@Test
+	void 관계_유형도_글자_코드_순으로_정렬된다() {
+		String[] ab = twoEntities("pack-sort-type");
+		insertRelation("pack-sort-type", ab[0], ab[1], "a", "src", 1, "2026-01-01", null);
+		insertRelation("pack-sort-type", ab[0], ab[1], "가", "src", 1, "2026-01-01", null);
+		insertRelation("pack-sort-type", ab[0], ab[1], "B", "src", 1, "2026-01-01", null);
+
+		List<String> types = jdbc.queryForList(
+				"select relation_type from relation where pack_id = 'pack-sort-type' order by relation_type, id",
+				String.class);
+
+		assertThat(types).containsExactly("B", "a", "가");
+	}
+
+	@Test
+	void 관계나_속성값이_가리키는_개체는_지울_수_없다() {
+		String[] ab = twoEntities("pack-nodelete");
+		insertRelation("pack-nodelete", ab[0], ab[1], "R", "src", 1, "2026-01-01", null);
+		String c = insertEntity("pack-nodelete", "T", "c");
+		insertAttribute("pack-nodelete", c, "name", "v", "src", 1, "2026-01-01", null);
+
+		assertRejectedBy("relation_source_fk", () -> jdbc.update("delete from entity where id = ?", ab[0]));
+		assertRejectedBy("relation_target_fk", () -> jdbc.update("delete from entity where id = ?", ab[1]));
+		assertRejectedBy("attribute_value_entity_fk", () -> jdbc.update("delete from entity where id = ?", c));
+	}
+
+	// ── 관계: 참조와 Pack 경계 ────────────────────────────────────
 
 	@Test
 	void 없는_개체를_가리키는_관계는_거부된다() {
 		String a = insertEntity("pack-ref", "T", "a");
 
-		assertThatThrownBy(() -> insertRelation("pack-ref", a, "pack-ref|T|missing", "R", "src", 1, "2026-01-01", null))
-			.isInstanceOf(DataIntegrityViolationException.class);
+		assertRejectedBy("relation_target_fk",
+				() -> insertRelation("pack-ref", a, "pack-ref|T|missing", "R", "src", 1, "2026-01-01", null));
+		assertRejectedBy("relation_source_fk",
+				() -> insertRelation("pack-ref", "pack-ref|T|missing", a, "R", "src", 1, "2026-01-01", null));
 	}
 
 	@Test
-	void 다른_Pack의_개체를_잇는_관계는_거부된다() {
+	void 도착_개체가_다른_Pack이면_거부된다() {
 		String a = insertEntity("pack-one", "T", "a");
 		String b = insertEntity("pack-two", "T", "b");
 
-		assertThatThrownBy(() -> insertRelation("pack-one", a, b, "R", "src", 1, "2026-01-01", null))
-			.isInstanceOf(DataIntegrityViolationException.class);
+		assertRejectedBy("relation_target_fk",
+				() -> insertRelation("pack-one", a, b, "R", "src", 1, "2026-01-01", null));
+	}
+
+	@Test
+	void 출발_개체가_다른_Pack이면_거부된다() {
+		String a = insertEntity("pack-three", "T", "a");
+		String b = insertEntity("pack-four", "T", "b");
+
+		assertRejectedBy("relation_source_fk",
+				() -> insertRelation("pack-four", a, b, "R", "src", 1, "2026-01-01", null));
+	}
+
+	@Test
+	void 두_개체는_같은_Pack인데_관계의_Pack만_다르면_거부된다() {
+		String[] ab = twoEntities("pack-five");
+
+		assertRejectedBy("relation_source_fk",
+				() -> insertRelation("pack-six", ab[0], ab[1], "R", "src", 1, "2026-01-01", null));
 	}
 
 	@Test
 	void 출발과_도착이_같은_관계는_거부된다() {
 		String a = insertEntity("pack-self", "T", "a");
 
-		assertThatThrownBy(() -> insertRelation("pack-self", a, a, "R", "src", 1, "2026-01-01", null))
-			.isInstanceOf(DataIntegrityViolationException.class);
+		assertRejectedBy("relation_not_self_ck",
+				() -> insertRelation("pack-self", a, a, "R", "src", 1, "2026-01-01", null));
 	}
 
 	// ── 관계: 유효기간 ───────────────────────────────────────────
@@ -138,14 +216,16 @@ class CoreSchemaV0Tests {
 	void 종료일이_시작일과_같으면_거부된다() {
 		String[] ab = twoEntities("pack-eq");
 
-		assertThatThrownBy(() -> insertRelation("pack-eq", ab[0], ab[1], "R", "src", 1, "2026-03-01", "2026-03-01"))
-			.isInstanceOf(DataIntegrityViolationException.class);
+		assertRejectedBy("relation_period_ck",
+				() -> insertRelation("pack-eq", ab[0], ab[1], "R", "src", 1, "2026-03-01", "2026-03-01"));
 	}
 
 	@Test
 	void 종료일이_시작일보다_앞서면_거부된다() {
 		String[] ab = twoEntities("pack-before");
 
+		// 검사 제약이 없어도 날짜 범위를 만들다 오류가 난다. 어느 쪽이 먼저 걸리는지는 정해져 있지 않으므로
+		// 거부된다는 것만 본다. 검사 제약 자체는 위의 "같으면 거부" 시험이 확인한다.
 		assertThatThrownBy(
 				() -> insertRelation("pack-before", ab[0], ab[1], "R", "src", 1, "2026-03-01", "2026-02-28"))
 			.isInstanceOf(DataIntegrityViolationException.class);
@@ -155,8 +235,8 @@ class CoreSchemaV0Tests {
 	void 시작일_없이는_저장되지_않는다() {
 		String[] ab = twoEntities("pack-nofrom");
 
-		assertThatThrownBy(() -> insertRelation("pack-nofrom", ab[0], ab[1], "R", "src", 1, null, null))
-			.isInstanceOf(DataIntegrityViolationException.class);
+		assertRejectedBy("valid_from",
+				() -> insertRelation("pack-nofrom", ab[0], ab[1], "R", "src", 1, null, null));
 	}
 
 	@Test
@@ -175,8 +255,8 @@ class CoreSchemaV0Tests {
 		insertRelation("pack-ovl", ab[0], ab[1], "R", "src", 1, "2026-03-01", "2026-06-01");
 
 		// 2026-05-31 은 앞 관계의 종료일 전날이라 아직 유효하다.
-		assertThatThrownBy(() -> insertRelation("pack-ovl", ab[0], ab[1], "R", "src", 1, "2026-05-31", "2026-07-01"))
-			.isInstanceOf(DataIntegrityViolationException.class);
+		assertRejectedBy("relation_no_overlap",
+				() -> insertRelation("pack-ovl", ab[0], ab[1], "R", "src", 1, "2026-05-31", "2026-07-01"));
 	}
 
 	@Test
@@ -184,9 +264,10 @@ class CoreSchemaV0Tests {
 		String[] ab = twoEntities("pack-ovl-open");
 		insertRelation("pack-ovl-open", ab[0], ab[1], "R", "src", 1, "2026-03-01", null);
 
-		assertThatThrownBy(
-				() -> insertRelation("pack-ovl-open", ab[0], ab[1], "R", "src", 1, "2030-01-01", "2030-02-01"))
-			.isInstanceOf(DataIntegrityViolationException.class);
+		assertRejectedBy("relation_no_overlap",
+				() -> insertRelation("pack-ovl-open", ab[0], ab[1], "R", "src", 1, "2030-01-01", "2030-02-01"));
+		assertRejectedBy("relation_no_overlap",
+				() -> insertRelation("pack-ovl-open", ab[0], ab[1], "R", "src", 1, "2020-01-01", null));
 	}
 
 	@Test
@@ -235,10 +316,16 @@ class CoreSchemaV0Tests {
 
 	@Test
 	void 없는_개체의_속성값은_거부된다() {
-		assertThatThrownBy(
-				() -> insertAttribute("pack-attr-ref", "pack-attr-ref|T|missing", "name", "v", "src", 1, "2026-01-01",
-						null))
-			.isInstanceOf(DataIntegrityViolationException.class);
+		assertRejectedBy("attribute_value_entity_fk", () -> insertAttribute("pack-attr-ref",
+				"pack-attr-ref|T|missing", "name", "v", "src", 1, "2026-01-01", null));
+	}
+
+	@Test
+	void 개체와_다른_Pack의_속성값은_거부된다() {
+		String a = insertEntity("pack-attr-one", "T", "a");
+
+		assertRejectedBy("attribute_value_entity_fk",
+				() -> insertAttribute("pack-attr-two", a, "name", "v", "src", 1, "2026-01-01", null));
 	}
 
 	@Test
@@ -247,9 +334,17 @@ class CoreSchemaV0Tests {
 		insertAttribute("pack-attr-ovl", a, "name", "v1", "src-1", 1, "2026-03-01", "2026-06-01");
 
 		// 입력 자료도 판도 다르지만, 같은 개체의 같은 속성이라 거부된다.
-		assertThatThrownBy(
-				() -> insertAttribute("pack-attr-ovl", a, "name", "v2", "src-2", 5, "2026-05-01", null))
-			.isInstanceOf(DataIntegrityViolationException.class);
+		assertRejectedBy("attribute_value_no_overlap",
+				() -> insertAttribute("pack-attr-ovl", a, "name", "v2", "src-2", 5, "2026-05-01", null));
+	}
+
+	@Test
+	void 종료일_없는_속성값과_겹치면_거부된다() {
+		String a = insertEntity("pack-attr-open", "T", "a");
+		insertAttribute("pack-attr-open", a, "name", "v1", "src", 1, "2026-03-01", null);
+
+		assertRejectedBy("attribute_value_no_overlap",
+				() -> insertAttribute("pack-attr-open", a, "name", "v2", "src", 2, "2030-01-01", "2030-02-01"));
 	}
 
 	@Test
@@ -257,7 +352,12 @@ class CoreSchemaV0Tests {
 		String a = insertEntity("pack-attr-touch", "T", "a");
 		insertAttribute("pack-attr-touch", a, "name", "v1", "src", 1, "2026-03-01", "2026-06-01");
 
+		// 앞 값의 종료일 당일에 시작한다.
 		assertThatCode(() -> insertAttribute("pack-attr-touch", a, "name", "v2", "src", 2, "2026-06-01", null))
+			.doesNotThrowAnyException();
+		// 앞 값의 시작일 당일에 끝난다.
+		assertThatCode(
+				() -> insertAttribute("pack-attr-touch", a, "name", "v0", "src", 1, "2026-01-01", "2026-03-01"))
 			.doesNotThrowAnyException();
 	}
 
@@ -274,30 +374,41 @@ class CoreSchemaV0Tests {
 	void 속성값은_비어_있을_수_없다() {
 		String a = insertEntity("pack-attr-null", "T", "a");
 
-		assertThatThrownBy(() -> insertAttribute("pack-attr-null", a, "name", null, "src", 1, "2026-03-01", null))
-			.isInstanceOf(DataIntegrityViolationException.class);
+		assertRejectedBy("value",
+				() -> insertAttribute("pack-attr-null", a, "name", null, "src", 1, "2026-03-01", null));
 	}
 
 	@Test
-	void 속성값의_종료일이_시작일보다_뒤가_아니면_거부된다() {
+	void 속성값의_종료일이_시작일과_같으면_거부된다() {
 		String a = insertEntity("pack-attr-eq", "T", "a");
 
-		assertThatThrownBy(
-				() -> insertAttribute("pack-attr-eq", a, "name", "v", "src", 1, "2026-03-01", "2026-03-01"))
-			.isInstanceOf(DataIntegrityViolationException.class);
+		assertRejectedBy("attribute_value_period_ck",
+				() -> insertAttribute("pack-attr-eq", a, "name", "v", "src", 1, "2026-03-01", "2026-03-01"));
 	}
 
 	// ── 도우미 ──────────────────────────────────────────────────
 
+	/** 저장이 거부되고, 거부한 것이 그 제약(또는 그 열의 null 금지)인지 본다. */
+	private void assertRejectedBy(String constraintOrColumn, ThrowingCallable insert) {
+		assertThatThrownBy(insert).isInstanceOf(DataIntegrityViolationException.class)
+			.hasMessageContaining("\"" + constraintOrColumn + "\"");
+	}
+
+	/** 열마다 "이름 형식 null허용 정렬규칙 기본값". 없는 값은 "-" 로 적는다. */
 	private List<String> columnsOf(String table) {
 		return jdbc.queryForList("""
-				select column_name from information_schema.columns
+				select column_name || ' ' || data_type || ' ' || is_nullable || ' '
+				       || coalesce(collation_name, '-') || ' ' || coalesce(column_default, '-')
+				from information_schema.columns
 				where table_schema = 'public' and table_name = ?""", String.class, table);
 	}
 
 	/** 식별자는 값을 세로 막대로 이어 붙인 것이다 (D5 1절). 시험 자료의 값에는 세로 막대가 없다. */
 	private String insertEntity(String packId, String type, String key) {
-		String id = String.join("|", packId, type, key);
+		return insertEntityWithId(String.join("|", packId, type, key), packId, type, key);
+	}
+
+	private String insertEntityWithId(String id, String packId, String type, String key) {
 		jdbc.update("insert into entity (id, pack_id, entity_type, entity_key, recorded_at) values (?, ?, ?, ?, ?)",
 				id, packId, type, key, RECORDED_AT);
 		return id;

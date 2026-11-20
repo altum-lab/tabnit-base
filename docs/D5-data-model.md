@@ -69,9 +69,11 @@
 
 | 열 | 형식 | 뜻 | 근거 |
 |---|---|---|---|
-| `input_source_id` | 입력 자료의 식별자 | 어느 입력 자료에서 왔는가 | [AD-30] |
-| `edition_no` | 판의 번호 | 그 자료의 어느 판에서 처음 나타났는가 | [AD-30] |
+| `input_source_id` | 입력 자료의 식별자, 반드시 있음 | 어느 입력 자료에서 왔는가 | [AD-30] |
+| `edition_no` | 판의 번호, 반드시 있음 | 그 자료의 어느 판에서 처음 나타났는가 | [AD-30] |
 | `recorded_at` | `timestamptz`, 반드시 있음 | 기록한 때. 밖에서 받아 넘긴 시각이다. 데이터베이스의 현재 시각(`now()`)을 기본값으로 두지 않는다 | [AD-31] [AD-26] |
+
+- 출처 열은 비어 있을 수 없다. 비어 있으면 유일 제약과 겹침 거부가 그 행을 비교하지 않아 겹침이 뚫린다. 같은 까닭으로 식별자를 이루는 열(`pack_id`, 유형과 속성의 이름, 키)도 모두 반드시 있어야 한다.
 
 ### 색인
 
@@ -120,6 +122,7 @@
 | `recorded_at` | timestamptz | 처음 기록한 때 | 제안 |
 
 - 기본 키: `id`. 유일: (`pack_id`, `entity_type`, `entity_key`). [AD-65]
+- 유일: (`pack_id`, `id`). 관계와 속성 값이 같은 Pack 의 개체만 가리키게 하는 참조의 대상이다. [AD-74]
 - 같은 개체를 다시 넣어도 행이 늘지 않는다. [link]
 - 개체에는 유효기간이 없다. 유효기간은 관계와 속성 값에 있다. [AD-22] [AD-39]
 - 표시 이름 열은 두지 않는다. 표시 이름은 온톨로지가 개체 유형마다 지정한 속성의 값이다. 기준 날짜에 그 값이 없으면 `entity_key` 를 보여 준다. 지정하는 형식은 D6 이 정한다. [AD-70]
@@ -130,13 +133,14 @@
 |---|---|---|---|
 | `id` | text | 식별자 | [AD-65] |
 | `pack_id` | text | 어느 Pack 의 값인가 | [AD-74] |
-| `entity_id` | text, `entity.id` 를 가리킴 | 어느 개체의 값인가 | [AD-39] |
+| `entity_id` | text. (`pack_id`, `entity_id`) 가 `entity` 의 (`pack_id`, `id`) 를 가리킴 | 어느 개체의 값인가 | [AD-39] [AD-74] |
 | `attribute_name` | text | 속성. 온톨로지가 정한 이름 | [AD-39] |
 | `value` | text, 반드시 있음 | 값. 속성의 형식에 맞는 정해진 표기의 글자 | [AD-71] |
 | `valid_from`, `valid_to` | 1절 | 유효기간 | [AD-39] |
 | `input_source_id`, `edition_no`, `recorded_at` | 1절 | 출처와 기록한 때 | [AD-54] |
 
 - 기본 키: `id`. 유일: (`entity_id`, `attribute_name`, `valid_from`). [AD-65]
+- 개체는 반드시 `entity` 에 있어야 하고, 속성 값과 같은 Pack 이어야 한다. [AD-74]
 - **겹침 거부**: `entity_id` 와 `attribute_name` 이 같은 행끼리 유효기간이 겹치면 저장을 거부한다. 출처는 보지 않는다. [AD-53]
 - 기준 날짜에 유효한 행이 없으면 값이 없는 것이다. 앞의 행을 끌어다 쓰지 않는다. "값 없음"을 행으로 저장하지 않는다. [AD-55]
 - 값이 바뀌면 앞 행의 `valid_to` 에 새 행의 `valid_from` 을 넣는다. [AD-56]
@@ -155,8 +159,8 @@
 |---|---|---|---|
 | `id` | text | 식별자 | [AD-65] |
 | `pack_id` | text | 어느 Pack 의 관계인가 | [AD-74] |
-| `source_entity_id` | text, `entity.id` 를 가리킴 | 출발 개체 | [AD-29] |
-| `target_entity_id` | text, `entity.id` 를 가리킴 | 도착 개체 | [AD-29] |
+| `source_entity_id` | text. (`pack_id`, `source_entity_id`) 가 `entity` 의 (`pack_id`, `id`) 를 가리킴 | 출발 개체 | [AD-29] [AD-74] |
+| `target_entity_id` | text. (`pack_id`, `target_entity_id`) 가 `entity` 의 (`pack_id`, `id`) 를 가리킴 | 도착 개체 | [AD-29] [AD-74] |
 | `relation_type` | text | 관계 유형. 온톨로지가 정한 이름 | [D3 3절] |
 | `valid_from`, `valid_to` | 1절 | 유효기간 | [AD-22] |
 | `input_source_id`, `edition_no`, `recorded_at` | 1절 | 출처와 기록한 때 | [AD-30] [AD-31] |
@@ -166,6 +170,7 @@
 - **출발 개체와 도착 개체가 같은 관계는 거부한다.** `source_entity_id <> target_entity_id`. [AD-68]
 - **겹침 거부**: `source_entity_id`, `target_entity_id`, `relation_type`, `input_source_id`, `edition_no` 가 모두 같은 행끼리 유효기간이 겹치면 저장을 거부한다. 맞닿는 것은 겹침이 아니다. [AD-30]
 - 출처가 다르면 두 개체와 유형이 같아도 겹치는 기간에 둘 다 저장된다. [D3 3절]
+- 관계나 속성 값이 가리키는 개체는 지울 수 없다. [AD-24]
 - 새 판에서도 그대로인 관계는 행을 새로 만들지 않는다. [AD-30]
 
 ### 겹침 거부를 거는 방법

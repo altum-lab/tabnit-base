@@ -11,6 +11,9 @@ final class PackOrder {
         .thenComparing(PackProblem::item, STRINGS)
         .thenComparing(PackProblem::message, STRINGS);
 
+    static final Comparator<LocalizedLabel> LABELS = Comparator.comparing(LocalizedLabel::name, STRINGS)
+        .thenComparing(LocalizedLabel::language, STRINGS);
+
     private PackOrder() {
     }
 

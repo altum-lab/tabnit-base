@@ -216,6 +216,20 @@ Pack 적재는 정의(온톨로지, 제약, 매핑, 규칙, 검증 질문)만 �
 
 - 기본 키: `pack_id`.
 
+### pack_localized_label
+
+언어별 이름표다. 기본 이름표는 각 테이블의 `label` 열에 있다. [AD-131] 변경 파일: `V4__pack_localized_label.sql`.
+
+| 열 | 형식 | 뜻 | 근거 |
+|---|---|---|---|
+| `pack_id` | text | 어느 Pack 의 정의인가 | |
+| `name` | text | 이름표가 붙은 정의의 이름. Pack 자신의 이름표이면 빈 글자다 | [AD-131] |
+| `language` | text | 언어 표시. 소문자로 저장한다 | [AD-131] |
+| `label` | text | 그 언어의 이름표 | [AD-131] |
+
+- 기본 키: `(pack_id, name, language)`. 참조: `pack_id` 는 `pack_definition`.
+- 개체 유형, 관계 유형, 속성의 이름은 한 Pack 안에서 겹치지 않으므로 종류를 따로 적지 않는다. `name` 이 정의된 이름인지는 pack 의 검증이 지킨다.
+
 ### pack_entity_type
 
 | 열 | 형식 | 뜻 | 근거 |

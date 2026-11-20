@@ -87,9 +87,10 @@ public class PackLoader {
     /**
      * 고친 Pack 에서 받지 않는 변경을 찾는다 (D6 9절 "고친 Pack 을 다시 적재할 때", D2 AD-95).
      *
-     * <p>받는 것: 정의를 더함, 이름표·영향 방향·최대 깊이의 기본값을 바꿈. 그 밖의 변경은 받지 않는다.
-     * D6 은 지우는 것을 "자료가 쓰고 있을 때" 거부한다고 적었다. 이 작업(SK-04)은 자료가 쓰는지 보지 않고
-     * 지우는 것을 모두 거부한다.
+     * <p>받는 것: 정의를 더함, 이름표·표시 이름 속성·영향 방향·최대 깊이의 기본값을 바꿈 (D2 AD-129).
+     * 거부하는 것: 상위 유형, 관계 유형의 출발·도착 유형, 속성의 개체 유형과 형식을 바꿈.
+     * 지우는 것은 자료가 쓰지 않으면 받아야 하지만 (D2 AD-130), 자료가 쓰는지 답하는 core 의 공개 API 가
+     * 아직 없어 지금은 모두 거부한다.
      */
     private static List<String> rejectedChanges(PackDefinition before, PackDefinition after) {
         List<String> reasons = new ArrayList<>();
@@ -98,11 +99,10 @@ public class PackLoader {
         for (EntityTypeDefinition old : before.entityTypes()) {
             EntityTypeDefinition now = types.get(old.name());
             if (now == null) {
-                reasons.add("개체 유형 " + old.name() + " 이(가) 없어졌습니다. 이름을 바꾸거나 지우는 것은 받지 않습니다.");
+                reasons.add("개체 유형 " + old.name() + " 이(가) 없어졌습니다. 이름을 바꾸는 것은 받지 않고, 지우는 것은 아직 받지 않습니다.");
             }
-            else if (!now.parents().equals(old.parents())
-                    || !Objects.equals(now.displayNameAttribute(), old.displayNameAttribute())) {
-                reasons.add("개체 유형 " + old.name() + " 의 상위 유형이나 표시 이름 속성이 바뀌었습니다. 이 변경은 받지 않습니다.");
+            else if (!now.parents().equals(old.parents())) {
+                reasons.add("개체 유형 " + old.name() + " 의 상위 유형이 바뀌었습니다. 이 변경은 받지 않습니다. 새 이름의 유형을 더하세요.");
             }
         }
         Map<String, RelationTypeDefinition> relations = new TreeMap<>(PackOrder.STRINGS);
@@ -110,10 +110,10 @@ public class PackLoader {
         for (RelationTypeDefinition old : before.relationTypes()) {
             RelationTypeDefinition now = relations.get(old.name());
             if (now == null) {
-                reasons.add("관계 유형 " + old.name() + " 이(가) 없어졌습니다. 이름을 바꾸거나 지우는 것은 받지 않습니다.");
+                reasons.add("관계 유형 " + old.name() + " 이(가) 없어졌습니다. 이름을 바꾸는 것은 받지 않고, 지우는 것은 아직 받지 않습니다.");
             }
             else if (!now.sourceType().equals(old.sourceType()) || !now.targetType().equals(old.targetType())) {
-                reasons.add("관계 유형 " + old.name() + " 의 출발 유형이나 도착 유형이 바뀌었습니다. 이 변경은 받지 않습니다.");
+                reasons.add("관계 유형 " + old.name() + " 의 출발 유형이나 도착 유형이 바뀌었습니다. 이 변경은 받지 않습니다. 새 이름의 관계 유형을 더하세요.");
             }
         }
         Map<String, AttributeDefinition> attributes = new TreeMap<>(PackOrder.STRINGS);
@@ -121,10 +121,10 @@ public class PackLoader {
         for (AttributeDefinition old : before.attributes()) {
             AttributeDefinition now = attributes.get(old.name());
             if (now == null) {
-                reasons.add("속성 " + old.name() + " 이(가) 없어졌습니다. 이름을 바꾸거나 지우는 것은 받지 않습니다.");
+                reasons.add("속성 " + old.name() + " 이(가) 없어졌습니다. 이름을 바꾸는 것은 받지 않고, 지우는 것은 아직 받지 않습니다.");
             }
             else if (now.valueFormat() != old.valueFormat() || !now.entityType().equals(old.entityType())) {
-                reasons.add("속성 " + old.name() + " 의 형식이나 개체 유형이 바뀌었습니다. 이 변경은 받지 않습니다.");
+                reasons.add("속성 " + old.name() + " 의 형식이나 개체 유형이 바뀌었습니다. 이 변경은 받지 않습니다. 새 이름의 속성을 더하세요.");
             }
         }
         return reasons;

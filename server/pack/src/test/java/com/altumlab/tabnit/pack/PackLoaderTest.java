@@ -64,15 +64,16 @@ class PackLoaderTest {
     }
 
     @Test
-    void 정의가_하나도_없는_Pack도_적재된다() throws IOException {
-        Path dir = pack("p-empty", 1, "");
+    void 개체_유형이_하나도_없는_Pack은_거부하고_관계_유형과_속성이_없는_것은_받는다() throws IOException {
+        Path empty = pack("p-empty", 1, "");
+        Path typeOnly = pack("p-type-only", 1, "ex:A a owl:Class ; rdfs:label \"가\" .");
 
-        loader.load(dir, LOADED_AT);
-
-        PackDefinition found = definitions.find("p-empty").orElseThrow();
-        assertThat(found.entityTypes()).isEmpty();
-        assertThat(found.relationTypes()).isEmpty();
-        assertThat(found.attributes()).isEmpty();
+        assertThat(problemsOf(empty)).singleElement().satisfies(p -> {
+            assertThat(p.file()).isEqualTo("ontology.ttl");
+            assertThat(p.message()).contains("개체 유형");
+        });
+        assertThat(definitions.find("p-empty")).isEmpty();
+        assertThat(loader.load(typeOnly, LOADED_AT).outcome()).isEqualTo(PackLoadResult.Outcome.LOADED);
     }
 
     @Test
@@ -159,7 +160,7 @@ class PackLoaderTest {
                 # ex:Ghost a owl:Class ; rdfs:label "주석 안의 것은 읽지 않는다" .
                 <urn:tabnit:pack:p-styles:설비> rdf:type owl:Class .
                 ex:설비 rdfs:label "설비" .
-                ex:하위설비 a owl:Class ; rdfs:label "하위 설비"@ko ; rdfs:subClassOf ex:설비 , ex:설비 .
+                ex:하위설비 a owl:Class ; rdfs:label "하위 설비" ; rdfs:subClassOf ex:설비 , ex:설비 .
                 """);
 
         loader.load(dir, LOADED_AT);
@@ -172,13 +173,13 @@ class PackLoaderTest {
     @Test
     void 최대_깊이와_이름표의_경계_값은_거부한다() throws IOException {
         for (String depth : List.of("0", "-1", "2.5", "\"3\"", "99999999999")) {
-            Path dir = pack("p-edge", 1, "");
+            Path dir = pack("p-edge", 1, "ex:A a owl:Class ; rdfs:label \"가\" .");
             write(dir, "pack.ttl", PREFIXES + "<urn:tabnit:pack:p-edge:> a tabnit:Pack ; tabnit:packId \"p-edge\" ; "
                     + "rdfs:label \"이름표\" ; tabnit:defaultMaxDepth " + depth + " .\n");
             assertThat(problemsOf(dir)).as(depth).singleElement()
                 .satisfies(p -> assertThat(p.message()).contains("defaultMaxDepth"));
         }
-        for (String label : List.of("\"\"", "5", "ex:A")) {
+        for (String label : List.of("\"\"", "5", "ex:A", "\"\"@en , \"가\"")) {
             Path dir = pack("p-edge-label", 1, "ex:A a owl:Class ; rdfs:label " + label + " .");
             assertThat(problemsOf(dir)).as(label).singleElement()
                 .satisfies(p -> assertThat(p.message()).contains("rdfs:label"));
@@ -207,6 +208,137 @@ class PackLoaderTest {
             assertThat(p.item()).isEqualTo("T0");
             assertThat(p.message()).contains("돌아").contains("개 더").hasSizeLessThan(400);
         });
+    }
+
+    // ── 이름표 (D2 AD-131) ────────────────────────────────────────
+
+    @Test
+    void 기본_이름표_위에_언어별_이름표를_더_적을_수_있고_공개_API로_읽힌다() throws IOException {
+        Path dir = pack("p-lang", 1, """
+                ex:A a owl:Class ; rdfs:label "가" , "A"@en , "ア"@JA-jp .
+                ex:n a owl:DatatypeProperty ; rdfs:label "이름" , "name"@en ; rdfs:domain ex:A ; rdfs:range xsd:string .
+                """);
+        write(dir, "pack.ttl", PREFIXES + """
+                <urn:tabnit:pack:p-lang:> a tabnit:Pack ; tabnit:packId "p-lang" ;
+                    rdfs:label "언어 Pack" , "Language pack"@en ; tabnit:defaultMaxDepth 1 .
+                """);
+
+        loader.load(dir, LOADED_AT);
+        PackDefinition found = definitions.find("p-lang").orElseThrow();
+
+        // 기본 이름표는 그대로다. 언어별 이름표는 이름, 언어 순이고 언어 표시는 소문자다. Pack 자신은 이름이 빈 글자다.
+        assertThat(found.label()).isEqualTo("언어 Pack");
+        assertThat(found.entityTypes().get(0).label()).isEqualTo("가");
+        assertThat(found.localizedLabels()).containsExactly(new LocalizedLabel("", "en", "Language pack"),
+                new LocalizedLabel("A", "en", "A"), new LocalizedLabel("A", "ja-jp", "ア"),
+                new LocalizedLabel("n", "en", "name"));
+    }
+
+    @Test
+    void 기본_이름표가_없거나_둘이거나_같은_언어가_둘이면_거부한다() throws IOException {
+        for (String labels : List.of("\"A\"@en", "\"가\" , \"나\"", "\"가\" , \"A\"@en , \"B\"@en",
+                "\"가\" , \"A\"@ko-KR , \"B\"@ko-kr")) {
+            Path dir = pack("p-lang-bad", 1, "ex:A a owl:Class ; rdfs:label " + labels + " .");
+            assertThat(problemsOf(dir)).as(labels).singleElement().satisfies(p -> {
+                assertThat(p.item()).isEqualTo("A");
+                assertThat(p.message()).contains("rdfs:label");
+            });
+        }
+    }
+
+    @Test
+    void Pack_자신의_이름표도_기본_이름표가_있어야_한다() throws IOException {
+        Path dir = pack("p-lang-pack", 1, "ex:A a owl:Class ; rdfs:label \"가\" .");
+        write(dir, "pack.ttl", PREFIXES + """
+                <urn:tabnit:pack:p-lang-pack:> a tabnit:Pack ; tabnit:packId "p-lang-pack" ;
+                    rdfs:label "Only English"@en ; tabnit:defaultMaxDepth 1 .
+                """);
+
+        assertThat(problemsOf(dir)).singleElement().satisfies(p -> {
+            assertThat(p.file()).isEqualTo("pack.ttl");
+            assertThat(p.message()).contains("rdfs:label").contains("언어 표시 없는");
+        });
+    }
+
+    @Test
+    void 틀린_이름표가_여럿이면_모두_알리고_적는_차례와_무관하다() throws IOException {
+        Path one = pack("p-lang-many", 1, "ex:A a owl:Class ; rdfs:label \"\" , 5 , \"X\"@en , \"Y\"@EN , \"\"@ja .");
+        Path other = pack("p-lang-many", 1, "ex:A a owl:Class ; rdfs:label \"\"@ja , \"Y\"@EN , 5 , \"X\"@en , \"\" .");
+
+        List<PackProblem> first = problemsOf(one);
+
+        // 빈 글자, 글자가 아닌 값, 빈 글자(언어 표시 있음), 같은 언어 둘.
+        assertThat(first).hasSize(4).allSatisfy(p -> assertThat(p.item()).isEqualTo("A"));
+        assertThat(problemsOf(other)).isEqualTo(first);
+    }
+
+    // ── 이름과 Pack 식별자 (D2 AD-127, AD-134) ───────────────────────
+
+    @Test
+    void 조합형이_아닌_이름은_거부하고_조합형_한글_이름은_받는다() throws IOException {
+        // "한" 을 풀어쓴 꼴(ㅎ + ㅏ + ㄴ 의 조합용 자모)로 적었다. 눈에는 같아 보인다.
+        Path decomposed = pack("p-nfd", 1, "ex:\u1112\u1161\u11AB a owl:Class ; rdfs:label \"풀어쓴 이름\" .");
+        Path composed = pack("p-nfc", 1, "ex:\uD55C a owl:Class ; rdfs:label \"조합형 이름\" .");
+
+        assertThat(problemsOf(decomposed)).singleElement()
+            .satisfies(p -> assertThat(p.message()).contains("조합형"));
+        // 정의는 조합형인데 가리키는 쪽만 풀어쓴 꼴이면, "정의되지 않았다"만이 아니라 조합형이 아니라고도 알린다.
+        Path reference = pack("p-nfd-ref", 1, "ex:\uD55C a owl:Class ; rdfs:label \"조합형 이름\" .\n"
+                + "ex:Sub a owl:Class ; rdfs:label \"아래\" ; rdfs:subClassOf ex:\u1112\u1161\u11AB .");
+        assertThat(problemsOf(reference)).isNotEmpty().allSatisfy(p -> assertThat(p.item()).isEqualTo("Sub"))
+            .anySatisfy(p -> assertThat(p.message()).contains("조합형"));
+        // 풀어쓴 이름을 정의하고 같은 꼴로 가리키면, 문제는 그 이름 자체에 대한 것뿐이다.
+        Path both = pack("p-nfd-both", 1, "ex:\u1112\u1161\u11AB a owl:Class ; rdfs:label \"풀어쓴 이름\" .\n"
+                + "ex:Sub a owl:Class ; rdfs:label \"아래\" ; rdfs:subClassOf ex:\u1112\u1161\u11AB .");
+        assertThat(problemsOf(both)).hasSize(2).allSatisfy(p -> assertThat(p.message()).contains("조합형"));
+        loader.load(composed, LOADED_AT);
+        assertThat(definitions.find("p-nfc").orElseThrow().entityTypes()).extracting(EntityTypeDefinition::name)
+            .containsExactly("\uD55C");
+    }
+
+    @Test
+    void Pack_식별자는_영어_소문자로_시작하고_소문자와_숫자와_붙임표만_쓴다() throws IOException {
+        for (String id : List.of("Upper", "1abc", "under_score", "한글", "dot.ted", "-lead")) {
+            Path dir = pack(id, 1, "ex:A a owl:Class ; rdfs:label \"가\" .");
+            assertThat(problemsOf(dir)).as(id).singleElement().satisfies(p -> {
+                assertThat(p.message()).contains("Pack 식별자").contains(id);
+            });
+        }
+        assertThat(loader.load(pack("ok-2-go", 1, "ex:A a owl:Class ; rdfs:label \"가\" ."), LOADED_AT).outcome())
+            .isEqualTo(PackLoadResult.Outcome.LOADED);
+    }
+
+    // ── 표시 이름 속성 (D2 AD-132) ──────────────────────────────────
+
+    @Test
+    void 표시_이름_속성은_그_유형이나_상위_유형의_속성이어야_한다() throws IOException {
+        String common = """
+                ex:Top a owl:Class ; rdfs:label "위" .
+                ex:Mid a owl:Class ; rdfs:label "가운데" ; rdfs:subClassOf ex:Top .
+                ex:Other a owl:Class ; rdfs:label "다른 것" .
+                ex:topName a owl:DatatypeProperty ; rdfs:label "위 이름" ; rdfs:domain ex:Top ; rdfs:range xsd:string .
+                ex:otherCount a owl:DatatypeProperty ; rdfs:label "다른 수" ; rdfs:domain ex:Other ; rdfs:range xsd:integer .
+                ex:lowName a owl:DatatypeProperty ; rdfs:label "아래 이름" ; rdfs:domain ex:Low ; rdfs:range xsd:string .
+                """;
+        Path fromAncestor = pack("p-display-ok", 1, common
+                + "ex:Low a owl:Class ; rdfs:label \"아래\" ; rdfs:subClassOf ex:Mid ; tabnit:displayNameProperty ex:topName .");
+        Path fromStranger = pack("p-display-bad", 1, common
+                + "ex:Low a owl:Class ; rdfs:label \"아래\" ; rdfs:subClassOf ex:Mid ; tabnit:displayNameProperty ex:otherCount .");
+        // 하위 유형의 속성은 상위 유형의 표시 이름이 될 수 없다.
+        Path fromChild = pack("p-display-child", 1, common
+                + "ex:Low a owl:Class ; rdfs:label \"아래\" ; rdfs:subClassOf ex:Mid .\n"
+                + "ex:Top tabnit:displayNameProperty ex:lowName .");
+
+        // 상위 유형이 여럿일 때 그 가운데 하나의 속성이어도 된다.
+        Path fromOneOfParents = pack("p-display-multi", 1, common
+                + "ex:Low a owl:Class ; rdfs:label \"아래\" ; rdfs:subClassOf ex:Mid , ex:Other ; tabnit:displayNameProperty ex:otherCount .");
+        assertThat(loader.load(fromOneOfParents, LOADED_AT).outcome()).isEqualTo(PackLoadResult.Outcome.LOADED);
+        assertThat(loader.load(fromAncestor, LOADED_AT).outcome()).isEqualTo(PackLoadResult.Outcome.LOADED);
+        assertThat(problemsOf(fromStranger)).singleElement().satisfies(p -> {
+            assertThat(p.item()).isEqualTo("Low");
+            assertThat(p.message()).contains("otherCount").contains("Other");
+        });
+        assertThat(problemsOf(fromChild)).singleElement().satisfies(p -> assertThat(p.item()).isEqualTo("Top"));
     }
 
     // ── 다시 넣기 ───────────────────────────────────────────────
@@ -256,6 +388,52 @@ class PackLoaderTest {
         assertThat(found.entityTypes()).extracting(EntityTypeDefinition::label).containsExactly("가 (고침)", "나");
         assertThat(found.relationTypes().get(0).impactDirection()).isEqualTo(PackImpactDirection.NONE);
         assertThat(found.attributes()).hasSize(1);
+    }
+
+    @Test
+    void 표시_이름_속성과_언어별_이름표를_바꾼_Pack은_다시_받는다() throws IOException {
+        String common = """
+                ex:first a owl:DatatypeProperty ; rdfs:label "첫 이름" ; rdfs:domain ex:A ; rdfs:range xsd:string .
+                ex:second a owl:DatatypeProperty ; rdfs:label "둘째 이름" ; rdfs:domain ex:A ; rdfs:range xsd:string .
+                """;
+        loader.load(pack("p-display-change", 1,
+                common + "ex:A a owl:Class ; rdfs:label \"가\" ; tabnit:displayNameProperty ex:first ."), LOADED_AT);
+
+        PackLoadResult result = loader.load(pack("p-display-change", 1,
+                common + "ex:A a owl:Class ; rdfs:label \"가\" , \"A\"@en ; tabnit:displayNameProperty ex:second ."),
+                LOADED_AT.plusSeconds(60));
+
+        PackDefinition found = definitions.find("p-display-change").orElseThrow();
+        assertThat(result.outcome()).isEqualTo(PackLoadResult.Outcome.UPDATED);
+        assertThat(found.entityTypes().get(0).displayNameAttribute()).isEqualTo("second");
+        assertThat(found.localizedLabels()).containsExactly(new LocalizedLabel("A", "en", "A"));
+
+        // 언어별 이름표를 지우는 것도 이름표를 바꾸는 것이다.
+        PackLoadResult removed = loader.load(pack("p-display-change", 1,
+                common + "ex:A a owl:Class ; rdfs:label \"가\" ; tabnit:displayNameProperty ex:second ."),
+                LOADED_AT.plusSeconds(120));
+        assertThat(removed.outcome()).isEqualTo(PackLoadResult.Outcome.UPDATED);
+        assertThat(definitions.find("p-display-change").orElseThrow().localizedLabels()).isEmpty();
+    }
+
+    @Test
+    void 상위_유형이나_관계_유형의_끝이나_속성의_개체_유형을_바꾼_Pack은_거부한다() throws IOException {
+        loader.load(pack("p-reshape", 1, """
+                ex:A a owl:Class ; rdfs:label "가" .
+                ex:B a owl:Class ; rdfs:label "나" ; rdfs:subClassOf ex:A .
+                ex:r a owl:ObjectProperty ; rdfs:label "관계" ; rdfs:domain ex:A ; rdfs:range ex:B ;
+                    tabnit:impactDirection tabnit:Both .
+                ex:n a owl:DatatypeProperty ; rdfs:label "이름" ; rdfs:domain ex:A ; rdfs:range xsd:string .
+                """), LOADED_AT);
+
+        assertThatThrownBy(() -> loader.load(pack("p-reshape", 1, """
+                ex:A a owl:Class ; rdfs:label "가" .
+                ex:B a owl:Class ; rdfs:label "나" .
+                ex:r a owl:ObjectProperty ; rdfs:label "관계" ; rdfs:domain ex:B ; rdfs:range ex:B ;
+                    tabnit:impactDirection tabnit:Both .
+                ex:n a owl:DatatypeProperty ; rdfs:label "이름" ; rdfs:domain ex:B ; rdfs:range xsd:string .
+                """), LOADED_AT.plusSeconds(60))).isInstanceOfSatisfying(PackChangeRejectedException.class,
+                        e -> assertThat(e.reasons()).hasSize(3));
     }
 
     @Test

@@ -389,17 +389,19 @@ final class EditionPlanner {
         for (List<Statement> same : fresh.values()) {
             Statement head = same.get(0);
             Period period = fresh(head);
-            if (!period.equals(head.period()) || alreadyPast(head)) {
-                // 둘째 판부터는 그 판의 적용일 앞으로 넣지 않는다. 과거는 고치지 않는다 (D2 AD-199, AD-200).
-                // 적힌 시작일이 더 앞이면 적용일부터 넣고, 적힌 종료일이 적용일과 같거나 앞이면 넣지 않는다. 둘 다 알린다.
-                for (Statement statement : same) {
+            // 둘째 판부터는 그 판의 적용일 앞으로 넣지 않는다. 과거는 고치지 않는다 (D2 AD-199, AD-200).
+            // 적힌 시작일이 더 앞이면 적용일부터 넣고, 적힌 종료일이 적용일과 같거나 앞이면 넣지 않는다. 둘 다 알린다.
+            // 함께 묶인 행들은 넣을 기간이 같을 뿐 적힌 기간은 다를 수 있으므로, 알림은 행마다 따로 가린다.
+            boolean past = alreadyPast(head);
+            for (Statement statement : same) {
+                if (past || !period.equals(statement.period())) {
                     notices.add(new IngestNotice("PERIOD_ADJUSTED", statement.row().rowNo,
-                            alreadyPast(head) ? "ALREADY_PAST" : "STARTS_AT_EFFECTIVE_DATE", statement.noticeSubject(),
+                            past ? "ALREADY_PAST" : "STARTS_AT_EFFECTIVE_DATE", statement.noticeSubject(),
                             statement.stated()));
                 }
-                if (alreadyPast(head)) {
-                    continue;
-                }
+            }
+            if (past) {
+                continue;
             }
             ValidityPeriod validity = new ValidityPeriod(period.from(), period.to());
             String objectId;

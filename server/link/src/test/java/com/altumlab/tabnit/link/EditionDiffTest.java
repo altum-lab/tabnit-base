@@ -496,6 +496,26 @@ class EditionDiffTest {
     }
 
     @Test
+    void 시작일을_당긴_알림은_과거의_시작일을_적은_행에만_남는다() {
+        MappedEntityRef other = new MappedEntityRef("Other", "other");
+        MappingDefinition mapping = new MappingDefinition("src", MappingFileFormat.CSV, null, null, List.of(),
+                List.of("line"), other,
+                List.of(new MappedEntity("Other", "other",
+                        List.of(new MappedAttribute("otherName", "otherName", "from", null, null, null, null, null)))),
+                List.of());
+        PackDefinition pack = pack("d-notice", mapping);
+        put(pack, 1, D1, "line,other,otherName,from\n");
+
+        // 두 행이 같은 값을 적는다. 1번 행은 시작일을 비웠고 2번 행은 과거의 날짜를 적었다. 넣을 기간은 같다.
+        IngestResult second = put(pack, 2, D2, "line,other,otherName,from\n1,O-1,상대,\n2,O-1,상대,2026-01-01\n");
+
+        assertThat(values.valueAsOf("d-notice|Other|O-1", "otherName", D2).orElseThrow().period())
+            .isEqualTo(new ValidityPeriod(D2, null));
+        assertThat(second.mapping().notices()).containsExactly(new IngestNotice("PERIOD_ADJUSTED", 3,
+                "STARTS_AT_EFFECTIVE_DATE", "d-notice|Other|O-1|otherName", "2026-01-01~"));
+    }
+
+    @Test
     void 이미_지난_기간을_적은_행이_계속_있어도_다음_판들이_들어간다() {
         PackDefinition pack = pack("d-stale", dated());
         put(pack, 1, D1, "code,title,from,to\nB-1,이름,2026-01-01,\n");

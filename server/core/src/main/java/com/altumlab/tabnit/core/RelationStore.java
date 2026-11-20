@@ -14,7 +14,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * 개체와 관계를 유효기간, 출처와 함께 저장한다 (보드 CORE-01, D5 3절).
  *
  * <p>기록한 때는 밖에서 받는다. 이 클래스는 현재 시각을 읽지 않는다.
- * 관계를 지우지 않는다. 같은 것을 다시 저장해도 행이 늘지 않는다.
+ * 관계를 지우지 않는다. 끝난 관계에는 종료일을 넣는다. 같은 것을 다시 저장해도 행이 늘지 않는다.
  */
 public class RelationStore {
 
@@ -30,6 +30,10 @@ public class RelationStore {
     public String saveEntity(EntityRef entity, Instant recordedAt) {
         Objects.requireNonNull(entity, "개체는 반드시 있어야 합니다");
         Objects.requireNonNull(recordedAt, "기록한 때는 반드시 있어야 합니다");
+        String timeFault = StorableDates.fault(recordedAt);
+        if (timeFault != null) {
+            throw new IllegalArgumentException(timeFault);
+        }
         String id = entity.id();
         try {
             jdbc.update("""
@@ -68,6 +72,13 @@ public class RelationStore {
         }
         ValidityPeriod period = relation.period();
         requireFinite(period);
+        // 저장소가 담지 못하는 날짜와 시각은 저장소까지 보내지 않고 여기서 거부한다.
+        for (String fault : new String[] { StorableDates.fault(period.from(), "시작일"),
+                StorableDates.fault(period.to(), "종료일"), StorableDates.fault(recordedAt) }) {
+            if (fault != null) {
+                throw new RelationRejectedException(fault);
+            }
+        }
         String id = relation.id();
         try {
             requireEntity(sourceId, "출발 개체");
@@ -127,6 +138,25 @@ public class RelationStore {
                 sourceId, targetId, relation.relationType(), provenance.inputSourceId(), provenance.editionNo(),
                 period.from(), period.to());
         throw overlap(period, overlapping);
+    }
+
+    /**
+     * 열려 있는 관계에 종료일을 넣어 끝낸다. 관계를 지우지 않는다 (D2 AD-162).
+     *
+     * <p>이미 같은 날짜로 끝나 있으면 아무것도 바꾸지 않는다. 한 번 넣은 종료일은 바꾸지 않는다.
+     *
+     * @param relationId 관계의 식별자
+     * @param endDate 종료일. 이 날부터 유효하지 않다. 시작일보다 뒤여야 한다
+     * @throws RelationRejectedException 그런 관계가 없거나, 종료일이 시작일보다 뒤가 아니거나, 이미 다른 날짜로 끝나 있을 때
+     * @throws CoreStorageException 저장소에 쓰지 못했을 때
+     */
+    public void endRelation(String relationId, LocalDate endDate) {
+        Identifiers.requireNotBlank(relationId, "관계의 식별자");
+        Objects.requireNonNull(endDate, "종료일은 반드시 있어야 합니다");
+        String fault = PeriodEnd.RELATION.end(jdbc, relationId, endDate);
+        if (fault != null) {
+            throw new RelationRejectedException(fault);
+        }
     }
 
     /** 끝없는 날짜는 받지 않는다. 종료일이 없다는 것은 종료일을 비우는 것 하나로만 나타낸다 (D2 AD-75). */

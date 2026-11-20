@@ -1,6 +1,7 @@
 package com.altumlab.tabnit.pack;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.format.DateTimeFormatter;
@@ -99,7 +100,8 @@ final class MappingReader {
                 .sorted(PackOrder.STRINGS)
                 .toList();
         }
-        catch (IOException e) {
+        catch (IOException | UncheckedIOException e) {
+            // 목록을 여는 때의 실패와, 읽어 나가는 도중의 실패를 모두 문제로 알린다.
             problems.add(new PackProblem(FOLDER + "/", "", "매핑 폴더를 읽지 못했습니다: " + e.getMessage()
                     + ". 폴더의 권한을 확인하세요."));
             return List.of();

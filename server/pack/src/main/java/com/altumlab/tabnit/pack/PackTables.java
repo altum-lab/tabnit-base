@@ -48,26 +48,36 @@ final class PackTables {
                 where pack_id = ? order by name collate "C", language collate "C\"""",
                 (rs, n) -> new LocalizedLabel(rs.getString("name"), rs.getString("language"), rs.getString("label")),
                 packId);
+        List<MappingDefinition> mappings = readMappings(packId);
         List<PackDefinition> found = jdbc.query(
                 "select pack_id, label, default_max_depth, loaded_at from pack_definition where pack_id = ?",
                 (rs, n) -> new PackDefinition(rs.getString("pack_id"), rs.getString("label"),
                         rs.getInt("default_max_depth"), rs.getTimestamp("loaded_at").toInstant(), entityTypes,
-                        relationTypes, attributes, localizedLabels, readMappings(packId)),
+                        relationTypes, attributes, localizedLabels, mappings),
                 packId);
         return found.stream().findFirst();
     }
 
+    /** 매핑 한 행. 안쪽(열, 개체, 관계)은 이 목록을 다 읽은 뒤에 채운다. 결과를 읽는 도중에 다른 질의를 보내지 않는다. */
+    private record MappingRow(String source, MappingFileFormat format, String sheet, MappedEntityRef primary) {
+    }
+
     private List<MappingDefinition> readMappings(String packId) {
-        return jdbc.query("""
+        List<MappingRow> rows = jdbc.query("""
                 select input_source_id, file_format, sheet_name, primary_entity_type, primary_key_column
-                from pack_mapping where pack_id = ? order by input_source_id collate "C\"""", (rs, n) -> {
-            String source = rs.getString("input_source_id");
-            return new MappingDefinition(source, MappingFileFormat.valueOf(rs.getString("file_format")),
-                    rs.getString("sheet_name"), readColumns(packId, source, "REQUIRED"),
-                    readColumns(packId, source, "ITEM_KEY"),
-                    new MappedEntityRef(rs.getString("primary_entity_type"), rs.getString("primary_key_column")),
-                    readMappedEntities(packId, source), readMappedRelations(packId, source));
-        }, packId);
+                from pack_mapping where pack_id = ? order by input_source_id collate "C\"""",
+                (rs, n) -> new MappingRow(rs.getString("input_source_id"),
+                        MappingFileFormat.valueOf(rs.getString("file_format")), rs.getString("sheet_name"),
+                        new MappedEntityRef(rs.getString("primary_entity_type"), rs.getString("primary_key_column"))),
+                packId);
+        List<MappingDefinition> mappings = new ArrayList<>();
+        for (MappingRow row : rows) {
+            mappings.add(new MappingDefinition(row.source(), row.format(), row.sheet(),
+                    readColumns(packId, row.source(), "REQUIRED"), readColumns(packId, row.source(), "ITEM_KEY"),
+                    row.primary(), readMappedEntities(packId, row.source()),
+                    readMappedRelations(packId, row.source())));
+        }
+        return mappings;
     }
 
     private List<String> readColumns(String packId, String source, String kind) {
@@ -78,12 +88,14 @@ final class PackTables {
     }
 
     private List<MappedEntity> readMappedEntities(String packId, String source) {
-        return jdbc.query("""
+        List<MappedEntityRef> refs = jdbc.query("""
                 select entity_type, key_column from pack_mapping_entity
                 where pack_id = ? and input_source_id = ?
-                order by entity_type collate "C", key_column collate "C\"""", (rs, n) -> {
-            String type = rs.getString("entity_type");
-            String key = rs.getString("key_column");
+                order by entity_type collate "C", key_column collate "C\"""",
+                (rs, n) -> new MappedEntityRef(rs.getString("entity_type"), rs.getString("key_column")), packId,
+                source);
+        List<MappedEntity> entities = new ArrayList<>();
+        for (MappedEntityRef ref : refs) {
             List<MappedAttribute> attributes = jdbc.query("""
                     select attribute_name, column_name, valid_from_column, valid_to_column,
                            date_pattern, grouping_separator, true_value, false_value
@@ -94,9 +106,10 @@ final class PackTables {
                             a.getString("valid_from_column"), a.getString("valid_to_column"),
                             a.getString("date_pattern"), a.getString("grouping_separator"),
                             a.getString("true_value"), a.getString("false_value")),
-                    packId, source, type, key);
-            return new MappedEntity(type, key, attributes);
-        }, packId, source);
+                    packId, source, ref.entityType(), ref.keyColumn());
+            entities.add(new MappedEntity(ref.entityType(), ref.keyColumn(), attributes));
+        }
+        return entities;
     }
 
     private List<MappedRelation> readMappedRelations(String packId, String source) {

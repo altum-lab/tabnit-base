@@ -8,6 +8,8 @@ ex:매핑-program a tabnit:Mapping ;
     tabnit:fileFormat tabnit:Csv ;
     tabnit:requiredColumns ( "사업코드" "사업명" "운영여부" "연간목표인원" "연계사업코드" ) ;
     tabnit:itemKeyColumns ( "사업코드" ) ;
+    # 이 행이 나타내는 개체. 이 행에서 나온 변동의 근거 조항이 된다 (D2 AD-120).
+    tabnit:primaryEntity [ tabnit:entityType ex:의료사업 ; tabnit:keyColumn "사업코드" ] ;
     tabnit:entity [
         tabnit:entityType ex:의료사업 ;
         tabnit:keyColumn "사업코드" ;

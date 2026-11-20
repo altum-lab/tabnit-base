@@ -8,6 +8,8 @@ ex:매핑-guideline-program a tabnit:Mapping ;
     tabnit:fileFormat tabnit:Csv ;
     tabnit:requiredColumns ( "지침번호" "사업코드" ) ;
     tabnit:itemKeyColumns ( "지침번호" "사업코드" ) ;
+    # 이 자료의 행은 관계만 담는다. 지침의 적용이 바뀐 것이므로 주 개체는 운영지침이다.
+    tabnit:primaryEntity [ tabnit:entityType ex:운영지침 ; tabnit:keyColumn "지침번호" ] ;
     tabnit:relation [
         tabnit:relationType ex:지침적용 ;
         tabnit:sourceEntity [ tabnit:entityType ex:운영지침 ; tabnit:keyColumn "지침번호" ] ;

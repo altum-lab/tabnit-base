@@ -8,6 +8,8 @@ ex:매핑-partner-health a tabnit:Mapping ;
     tabnit:fileFormat tabnit:Csv ;
     tabnit:requiredColumns ( "기관코드" "기관명" "협약일" "분담률" "참여사업코드" "연락팀코드" "연락팀명" ) ;
     tabnit:itemKeyColumns ( "기관코드" ) ;
+    # 이 행이 나타내는 개체. 이 행에서 나온 변동의 근거 조항이 된다 (D2 AD-120).
+    tabnit:primaryEntity [ tabnit:entityType ex:보건기관 ; tabnit:keyColumn "기관코드" ] ;
     tabnit:entity [
         tabnit:entityType ex:보건기관 ;
         tabnit:keyColumn "기관코드" ;

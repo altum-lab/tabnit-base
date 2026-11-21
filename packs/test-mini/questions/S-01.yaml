@@ -4,7 +4,7 @@
 # 정답은 D3, D6, D8 의 규칙으로 자료에서 손으로 계산했고, 질문마다 근거를 주석으로 적었다.
 # 모든 이름과 값은 지어낸 것이다.
 #
-# 개체는 유형의 이름과 입력의 키로 가리킨다. 목록의 순서는 엔진이 정한 순서다 (D4 4절).
+# 개체는 유형의 이름과 입력의 키로 가리킨다. 목록의 순서는 제품이 내놓는 순서다 (D4 4절).
 #
 # 영향 범위와 조치는 판을 투입한 직후에 그때의 자료로 한 번 계산해 저장한 것이다 (D2 AD-119).
 # 그래서 같은 날의 판이라도 투입하는 차례(steps 의 차례)가 정답에 닿는다.
@@ -233,7 +233,8 @@ questions:
       truncated: false
 
   # ── 조치 ───────────────────────────────────────────────────
-  # 순서는 우선순위, 규칙 번호, 대상 식별자다. 기한은 판의 적용일에 규칙의 일수를 더한 날짜다.
+  # 순서는 제품이 내놓는 순서다: 기한이 이른 것부터, 같으면 우선순위, 규칙 번호, 대상 식별자 (D2 AD-243, AD-282).
+  # 기한은 판의 적용일에 규칙의 일수를 더한 날짜다.
   # 근거 조항은 변동이 생긴 행의 주 개체이고 (매핑이 적는다, D2 AD-120), 판은 그 변동이 나온 입력 자료의 판이다.
 
   - id: Q-12
@@ -246,9 +247,10 @@ questions:
     #   C-02 는 분담률 값이 없어 빠진다 (값이 없으면 비교를 만족하지 않는다).
     expect:
       actions:
+        # 기한이 가장 이른 규칙 0003 의 조치가 먼저 온다 (03-08). 그 뒤는 기한 03-15 의 둘, 03-31 의 둘이다.
+        - { rule: "0003", priority: 1, target: { type: 운영지침, key: G-01 }, dueDate: 2026-03-08, basis: { entity: { type: 운영지침, key: G-01 }, inputSource: guideline, edition: 2 } }
         - { rule: "0001", priority: 1, target: { type: 의료사업, key: P-01 }, dueDate: 2026-03-15, basis: { entity: { type: 운영지침, key: G-01 }, inputSource: guideline, edition: 2 } }
         - { rule: "0001", priority: 1, target: { type: 의료사업, key: P-02 }, dueDate: 2026-03-15, basis: { entity: { type: 운영지침, key: G-01 }, inputSource: guideline, edition: 2 } }
-        - { rule: "0003", priority: 1, target: { type: 운영지침, key: G-01 }, dueDate: 2026-03-08, basis: { entity: { type: 운영지침, key: G-01 }, inputSource: guideline, edition: 2 } }
         - { rule: "0002", priority: 2, target: { type: 민간기관, key: C-01 }, dueDate: 2026-03-31, basis: { entity: { type: 운영지침, key: G-01 }, inputSource: guideline, edition: 2 } }
         - { rule: "0002", priority: 2, target: { type: 보건기관, key: H-01 }, dueDate: 2026-03-31, basis: { entity: { type: 운영지침, key: G-01 }, inputSource: guideline, edition: 2 } }
 

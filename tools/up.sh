@@ -26,13 +26,23 @@ compose() {
   docker compose -f "$top/deploy/compose.yaml" --env-file "$env_file" "$@"
 }
 
+# 비밀번호를 쓰지 않는 일(로그 보기, 내리기, 지우기)에 쓴다. 비밀번호 파일을 새로 만들지 않고,
+# 파일이 없거나 잘못돼 있어도 된다. 구성 파일이 값을 요구하므로 쓰이지 않는 자리 채움 값을 넘긴다.
+compose_without_password() {
+  if [ -f "$env_file" ] && grep -Eq '^TABNIT_DB_PASSWORD=.{32,}$' "$env_file"; then
+    compose "$@"
+  else
+    TABNIT_DB_PASSWORD="not-used-by-this-command" docker compose -f "$top/deploy/compose.yaml" "$@"
+  fi
+}
+
 # 데이터베이스의 비밀번호는 처음 한 번 만들어 deploy/.env 에 둔다. git 에 올라가지 않는 파일이다 (D2 AD-278).
 ensure_env() {
   if [ -f "$env_file" ]; then
     if ! grep -Eq '^TABNIT_DB_PASSWORD=.{32,}$' "$env_file"; then
       echo "[실패] deploy/.env 에 데이터베이스의 비밀번호가 없거나 잘못 적혀 있습니다." >&2
       echo "       데이터베이스는 처음 만든 비밀번호만 압니다. 그 값을 모르면 처음부터 다시 해야 합니다:" >&2
-      echo "         docker compose -p tabnit-dev down --volumes   (이 개발 환경의 데이터를 지웁니다)" >&2
+      echo "         bash tools/up.sh destroy   (이 개발 환경의 데이터를 지웁니다)" >&2
       echo "         rm deploy/.env && bash tools/up.sh" >&2
       exit 1
     fi
@@ -54,6 +64,10 @@ ensure_env() {
 
 case "${1:-up}" in
   up)
+    if ! command -v curl >/dev/null 2>&1; then
+      echo "[실패] curl 이 없습니다. 앱이 떴는지 확인하는 데 씁니다. curl 을 설치한 뒤 다시 실행하세요." >&2
+      exit 1
+    fi
     ensure_env
     echo "1) 이미지를 만들고 띄웁니다. 처음에는 몇 분 걸립니다."
     TABNIT_PORT="$port" compose up -d --build
@@ -86,18 +100,15 @@ case "${1:-up}" in
       "--tabnit.create-user.login-id=$2" "--tabnit.create-user.role=$3"
     ;;
   logs)
-    ensure_env
-    compose logs --tail 200 app
+    compose_without_password logs --tail 200 app
     ;;
   down)
-    ensure_env
-    compose down
+    compose_without_password down
     echo "[확인] 내렸습니다. 데이터는 남아 있습니다."
     ;;
   destroy)
-    ensure_env
-    compose down --volumes
-    echo "[확인] 내리고 데이터를 지웠습니다. 데이터베이스의 비밀번호(deploy/.env)는 남아 있습니다."
+    compose_without_password down --volumes
+    echo "[확인] 내리고 데이터를 지웠습니다. 데이터베이스의 비밀번호 파일(deploy/.env)이 있으면 그대로 남아 있습니다."
     ;;
   *)
     echo "모르는 명령입니다: $1. 쓰는 법은 이 파일의 맨 위에 있습니다." >&2

@@ -49,11 +49,12 @@ final class PackTables {
                 (rs, n) -> new LocalizedLabel(rs.getString("name"), rs.getString("language"), rs.getString("label")),
                 packId);
         List<MappingDefinition> mappings = readMappings(packId);
+        List<RuleDefinition> rules = readRules(packId);
         List<PackDefinition> found = jdbc.query(
                 "select pack_id, label, default_max_depth, loaded_at from pack_definition where pack_id = ?",
                 (rs, n) -> new PackDefinition(rs.getString("pack_id"), rs.getString("label"),
                         rs.getInt("default_max_depth"), rs.getTimestamp("loaded_at").toInstant(), entityTypes,
-                        relationTypes, attributes, localizedLabels, mappings),
+                        relationTypes, attributes, localizedLabels, mappings, rules),
                 packId);
         return found.stream().findFirst();
     }
@@ -202,9 +203,101 @@ final class PackTables {
         for (MappingDefinition mapping : pack.mappings()) {
             insertMapping(pack.packId(), mapping);
         }
+        // 규칙도 개체 유형과 속성을 가리킨다.
+        for (RuleDefinition rule : pack.rules()) {
+            insertRule(pack.packId(), rule);
+        }
+    }
+
+    /** 규칙 한 행. 조건은 이 목록을 다 읽은 뒤에 채운다. 결과를 읽는 도중에 다른 질의를 보내지 않는다. */
+    private record RuleRow(String ruleNo, String label, int priority, boolean onAdded, boolean onChanged,
+            boolean onRemoved, RuleSubject appliesTo, String targetType, String actionText, int dueInDays) {
+    }
+
+    private record ConditionRow(String ruleNo, int position, RuleSubject subject, String typeName,
+            String attributeName, RuleOperator operator) {
+    }
+
+    private List<RuleDefinition> readRules(String packId) {
+        List<RuleRow> rows = jdbc.query("""
+                select rule_no, label, priority, on_added, on_changed, on_removed, applies_to, target_type,
+                       action_text, due_in_days
+                from pack_rule where pack_id = ? order by rule_no""",
+                (rs, n) -> new RuleRow(rs.getString("rule_no"), rs.getString("label"), rs.getInt("priority"),
+                        rs.getBoolean("on_added"), rs.getBoolean("on_changed"), rs.getBoolean("on_removed"),
+                        RuleSubject.valueOf(rs.getString("applies_to")), rs.getString("target_type"),
+                        rs.getString("action_text"), rs.getInt("due_in_days")),
+                packId);
+        List<ConditionRow> conditionRows = jdbc.query("""
+                select rule_no, position, subject, type_name, attribute_name, operator
+                from pack_rule_condition where pack_id = ? order by rule_no, position""",
+                (rs, n) -> new ConditionRow(rs.getString("rule_no"), rs.getInt("position"),
+                        RuleSubject.valueOf(rs.getString("subject")), rs.getString("type_name"),
+                        rs.getString("attribute_name"),
+                        rs.getString("operator") == null ? null : RuleOperator.valueOf(rs.getString("operator"))),
+                packId);
+        // (규칙 번호, 조건의 번호)마다의 값. 값의 번호 순.
+        Map<String, Map<Integer, List<String>>> values = new TreeMap<>(PackOrder.STRINGS);
+        jdbc.query("""
+                select rule_no, position, value
+                from pack_rule_condition_value where pack_id = ? order by rule_no, position, value_position""", rs -> {
+            values.computeIfAbsent(rs.getString("rule_no"), k -> new TreeMap<>())
+                .computeIfAbsent(rs.getInt("position"), k -> new ArrayList<>())
+                .add(rs.getString("value"));
+        }, packId);
+        Map<String, List<RuleCondition>> conditions = new TreeMap<>(PackOrder.STRINGS);
+        for (ConditionRow row : conditionRows) {
+            conditions.computeIfAbsent(row.ruleNo(), k -> new ArrayList<>())
+                .add(new RuleCondition(row.subject(), row.typeName(), row.attributeName(), row.operator(),
+                        values.getOrDefault(row.ruleNo(), Map.of()).getOrDefault(row.position(), List.of())));
+        }
+        List<RuleDefinition> rules = new ArrayList<>();
+        for (RuleRow row : rows) {
+            List<RuleChangeKind> kinds = new ArrayList<>();
+            if (row.onAdded()) {
+                kinds.add(RuleChangeKind.ADDED);
+            }
+            if (row.onChanged()) {
+                kinds.add(RuleChangeKind.CHANGED);
+            }
+            if (row.onRemoved()) {
+                kinds.add(RuleChangeKind.REMOVED);
+            }
+            rules.add(new RuleDefinition(row.ruleNo(), row.label(), row.priority(), kinds, row.appliesTo(),
+                    row.targetType(), conditions.getOrDefault(row.ruleNo(), List.of()), row.actionText(),
+                    row.dueInDays()));
+        }
+        return rules;
+    }
+
+    private void insertRule(String packId, RuleDefinition rule) {
+        jdbc.update("""
+                insert into pack_rule (pack_id, rule_no, label, priority, on_added, on_changed, on_removed, applies_to,
+                                       target_type, action_text, due_in_days)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", packId, rule.ruleNo(), rule.label(), rule.priority(),
+                rule.changeKinds().contains(RuleChangeKind.ADDED), rule.changeKinds().contains(RuleChangeKind.CHANGED),
+                rule.changeKinds().contains(RuleChangeKind.REMOVED), rule.appliesTo().name(), rule.targetType(),
+                rule.actionText(), rule.dueInDays());
+        for (int i = 0; i < rule.conditions().size(); i++) {
+            RuleCondition condition = rule.conditions().get(i);
+            jdbc.update("""
+                    insert into pack_rule_condition (pack_id, rule_no, position, subject, type_name, attribute_name,
+                                                     operator) values (?, ?, ?, ?, ?, ?, ?)""", packId, rule.ruleNo(),
+                    i + 1, condition.subject().name(), condition.typeIs(), condition.attributeName(),
+                    condition.operator() == null ? null : condition.operator().name());
+            for (int j = 0; j < condition.values().size(); j++) {
+                jdbc.update("""
+                        insert into pack_rule_condition_value (pack_id, rule_no, position, value_position, value)
+                        values (?, ?, ?, ?, ?)""", packId, rule.ruleNo(), i + 1, j + 1, condition.values().get(j));
+            }
+        }
     }
 
     void delete(String packId) {
+        // 규칙도 온톨로지의 정의를 가리키므로 먼저 지운다.
+        jdbc.update("delete from pack_rule_condition_value where pack_id = ?", packId);
+        jdbc.update("delete from pack_rule_condition where pack_id = ?", packId);
+        jdbc.update("delete from pack_rule where pack_id = ?", packId);
         // 매핑은 온톨로지의 정의를 가리키므로 먼저 지운다.
         jdbc.update("delete from pack_mapping_attribute where pack_id = ?", packId);
         jdbc.update("delete from pack_mapping_relation where pack_id = ?", packId);

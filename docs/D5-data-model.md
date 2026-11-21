@@ -334,6 +334,38 @@ Pack 적재는 정의(온톨로지, 제약, 매핑, 규칙, 검증 질문)만 �
 
 - 기본 키: `(pack_id, name)`. 참조: `entity_type` 은 `pack_entity_type`.
 
+### 규칙 정의의 테이블
+
+변경 파일: `V9__pack_rule.sql` (B-04). 규칙의 형식은 D8 2절 ~ 3절이 정한다. 규칙을 실행하는 것은 rules 다. 여기에는 읽어서 검증한 정의만 담는다. [AD-213]
+
+**pack_rule** — 규칙.
+
+| 열 | 형식 | 뜻 | 근거 |
+|---|---|---|---|
+| `pack_id`, `rule_no` | text | 어느 Pack 의 어느 규칙인가. 규칙 번호는 글자다. 영어 대소문자, 숫자, 붙임표로 50자까지 (pack 의 검증이 지킨다) | [AD-103] [AD-217] |
+| `label` | text | 규칙의 이름 | [D8 2절] |
+| `priority` | integer | 우선순위. 1 이상 | [AD-103] |
+| `on_added`, `on_changed`, `on_removed` | boolean | 어떤 종류의 변동에 걸리는가. 규칙에 적지 않았으면 셋 다 참 | [D8 2절] |
+| `applies_to` | text | `CHANGE_TARGET`, `IMPACT_TARGET` 가운데 하나 | [AD-102] |
+| `target_type` | text | 조치를 만들 대상의 개체 유형 | [AD-88] |
+| `action_text` | text | 해야 할 일의 문구 | [D8 2절] |
+| `due_in_days` | integer | 기한까지의 일수. 0 이상 | [AD-99] |
+
+- 유일: (`pack_id`, `rule_no`). 규칙 번호의 자릿수가 모두 같은 것은 pack 의 검증이 지킨다. [AD-215]
+
+**pack_rule_condition** — 규칙의 조건. 유형을 보는 조건이거나 속성 값을 보는 조건이다.
+
+| 열 | 형식 | 뜻 | 근거 |
+|---|---|---|---|
+| `pack_id`, `rule_no`, `position` | | 어느 규칙의 몇째 조건인가. Turtle 에는 차례가 없으므로 읽은 뒤의 정해진 차례(대상, 유형, 속성, 비교, 값)로 1 부터 매긴다 | [AD-97] |
+| `subject` | text | `CHANGE_TARGET`, `IMPACT_TARGET` 가운데 하나 | [D8 3절] |
+| `type_name` | text, 없을 수 있다 | 유형을 보는 조건이면 그 개체 유형 | [D8 3절] |
+| `attribute_name`, `operator` | text, 없을 수 있다 | 속성을 보는 조건이면 그 속성과 비교 | [AD-214] |
+
+**pack_rule_condition_value** — 조건이 견주는 값. 속성의 형식에 맞는 정해진 표기로 담는다. 값의 글자 코드 순으로 번호를 매긴다.
+
+- 규칙을 고친 Pack 을 다시 적재하면 그 Pack 의 규칙을 모두 지우고 새로 넣는다. [AD-216]
+
 ## 5. link 의 테이블
 
 2026-11-20 의 결정(AD-148 ~ AD-155)으로 다시 썼다. 판, 항목, 항목이 만든 것, 투입 기록, 알림의 다섯 테이블은 변경 파일 `V7__link_edition.sql` 에 있다 (C-04, [AD-183]). 판 비교에 쓰는 열과 변동 이벤트, 변동 대상의 테이블은 `V8__link_change_event.sql` 에 있다 (C-05, [AD-194]). V8 은 판이 하나도 없는 데이터베이스를 전제로 한다. [AD-197]

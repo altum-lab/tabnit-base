@@ -1,4 +1,5 @@
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router";
 import { api, type ChangeProcessing, type EditionSubmission, type PackSummary } from "../api/client";
 import { CONNECTION_FAILED, messageOf } from "../api/problem";
 
@@ -270,7 +271,18 @@ function Result({ result }: { result: EditionSubmission }) {
                     </ul>
                   </td>
                   <td>{processingLabel(change.processing)}</td>
-                  <td>{actionCountLabel(change.processing)}</td>
+                  <td>
+                    {change.processing.status === "PROCESSED" ? (
+                      // 그 변동의 조치만 걸러서 여는 길. 수는 서버가 준 값이다.
+                      <Link
+                        to={`/actions?${new URLSearchParams({ packId: result.packId, status: "ALL", changeEventId: change.changeEventId })}`}
+                      >
+                        {actionCountLabel(change.processing)}
+                      </Link>
+                    ) : (
+                      actionCountLabel(change.processing)
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

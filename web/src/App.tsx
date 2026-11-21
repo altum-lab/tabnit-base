@@ -1,4 +1,5 @@
 import { Navigate, NavLink, Route, Routes } from "react-router";
+import { ActionsPage } from "./pages/ActionsPage";
 import { ChangesPage } from "./pages/ChangesPage";
 import { RelationsPage } from "./pages/RelationsPage";
 
@@ -9,6 +10,7 @@ import { RelationsPage } from "./pages/RelationsPage";
 
 const SCREENS = [
   { path: "/changes", label: "변동 감지", element: <ChangesPage /> },
+  { path: "/actions", label: "조치", element: <ActionsPage /> },
   { path: "/relations", label: "관계 조회", element: <RelationsPage /> },
 ];
 

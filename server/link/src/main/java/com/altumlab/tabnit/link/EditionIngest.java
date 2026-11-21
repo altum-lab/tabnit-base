@@ -95,7 +95,10 @@ public class EditionIngest {
         if (fileName != null && fileName.indexOf('\u0000') >= 0) {
             throw new IllegalArgumentException("파일의 이름에 쓸 수 없는 글자(NUL)가 있습니다. 파일의 이름을 고쳐 다시 넣으세요.");
         }
-        Attempt attempt = new Attempt(pack.packId(), inputSourceId, fileName, effectiveDate, receivedAt,
+        // 받은 때는 저장소가 담는 정밀도(마이크로초)로 한 번 잘라 쓴다. 넣을 때와 견줄 때의 값이 같아야 한다:
+        // 그대로 넣으면 저장하면서 반올림되어, 같은 때로 들어온 다음 판이 더 이른 것으로 보일 수 있다.
+        Attempt attempt = new Attempt(pack.packId(), inputSourceId, fileName, effectiveDate,
+                receivedAt.truncatedTo(java.time.temporal.ChronoUnit.MICROS),
                 LinkHash.sha256Hex(content));
         if (content.length > maxFileBytes) {
             return recordRejection(attempt, "FILE_TOO_LARGE", Integer.toString(content.length));
@@ -156,9 +159,9 @@ public class EditionIngest {
                 // 적용일은 바로 앞 판보다 하루 이상 뒤여야 한다 (D2 AD-149).
                 return reject(attempt, "EFFECTIVE_DATE_NOT_AFTER_PREVIOUS", previous.effectiveDate().toString());
             }
-            if (attempt.receivedAt().truncatedTo(java.time.temporal.ChronoUnit.MICROS).isBefore(previous.receivedAt())) {
+            if (attempt.receivedAt().isBefore(previous.receivedAt())) {
                 // 받은 때가 앞 판보다 이르면 변동을 처리하는 차례가 뒤집힌다. 받은 때는 부르는 쪽이 넘기므로 생길 수 있다
-                // (D2 AD-208). 저장소가 담는 정밀도(마이크로초)로 견준다.
+                // (D2 AD-208). 두 값 모두 마이크로초로 잘린 것이다.
                 return reject(attempt, "RECEIVED_BEFORE_PREVIOUS", previous.receivedAt().toString());
             }
             editionNo = previous.editionNo() + 1;

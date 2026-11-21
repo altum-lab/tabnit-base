@@ -86,6 +86,56 @@ class CsvTableReaderTest {
     }
 
     @Test
+    void 줄바꿈하지_않는_빈칸도_앞뒤에서_떼고_가운데의_것은_그대로_둔다() {
+        // 엑셀에서 옮긴 자료에 흔한, 눈에 보이지 않는 빈칸이다 (U+00A0, D2 AD-313).
+        TableFile file = read("\u00A0code\u00A0,name\u00A0\n\u00A0A-1\u00A0\u00A0,two\u00A0words\n \u00A0 A-2 \u00A0 ,\"\u00A0quoted\u00A0\"\n");
+
+        assertThat(file.columns()).containsExactly("code", "name");
+        assertThat(file.rows()).extracting(TableRow::values)
+            .containsExactly(List.of("A-1", "two\u00A0words"), List.of("A-2", "quoted"));
+        assertThat(file.skipped()).isEmpty();
+    }
+
+    @Test
+    void 줄바꿈하지_않는_빈칸만_있는_칸은_빈_칸이고_큰따옴표의_앞뒤에서도_빈칸이다() {
+        TableFile file = read("code,name\nA-1,\u00A0\u00A0\nA-2,\u00A0\"감싼 값\"\u00A0\nA-3,\"\u00A0\"\n");
+
+        // 큰따옴표 앞의 것은 감싼 값을 여는 데 걸리지 않고, 닫는 큰따옴표 뒤의 것은 이어진 글자가 아니다.
+        assertThat(file.rows()).extracting(r -> r.values().get(1)).containsExactly("", "감싼 값", "");
+        assertThat(file.skipped()).isEmpty();
+    }
+
+    @Test
+    void 다른_보이지_않는_글자는_떼지_않는다() {
+        // 폭이 좁은 줄바꿈하지 않는 빈칸, 숫자 폭 빈칸, 폭이 없는 빈칸, 폭이 없는 줄바꿈하지 않는 빈칸은 값의 일부다 (D6 7절).
+        TableFile file = read("code,name\n\u202FA-1\u202F,\u2007숫자 폭\nA-2\u200B,가운데\uFEFF\n");
+
+        assertThat(file.rows()).extracting(TableRow::values)
+            .containsExactly(List.of("\u202FA-1\u202F", "\u2007숫자 폭"), List.of("A-2\u200B", "가운데\uFEFF"));
+    }
+
+    @Test
+    void 줄바꿈하지_않는_빈칸만_붙은_열_이름과_큰따옴표_둘레의_경우를_정해진_대로_읽는다() {
+        // 열 이름에만 붙은 경우.
+        assertThat(read("code\u00A0,\u00A0name\nA-1,가\n").columns()).containsExactly("code", "name");
+        // 떼고 나면 비거나 겹치는 열 이름은 거부한다.
+        rejection("code,\u00A0\nA-1,가\n");
+        rejection("code,code\u00A0\nA-1,가\n");
+        // 감싼 값 가운데의 것은 남는다.
+        assertThat(read("code\n\"a\u00A0b\"\n").rows().get(0).values()).containsExactly("a\u00A0b");
+        // 값이 이미 시작한 뒤의 큰따옴표는 글자 그대로다. 앞의 줄바꿈하지 않는 빈칸은 떼어진다.
+        assertThat(read("code\n\u00A0a\"b\n").rows().get(0).values()).containsExactly("a\"b");
+        // 닫는 큰따옴표 뒤에 줄바꿈하지 않는 빈칸을 지나 글자가 이어지면 그 행을 건너뛴다.
+        TableFile after = read("code,name\n\"A-1\"\u00A0x,가\nA-2,나\n");
+        assertThat(after.rows()).extracting(r -> r.values().get(0)).containsExactly("A-2");
+        assertThat(after.skipped()).extracting(SkippedRow::rowNo).containsExactly(2);
+        // 줄바꿈하지 않는 빈칸만 든 줄은 빈 줄이 아니다: 칸 하나가 빈 행이라 열이 둘인 파일에서는 건너뛴 행이다.
+        TableFile blank = read("code,name\nA-1,가\n\u00A0\nA-2,나\n");
+        assertThat(blank.rows()).extracting(r -> r.values().get(0)).containsExactly("A-1", "A-2");
+        assertThat(blank.skipped()).extracting(SkippedRow::rowNo).containsExactly(3);
+    }
+
+    @Test
     void 빈칸만_있는_칸은_빈_칸이다() {
         TableFile file = read("code,name\nA-1,   \nA-2,\"  \"\n");
 

@@ -685,6 +685,56 @@ class EditionDiffTest {
     }
 
     @Test
+    void 키와_값의_앞뒤에_줄바꿈하지_않는_빈칸이_붙어도_같은_항목이고_변동이_아니다() {
+        PackDefinition pack = pack("d-nbsp", full());
+        put(pack, 1, D1, HEADER + "B-1,첫째,1,O-1\nB-2,둘째,2,O-1\n");
+
+        // 둘째 판은 엑셀을 거치며 키와 값의 앞뒤에 눈에 보이지 않는 빈칸이 붙었다 (D2 AD-313).
+        IngestResult second = put(pack, 2, D2, HEADER + "B-1\u00A0,\u00A0첫째,1\u00A0,\u00A0O-1\nB-2,둘째,2,O-1\n");
+
+        assertThat(second.outcome()).isEqualTo(IngestOutcome.ACCEPTED);
+        assertThat(records.changeEvents("d-nbsp|src|2")).isEmpty();
+        assertThat(records.items("d-nbsp|src|2")).extracting(IngestedItem::itemKey).containsExactly("B-1", "B-2");
+    }
+
+    @Test
+    void 키의_칸이_줄바꿈하지_않는_빈칸뿐이면_빈_키라서_그_행을_건너뛴다() {
+        PackDefinition pack = pack("d-nbsp-key", full());
+
+        IngestResult first = put(pack, 1, D1, HEADER + "B-1,첫째,1,O-1\n\u00A0,둘째,2,O-1\n");
+
+        assertThat(first.outcome()).isEqualTo(IngestOutcome.ACCEPTED);
+        assertThat(records.items("d-nbsp-key|src|1")).extracting(IngestedItem::itemKey).containsExactly("B-1");
+        assertThat(records.notices("d-nbsp-key|src|1")).extracting(IngestNotice::rowNo, IngestNotice::code)
+            .containsExactly(tuple(3, "BLANK_KEY"));
+    }
+
+    @Test
+    void 앞_판의_값을_넣던_행이_빠지고_남은_행들의_값이_부딪히면_저장된_값은_그대로여도_그_속성이_바뀐_것으로_남는다() {
+        PackDefinition pack = pack("d-items-conflict", shared());
+        // 앞 판의 값을 넣던 행이 새 판에도 있으면 변동이 없다 (위의 d-owner 시험). 이 시험은 그 행이 빠진 경우다.
+        // 이름은 1번 행만 넣었다. 2번과 3번 행은 같은 개체를 가리키되 이름을 적지 않았다.
+        put(pack, 1, D1, "line,other,otherName\n1,O-1,상대\n2,O-1,\n3,O-1,\n");
+
+        // 1번 행이 빠지고, 2번과 3번 행이 서로 다른 이름을 적어 부딪힌다. 어느 것도 고르지 않는다 (D2 AD-146).
+        IngestResult second = put(pack, 2, D2, "line,other,otherName\n2,O-1,둘째 이름\n3,O-1,셋째 이름\n");
+
+        assertThat(second.outcome()).isEqualTo(IngestOutcome.ACCEPTED);
+        // 부딪혔다고 알린다.
+        assertThat(records.notices("d-items-conflict|src|2")).extracting(IngestNotice::code)
+            .containsExactly("CONFLICTING_VALUES", "CONFLICTING_VALUES");
+        // 저장된 이름은 앞 판의 것 그대로다.
+        assertThat(values.valueAsOf("d-items-conflict|Other|O-1", "otherName", D2).map(AttributeValue::value))
+            .contains("상대");
+        // 그래도 "그 행에서 바뀐 것"은 행이 적은 것을 기준으로 남는다 (D2 AD-305): 부딪힌 두 행은 변경이고 이름이 바뀐 것이다.
+        assertThat(records.changeEvents("d-items-conflict|src|2"))
+            .extracting(ChangeEvent::itemKey, ChangeEvent::kind, ChangeEvent::changedAttributes)
+            .containsExactly(tuple("1", ChangeKind.REMOVED, List.of("otherName")),
+                    tuple("2", ChangeKind.CHANGED, List.of("otherName")),
+                    tuple("3", ChangeKind.CHANGED, List.of("otherName")));
+    }
+
+    @Test
     void 바뀐_것은_어느_조회로_읽어도_같고_다시_읽어도_같다() {
         PackDefinition pack = pack("d-items-read", full());
         put(pack, 1, D1, HEADER + "B-1,첫째,1,O-1\n");

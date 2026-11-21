@@ -28,6 +28,7 @@ class PacksController {
 	}
 
 	@GetMapping("/api/v1/packs")
+	@Audited(action = "listPacks")
 	PackListResponse list() {
 		List<PackListResponse.Pack> found = new ArrayList<>();
 		for (String packId : this.packs.packIds()) {

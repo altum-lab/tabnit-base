@@ -1,6 +1,10 @@
 package com.altumlab.tabnit.api;
 
+import com.altumlab.tabnit.common.AuditLog;
 import com.altumlab.tabnit.common.UserAccounts;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import com.altumlab.tabnit.core.EntityQuery;
 import java.time.Duration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -19,7 +23,7 @@ import org.springframework.context.annotation.Configuration;
 
 /** api 가 쓰는 것들을 잇는다. 계산과 판단은 각 모듈이 하고, api 는 부르기만 한다. */
 @Configuration(proxyBeanMethods = false)
-class ApiConfiguration {
+class ApiConfiguration implements WebMvcConfigurer {
 
 	/** 서버의 시계. 현재 시각은 api 층에서만 읽고, 엔진에는 날짜로 넘긴다 (D2 AD-23, AD-26). */
 	@Bean
@@ -59,6 +63,30 @@ class ApiConfiguration {
 	@Bean
 	PackLoading packLoading(DataSource dataSource, Clock clock, @Value("${tabnit.packs-dir:}") String packsDirectory) {
 		return new PackLoading(dataSource, clock, packsDirectory);
+	}
+
+	/** 감사 기록의 저장 (common). */
+	@Bean
+	AuditLog auditLog(DataSource dataSource) {
+		return new AuditLog(dataSource);
+	}
+
+	/** 요청을 감사 기록에 남긴다 (D7 2절). */
+	@Bean
+	AuditTrail auditTrail(AuditLog auditLog, Clock clock) {
+		return new AuditTrail(auditLog, clock);
+	}
+
+	private final ObjectProvider<AuditTrail> auditTrail;
+
+	ApiConfiguration(ObjectProvider<AuditTrail> auditTrail) {
+		this.auditTrail = auditTrail;
+	}
+
+	/** 모든 API 의 요청 앞뒤에 감사 기록을 남긴다. */
+	@Override
+	public void addInterceptors(InterceptorRegistry registry) {
+		registry.addInterceptor(new AuditInterceptor(this.auditTrail.getObject())).addPathPatterns("/api/**");
 	}
 
 	@Bean

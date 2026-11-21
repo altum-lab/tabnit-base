@@ -47,6 +47,7 @@ class ActionDecisionsController {
 	}
 
 	@GetMapping("/api/v1/action")
+	@Audited(action = "getAction", params = "actionId")
 	ActionDetailResponse get(@RequestParam(required = false) String actionId) {
 		requireActionId(actionId);
 		// 조치와 이력은 rules 가 한 시점의 것으로 함께 읽어 준다.
@@ -54,6 +55,7 @@ class ActionDecisionsController {
 	}
 
 	@PostMapping("/api/v1/action-decisions")
+	@Audited(action = "decideAction")
 	ActionDetailResponse decide(@RequestBody Map<String, Object> request, Authentication authentication) {
 		if (authentication == null) {
 			// 로그인하지 않은 요청은 여기까지 오지 않는다. 왔다면 서버 쪽의 문제다. 누가 했는지 없이 이력을 남기지 않는다.
@@ -62,6 +64,8 @@ class ActionDecisionsController {
 		String actor = authentication.getName();
 		// 항목의 형식은 여기서 본다. 글자가 아닌 값(수, 참거짓, 객체)을 글자로 바꿔 받지 않는다.
 		String actionId = text(request.get("actionId"), ActionDecisionsController::invalidActionId);
+		// 어느 조치에 무엇을 하려 했는지를 감사 기록에 남긴다. 사유는 남기지 않는다.
+		AuditTrail.target("actionId", actionId);
 		requireActionId(actionId);
 		String decision = text(request.get("decision"), ActionDecisionsController::invalidDecision);
 		if (decision == null || decision.isEmpty()) {
@@ -72,6 +76,7 @@ class ActionDecisionsController {
 		if (!confirm && !decision.equals("HOLD")) {
 			throw invalidDecision();
 		}
+		AuditTrail.detail("decision", decision);
 		String note = text(request.get("note"), () -> new ApiProblemException(HttpStatus.BAD_REQUEST, "INVALID_NOTE", "note",
 				"사유는 글자로 적어야 합니다. 사유를 글자로 적어 다시 보내세요."));
 		try {

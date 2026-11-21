@@ -34,6 +34,7 @@ class RelationsController {
 	}
 
 	@GetMapping("/api/v1/relations")
+	@Audited(action = "getRelationsAsOf", params = "entityId")
 	RelationsAsOfResponse relationsAsOf(@RequestParam(required = false) String entityId,
 			@RequestParam(required = false) String asOf) {
 		if (entityId == null || entityId.isEmpty()) {
@@ -41,6 +42,7 @@ class RelationsController {
 					"개체의 id 가 없습니다. entityId 에 개체의 id 를 넣어 다시 보내세요.");
 		}
 		LocalDate date = resolveAsOf(asOf);
+		AuditTrail.asOf(date);
 		List<Relation> relations = relationQuery.relationsAsOf(entityId, date);
 		return RelationsAsOfResponse.of(date, entityId, relations);
 	}

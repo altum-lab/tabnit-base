@@ -41,6 +41,7 @@ class EditionsController {
 	}
 
 	@PostMapping(path = "/api/v1/editions", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+	@Audited(action = "submitEdition", params = { "packId", "inputSourceId", "effectiveDate" })
 	EditionSubmissionResponse submit(@RequestParam(required = false) String packId,
 			@RequestParam(required = false) String inputSourceId, @RequestParam(required = false) String effectiveDate,
 			@RequestParam(required = false) MultipartFile file) {
@@ -70,6 +71,9 @@ class EditionsController {
 		}
 		EditionProcessingResult result = this.processing.submit(packId, inputSourceId, fileName(file), content, date);
 		IngestResult ingest = result.ingest();
+		// 받아들였는지와 어느 판이 됐는지를 감사 기록에 남긴다. 파일의 이름과 내용은 남기지 않는다.
+		AuditTrail.detail("outcome", ingest.outcome().name());
+		AuditTrail.detail("editionId", ingest.editionId());
 		if (ingest.outcome() == IngestOutcome.REJECTED) {
 			if (FILE_TOO_LARGE.equals(ingest.reasonCode())) {
 				throw new EditionRejectedException(ingest.reasonCode(), ingest.reasonDetail(), true,

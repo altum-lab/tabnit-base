@@ -33,6 +33,7 @@ class ActionsController {
 	}
 
 	@GetMapping("/api/v1/actions")
+	@Audited(action = "listActions", params = { "packId", "status", "changeEventId" })
 	ActionListResponse list(@RequestParam(required = false) String packId, @RequestParam(required = false) String status,
 			@RequestParam(required = false) String changeEventId) {
 		if (packId == null || packId.isBlank()) {
@@ -54,6 +55,7 @@ class ActionsController {
 	}
 
 	@GetMapping("/api/v1/impact-scopes")
+	@Audited(action = "getChangeImpactScope", params = "changeEventId")
 	ChangeImpactScopeResponse impactScope(@RequestParam(required = false) String changeEventId) {
 		if (changeEventId == null || changeEventId.isEmpty()) {
 			throw new ApiProblemException(HttpStatus.BAD_REQUEST, "MISSING_CHANGE_EVENT_ID", "changeEventId",

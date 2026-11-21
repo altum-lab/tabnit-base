@@ -1,5 +1,6 @@
 package com.altumlab.tabnit.api;
 
+import com.altumlab.tabnit.common.UserAccounts;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -33,17 +34,22 @@ class SessionController {
 
 	private final SecurityContextRepository contexts;
 
-	SessionController(AuthenticationManager authentications, SecurityContextRepository contexts) {
+	private final UserAccounts accounts;
+
+	SessionController(AuthenticationManager authentications, SecurityContextRepository contexts, UserAccounts accounts) {
+		this.accounts = accounts;
 		this.authentications = authentications;
 		this.contexts = contexts;
 	}
 
 	@GetMapping(SecurityConfiguration.SESSION_PATH)
+	@NotAudited(reason = "화면이 열릴 때마다 묻는다. 자기가 누구인지만 답한다 (D2 AD-274)")
 	SessionResponse get(Authentication authentication) {
 		return response(authentication);
 	}
 
 	@PostMapping(SecurityConfiguration.SESSION_PATH)
+	@Audited(action = "login")
 	SessionResponse login(@RequestBody Map<String, Object> body, HttpServletRequest request,
 			HttpServletResponse response) {
 		// 글자가 아닌 값(수, 목록)을 글자로 바꿔 받지 않는다.
@@ -54,6 +60,11 @@ class SessionController {
 		if (!(body.get("password") instanceof String password) || password.isEmpty()) {
 			throw new ApiProblemException(HttpStatus.BAD_REQUEST, "MISSING_PASSWORD", "password",
 					"비밀번호가 없습니다. 비밀번호를 넣어 다시 시도하세요.");
+		}
+		// 어느 아이디로 하려 했는지는 그 아이디가 있을 때만 감사 기록에 남긴다: 없는 아이디는 아이디 칸에 비밀번호를 잘못 넣은
+		// 것일 수 있다. 응답에는 드러나지 않는다.
+		if (this.accounts.find(loginId).isPresent()) {
+			AuditTrail.target("loginId", loginId);
 		}
 		Authentication authentication;
 		try {

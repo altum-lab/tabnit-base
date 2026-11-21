@@ -1,0 +1,108 @@
+# 제조 안전 Pack. 반도체 제조 현장의 안전·보건·환경 업무를 본뜬 예시 Pack 이다 (D2 AD-49, AD-284 ~ AD-288).
+# 모든 이름과 값은 지어낸 것이다. 실제 회사, 현장, 법령, 문서와 관계가 없다.
+# 규칙. 형식은 D8 2절이다.
+#
+# 0001 ~ 0005 는 변동 대상이 물질안전자료일 때 걸린다. 자료의 행은 다른 개체를 가리키지 않으므로,
+# 자료의 입력 자료에서 나온 변동은 변동 대상이 그 자료 하나이고 영향 대상에 이르는 근거 경로는 그 자료에서 시작한다.
+# 0006 은 변동 대상에 인원이 있는, 추가나 변경의 변동에 걸린다.
+#
+# 형식이 모자라 옮기지 못한 것, 그래서 뜻보다 넓게 걸리는 것 (D6 "결정 필요" 15번, D8 "결정 필요" 10번):
+# - 자료의 어느 항목이 바뀌었는지로 가르는 것 (유해성, 노출기준이 바뀔 때만). 자료의 행이 어떻게 바뀌든 걸린다.
+# - 인원의 교육 이수일이 자료의 개정일보다 앞선 인원만 고르는 것 (속성을 변동의 날짜와 견주는 조건).
+# - 변동이 어느 입력 자료에서 나왔는지를 볼 수 없다. 그래서:
+#   - 0001 ~ 0005 는 물질의 입력 자료(substance)의 행이 바뀌어도 걸린다. 그 행이 자료를 가리켜 자료도 변동 대상이 되기 때문이다.
+#     물질의 이름만 고쳐도 교육, 표지 교체, 게시물 교체의 조치가 생긴다.
+#   - 0006 은 인원의 행이 어떻게 바뀌든 걸린다 (배치 공정이 아니라 이름이나 교육 이수일만 바뀌어도).
+#     인원을 가리키는 다른 입력 자료(이행 증빙 evidence)의 행이 더해지거나 바뀌어도 걸린다.
+# 지금의 시나리오에는 물질이나 증빙의 행이 바뀌는 판이 없어 검증 질문에는 드러나지 않는다.
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix tabnit: <urn:tabnit:vocab:> .
+@prefix ex:     <urn:tabnit:pack:manufacturing-safety:> .
+
+ex:규칙-0001 a tabnit:Rule ;
+    tabnit:ruleNo "0001" ;
+    rdfs:label "자료 변경에 따른 인원 교육" ;
+    tabnit:priority 1 ;
+    tabnit:whenChangeKind tabnit:Changed ;
+    tabnit:appliesTo tabnit:ImpactTarget ;
+    tabnit:targetType ex:작업인원 ;
+    tabnit:condition [
+        tabnit:subject tabnit:ChangeTarget ;
+        tabnit:typeIs ex:물질안전자료
+    ] ;
+    tabnit:actionText "바뀐 물질안전자료의 내용으로 변경 교육을 실시한다" ;
+    tabnit:dueInDays 14 .
+
+ex:규칙-0002 a tabnit:Rule ;
+    tabnit:ruleNo "0002" ;
+    rdfs:label "운영 중인 설비의 표지 교체" ;
+    tabnit:priority 2 ;
+    tabnit:whenChangeKind tabnit:Changed ;
+    tabnit:appliesTo tabnit:ImpactTarget ;
+    tabnit:targetType ex:공정설비 ;
+    tabnit:condition [
+        tabnit:subject tabnit:ChangeTarget ;
+        tabnit:typeIs ex:물질안전자료
+    ] ;
+    tabnit:condition [
+        tabnit:subject tabnit:ImpactTarget ;
+        tabnit:property ex:설비상태 ;
+        tabnit:operator tabnit:Equals ;
+        tabnit:value "운영"
+    ] ;
+    tabnit:actionText "설비의 경고 표지를 새 판의 내용으로 교체한다" ;
+    tabnit:dueInDays 7 .
+
+ex:규칙-0003 a tabnit:Rule ;
+    tabnit:ruleNo "0003" ;
+    rdfs:label "보관소의 표지와 자료 비치" ;
+    tabnit:priority 2 ;
+    tabnit:whenChangeKind tabnit:Changed ;
+    tabnit:appliesTo tabnit:ImpactTarget ;
+    tabnit:targetType ex:약품보관소 ;
+    tabnit:condition [
+        tabnit:subject tabnit:ChangeTarget ;
+        tabnit:typeIs ex:물질안전자료
+    ] ;
+    tabnit:actionText "보관소의 표지를 교체하고 새 판의 자료를 비치한다" ;
+    tabnit:dueInDays 7 .
+
+ex:규칙-0004 a tabnit:Rule ;
+    tabnit:ruleNo "0004" ;
+    rdfs:label "게시물 교체" ;
+    tabnit:priority 1 ;
+    tabnit:whenChangeKind tabnit:Changed ;
+    tabnit:appliesTo tabnit:ChangeTarget ;
+    tabnit:targetType ex:물질안전자료 ;
+    tabnit:actionText "게시된 물질안전자료를 새 판으로 교체한다" ;
+    tabnit:dueInDays 3 .
+
+ex:규칙-0005 a tabnit:Rule ;
+    tabnit:ruleNo "0005" ;
+    rdfs:label "특별관리 물질의 특수검진 대상 갱신" ;
+    tabnit:priority 1 ;
+    tabnit:whenChangeKind tabnit:Changed ;
+    tabnit:appliesTo tabnit:ImpactTarget ;
+    tabnit:targetType ex:작업인원 ;
+    tabnit:condition [
+        tabnit:subject tabnit:ChangeTarget ;
+        tabnit:typeIs ex:물질안전자료
+    ] ;
+    tabnit:condition [
+        tabnit:subject tabnit:ChangeTarget ;
+        tabnit:property ex:자료특별관리 ;
+        tabnit:operator tabnit:Equals ;
+        tabnit:value true
+    ] ;
+    tabnit:actionText "특수건강검진 대상에 넣는다" ;
+    tabnit:dueInDays 30 .
+
+ex:규칙-0006 a tabnit:Rule ;
+    tabnit:ruleNo "0006" ;
+    rdfs:label "배치가 바뀐 인원의 배치 전 검진" ;
+    tabnit:priority 2 ;
+    tabnit:whenChangeKind tabnit:Added , tabnit:Changed ;
+    tabnit:appliesTo tabnit:ChangeTarget ;
+    tabnit:targetType ex:작업인원 ;
+    tabnit:actionText "새 공정의 유해 요인에 맞춰 배치 전 건강검진을 받게 한다" ;
+    tabnit:dueInDays 10 .

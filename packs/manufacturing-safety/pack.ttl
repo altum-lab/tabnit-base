@@ -1,0 +1,12 @@
+# 제조 안전 Pack. 반도체 제조 현장의 안전·보건·환경 업무를 본뜬 예시 Pack 이다 (D2 AD-49, AD-284 ~ AD-288).
+# 모든 이름과 값은 지어낸 것이다. 실제 회사, 현장, 법령, 문서와 관계가 없다.
+# 소재: 물질안전자료가 바뀌면 그 물질을 쓰는 공정, 설비, 인원, 보관소와 그 물질에 걸린 요건으로 영향이 퍼진다.
+#       인원이 다른 공정으로 옮기면 그 인원에게 할 일이 생긴다.
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix tabnit: <urn:tabnit:vocab:> .
+
+<urn:tabnit:pack:manufacturing-safety:> a tabnit:Pack ;
+    tabnit:packId "manufacturing-safety" ;
+    rdfs:label "제조 안전 Pack: 반도체 제조 현장의 안전·보건·환경 (지어낸 자료)" ;
+    # 물질안전자료 → 화학물질 → 제조공정·약품보관소·법정요건 → 공정설비·작업인원 까지가 깊이 3 이다.
+    tabnit:defaultMaxDepth 3 .

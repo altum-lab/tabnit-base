@@ -1,0 +1,36 @@
+# 제조 안전 Pack. 반도체 제조 현장의 안전·보건·환경 업무를 본뜬 예시 Pack 이다 (D2 AD-49, AD-284 ~ AD-288).
+# 모든 이름과 값은 지어낸 것이다. 실제 회사, 현장, 법령, 문서와 관계가 없다.
+# 제약: 입력 자료가 지켜야 할 것.
+@prefix sh:     <http://www.w3.org/ns/shacl#> .
+@prefix xsd:    <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:     <urn:tabnit:pack:manufacturing-safety:> .
+
+ex:물질안전자료제약 a sh:NodeShape ;
+    sh:targetClass ex:물질안전자료 ;
+    sh:property [
+        sh:path ex:자료판번호 ;
+        sh:minCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+    ] ;
+    sh:property [
+        sh:path ex:노출기준값 ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 0 ;
+    ] .
+
+ex:화학물질제약 a sh:NodeShape ;
+    sh:targetClass ex:화학물질 ;
+    sh:property [
+        sh:path ex:물질명칭 ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+    ] .
+
+ex:약품보관소제약 a sh:NodeShape ;
+    sh:targetClass ex:약품보관소 ;
+    sh:property [
+        sh:path ex:표지판번호 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+    ] .

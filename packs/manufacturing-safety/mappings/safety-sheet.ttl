@@ -1,0 +1,23 @@
+# 제조 안전 Pack. 반도체 제조 현장의 안전·보건·환경 업무를 본뜬 예시 Pack 이다 (D2 AD-49, AD-284 ~ AD-288).
+# 모든 이름과 값은 지어낸 것이다. 실제 회사, 현장, 법령, 문서와 관계가 없다.
+# 입력 자료 safety-sheet: 물질안전자료의 지금 판. 이 자료의 행은 물질을 가리키지 않는다: 자료가 바뀐 변동의 변동 대상이 자료 하나가 되어, 규칙이 자료의 변경을 가려낼 수 있다.
+@prefix tabnit: <urn:tabnit:vocab:> .
+@prefix ex:     <urn:tabnit:pack:manufacturing-safety:> .
+
+ex:매핑-safety-sheet a tabnit:Mapping ;
+    tabnit:inputSourceId "safety-sheet" ;
+    tabnit:fileFormat tabnit:Csv ;
+    tabnit:requiredColumns ( "자료번호" "자료판번호" "자료개정일" "유해성구분" "노출기준값" "자료특별관리" ) ;
+    tabnit:itemKeyColumns ( "자료번호" ) ;
+    # 이 행이 나타내는 개체. 이 행에서 나온 변동의 근거가 된다 (D2 AD-120).
+    tabnit:primaryEntity [ tabnit:entityType ex:물질안전자료 ; tabnit:keyColumn "자료번호" ] ;
+    tabnit:entity [
+        tabnit:entityType ex:물질안전자료 ;
+        tabnit:keyColumn "자료번호" ;
+        tabnit:attribute [ tabnit:property ex:자료판번호 ; tabnit:column "자료판번호" ] ;
+        tabnit:attribute [ tabnit:property ex:자료개정일 ; tabnit:column "자료개정일" ] ;
+        tabnit:attribute [ tabnit:property ex:유해성구분 ; tabnit:column "유해성구분" ] ;
+        tabnit:attribute [ tabnit:property ex:노출기준값 ; tabnit:column "노출기준값" ] ;
+        tabnit:attribute [ tabnit:property ex:자료특별관리 ; tabnit:column "자료특별관리" ;
+                           tabnit:trueValue "예" ; tabnit:falseValue "아니오" ]
+    ] .

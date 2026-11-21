@@ -1,0 +1,199 @@
+# 퇴직연금 Pack. 퇴직연금 사업자의 규약 준수와 운영 업무를 본뜬 예시 Pack 이다 (D2 AD-49, AD-294 ~ AD-298).
+# 모든 이름은 지어낸 것이다. 실제 기관, 사업장, 사람, 규정과 관계가 없다.
+# 규칙. 형식은 D8 2절 ~ 3절이다. 한도와 기한의 수치는 시연 자료의 것을 따랐다 (D2 AD-296).
+#
+# 0001, 0002 요건의 위험자산 한도가 바뀌면, 비중이 그 한도를 넘는 계좌에 건다 (영향 대상의 속성을 변동 대상의 속성과 견준다).
+# 0003 ~ 0005 금융기관의 등급 점수가 기준(10) 미만으로 바뀌면, 그 기관의 예금과 거기에 닿은 가입자와 사업장에 건다.
+# 0006 퇴직일이 들어온 가입자 가운데 퇴직일이 판의 적용일 이하인 사람에게 건다 (속성을 판의 적용일과 견준다).
+# 0007, 0008 제도의 적립 비율이 기준(0.95) 미만으로 바뀌면, 그 사업장과 담당자에게 건다.
+#
+# 형식이 모자라 옮기지 못한 것, 그래서 시연과 다른 것 (D6 "결정 필요" 16번, D8 "결정 필요" 12번):
+# - 집계와 산술: 계좌의 위험자산 비중, 기관별 예금 합계와 보호한도, 부족분과 지연이자. 비중과 점수는 받은 속성 값으로 본다.
+# - 순서가 있는 값의 비교: 신용등급을 글자로 견주지 못해 등급 점수(정수)를 따로 받는다.
+# - 기준 값을 요건에서 읽는 것: 0003 ~ 0005 와 0007, 0008 의 기준(10, 0.95)은 규칙에 적은 고정 값이다. 요건이 근거 경로 위에 없어 견줄 수 없다.
+# - 근거 경로의 가운데 대상의 조건: 0002 는 한도를 넘는 계좌의 가입자에게 걸어야 하지만, 가입자에 거는 규칙은 그 계좌의 비중을 보지 못한다. 계좌에 건다.
+#   0004, 0005 도 예금을 거쳐 닿았는지를 보지 못한다.
+# - 앞 판의 값과 견주기 (적립 비율이 한 해 사이에 얼마나 나아졌는가), 영업일로 세는 기한, 확정된 조치가 다른 규칙을 깨우는 연쇄.
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix tabnit: <urn:tabnit:vocab:> .
+@prefix ex:     <urn:tabnit:pack:retirement-pension:> .
+
+ex:규칙-0001 a tabnit:Rule ;
+    tabnit:ruleNo "0001" ;
+    rdfs:label "한도를 넘는 계좌의 위험자산 매수 제한" ;
+    tabnit:priority 1 ;
+    tabnit:whenChangeKind tabnit:Changed ;
+    tabnit:whenInputSource "requirement" ;
+    tabnit:whenChanged ex:위험자산한도 ;
+    tabnit:appliesTo tabnit:ImpactTarget ;
+    tabnit:targetType ex:연금계좌 ;
+    tabnit:condition [
+        tabnit:subject tabnit:ChangeTarget ;
+        tabnit:typeIs ex:운영요건
+    ] ;
+    tabnit:condition [
+        tabnit:subject tabnit:ImpactTarget ;
+        tabnit:property ex:위험자산비중 ;
+        tabnit:operator tabnit:GreaterThan ;
+        tabnit:compareToSubject tabnit:ChangeTarget ;
+        tabnit:compareToProperty ex:위험자산한도
+    ] ;
+    tabnit:actionText "위험자산의 추가 매수를 제한한다" ;
+    tabnit:dueInDays 0 .
+
+ex:규칙-0002 a tabnit:Rule ;
+    tabnit:ruleNo "0002" ;
+    rdfs:label "한도 초과 가입자 통지" ;
+    tabnit:priority 2 ;
+    tabnit:whenChangeKind tabnit:Changed ;
+    tabnit:whenInputSource "requirement" ;
+    tabnit:whenChanged ex:위험자산한도 ;
+    tabnit:appliesTo tabnit:ImpactTarget ;
+    tabnit:targetType ex:연금계좌 ;
+    tabnit:condition [
+        tabnit:subject tabnit:ChangeTarget ;
+        tabnit:typeIs ex:운영요건
+    ] ;
+    tabnit:condition [
+        tabnit:subject tabnit:ImpactTarget ;
+        tabnit:property ex:위험자산비중 ;
+        tabnit:operator tabnit:GreaterThan ;
+        tabnit:compareToSubject tabnit:ChangeTarget ;
+        tabnit:compareToProperty ex:위험자산한도
+    ] ;
+    tabnit:actionText "계좌의 가입자에게 위험자산 한도 초과를 알린다" ;
+    tabnit:dueInDays 14 .
+
+ex:규칙-0003 a tabnit:Rule ;
+    tabnit:ruleNo "0003" ;
+    rdfs:label "등급 미달 기관의 예금 신규 편입 중단" ;
+    tabnit:priority 1 ;
+    tabnit:whenChangeKind tabnit:Changed ;
+    tabnit:whenInputSource "institution" ;
+    tabnit:whenChanged ex:등급점수 ;
+    tabnit:appliesTo tabnit:ImpactTarget ;
+    tabnit:targetType ex:운용상품 ;
+    tabnit:condition [
+        tabnit:subject tabnit:ChangeTarget ;
+        tabnit:typeIs ex:금융기관
+    ] ;
+    tabnit:condition [
+        tabnit:subject tabnit:ChangeTarget ;
+        tabnit:property ex:등급점수 ;
+        tabnit:operator tabnit:LessThan ;
+        tabnit:value 10
+    ] ;
+    tabnit:condition [
+        tabnit:subject tabnit:ImpactTarget ;
+        tabnit:property ex:상품구분 ;
+        tabnit:operator tabnit:Equals ;
+        tabnit:value "예금"
+    ] ;
+    tabnit:actionText "이 예금의 신규 편입과 재예치를 중단한다" ;
+    tabnit:dueInDays 0 .
+
+ex:규칙-0004 a tabnit:Rule ;
+    tabnit:ruleNo "0004" ;
+    rdfs:label "등급 미달 기관의 상품에 닿은 가입자 안내" ;
+    tabnit:priority 2 ;
+    tabnit:whenChangeKind tabnit:Changed ;
+    tabnit:whenInputSource "institution" ;
+    tabnit:whenChanged ex:등급점수 ;
+    tabnit:appliesTo tabnit:ImpactTarget ;
+    tabnit:targetType ex:연금가입자 ;
+    tabnit:condition [
+        tabnit:subject tabnit:ChangeTarget ;
+        tabnit:typeIs ex:금융기관
+    ] ;
+    tabnit:condition [
+        tabnit:subject tabnit:ChangeTarget ;
+        tabnit:property ex:등급점수 ;
+        tabnit:operator tabnit:LessThan ;
+        tabnit:value 10
+    ] ;
+    tabnit:actionText "가입자에게 기관의 등급 변동과 만기 때의 선택을 안내한다" ;
+    tabnit:dueInDays 14 .
+
+ex:규칙-0005 a tabnit:Rule ;
+    tabnit:ruleNo "0005" ;
+    rdfs:label "등급 미달 기관의 상품에 닿은 사업장 안내" ;
+    tabnit:priority 3 ;
+    tabnit:whenChangeKind tabnit:Changed ;
+    tabnit:whenInputSource "institution" ;
+    tabnit:whenChanged ex:등급점수 ;
+    tabnit:appliesTo tabnit:ImpactTarget ;
+    tabnit:targetType ex:가입사업장 ;
+    tabnit:condition [
+        tabnit:subject tabnit:ChangeTarget ;
+        tabnit:typeIs ex:금융기관
+    ] ;
+    tabnit:condition [
+        tabnit:subject tabnit:ChangeTarget ;
+        tabnit:property ex:등급점수 ;
+        tabnit:operator tabnit:LessThan ;
+        tabnit:value 10
+    ] ;
+    tabnit:actionText "사업장에 기관의 등급 변동을 안내한다" ;
+    tabnit:dueInDays 7 .
+
+ex:규칙-0006 a tabnit:Rule ;
+    tabnit:ruleNo "0006" ;
+    rdfs:label "퇴직 급여 지급 일정 수립" ;
+    tabnit:priority 1 ;
+    tabnit:whenChangeKind tabnit:Added , tabnit:Changed ;
+    tabnit:whenInputSource "participant" ;
+    tabnit:whenChanged ex:퇴직일 ;
+    tabnit:appliesTo tabnit:ChangeTarget ;
+    tabnit:targetType ex:연금가입자 ;
+    tabnit:condition [
+        tabnit:subject tabnit:ChangeTarget ;
+        tabnit:property ex:퇴직일 ;
+        tabnit:operator tabnit:LessThanOrEqual ;
+        tabnit:compareTo tabnit:EffectiveDate
+    ] ;
+    tabnit:actionText "퇴직 급여의 지급 일정을 세운다" ;
+    tabnit:dueInDays 14 .
+
+ex:규칙-0007 a tabnit:Rule ;
+    tabnit:ruleNo "0007" ;
+    rdfs:label "적립 부족 사업장 통보" ;
+    tabnit:priority 1 ;
+    tabnit:whenChangeKind tabnit:Changed ;
+    tabnit:whenInputSource "plan" ;
+    tabnit:whenChanged ex:적립비율 ;
+    tabnit:appliesTo tabnit:ImpactTarget ;
+    tabnit:targetType ex:가입사업장 ;
+    tabnit:condition [
+        tabnit:subject tabnit:ChangeTarget ;
+        tabnit:typeIs ex:연금제도
+    ] ;
+    tabnit:condition [
+        tabnit:subject tabnit:ChangeTarget ;
+        tabnit:property ex:적립비율 ;
+        tabnit:operator tabnit:LessThan ;
+        tabnit:value 0.95
+    ] ;
+    tabnit:actionText "사업장에 적립 부족을 통보한다" ;
+    tabnit:dueInDays 7 .
+
+ex:규칙-0008 a tabnit:Rule ;
+    tabnit:ruleNo "0008" ;
+    rdfs:label "부족분 해소 안내 준비" ;
+    tabnit:priority 2 ;
+    tabnit:whenChangeKind tabnit:Changed ;
+    tabnit:whenInputSource "plan" ;
+    tabnit:whenChanged ex:적립비율 ;
+    tabnit:appliesTo tabnit:ImpactTarget ;
+    tabnit:targetType ex:기업담당자 ;
+    tabnit:condition [
+        tabnit:subject tabnit:ChangeTarget ;
+        tabnit:typeIs ex:연금제도
+    ] ;
+    tabnit:condition [
+        tabnit:subject tabnit:ChangeTarget ;
+        tabnit:property ex:적립비율 ;
+        tabnit:operator tabnit:LessThan ;
+        tabnit:value 0.95
+    ] ;
+    tabnit:actionText "사업장의 부족분 해소 계획 안내를 준비한다" ;
+    tabnit:dueInDays 30 .

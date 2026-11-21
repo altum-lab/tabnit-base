@@ -1,0 +1,16 @@
+# 매핑. 형식은 D6 7절이다.
+@prefix tabnit: <urn:tabnit:vocab:> .
+@prefix ex:     <urn:tabnit:pack:retirement-pension:> .
+
+ex:매핑-default-option-product a tabnit:Mapping ;
+    tabnit:inputSourceId "default-option-product" ;
+    tabnit:fileFormat tabnit:Csv ;
+    tabnit:requiredColumns ( "방법번호" "상품번호" ) ;
+    tabnit:itemKeyColumns ( "방법번호" "상품번호" ) ;
+    # 이 행이 나타내는 개체. 이 행에서 나온 변동의 근거가 된다 (D2 AD-120).
+    tabnit:primaryEntity [ tabnit:entityType ex:기본운용방법 ; tabnit:keyColumn "방법번호" ] ;
+    tabnit:relation [
+        tabnit:relationType ex:방법구성 ;
+        tabnit:sourceEntity [ tabnit:entityType ex:기본운용방법 ; tabnit:keyColumn "방법번호" ] ;
+        tabnit:targetEntity [ tabnit:entityType ex:운용상품 ; tabnit:keyColumn "상품번호" ]
+    ] .

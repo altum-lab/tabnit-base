@@ -1,0 +1,23 @@
+# 매핑. 형식은 D6 7절이다.
+@prefix tabnit: <urn:tabnit:vocab:> .
+@prefix ex:     <urn:tabnit:pack:retirement-pension:> .
+
+ex:매핑-participant a tabnit:Mapping ;
+    tabnit:inputSourceId "participant" ;
+    tabnit:fileFormat tabnit:Csv ;
+    tabnit:requiredColumns ( "가입자번호" "가입자이름" "출생연도" "퇴직일" "재직사업장" ) ;
+    tabnit:itemKeyColumns ( "가입자번호" ) ;
+    # 이 행이 나타내는 개체. 이 행에서 나온 변동의 근거가 된다 (D2 AD-120).
+    tabnit:primaryEntity [ tabnit:entityType ex:연금가입자 ; tabnit:keyColumn "가입자번호" ] ;
+    tabnit:entity [
+        tabnit:entityType ex:연금가입자 ;
+        tabnit:keyColumn "가입자번호" ;
+        tabnit:attribute [ tabnit:property ex:가입자이름 ; tabnit:column "가입자이름" ] ;
+        tabnit:attribute [ tabnit:property ex:출생연도 ; tabnit:column "출생연도" ] ;
+        tabnit:attribute [ tabnit:property ex:퇴직일 ; tabnit:column "퇴직일" ]
+    ] ;
+    tabnit:relation [
+        tabnit:relationType ex:사업장재직 ;
+        tabnit:sourceEntity [ tabnit:entityType ex:연금가입자 ; tabnit:keyColumn "가입자번호" ] ;
+        tabnit:targetEntity [ tabnit:entityType ex:가입사업장 ; tabnit:keyColumn "재직사업장" ]
+    ] .

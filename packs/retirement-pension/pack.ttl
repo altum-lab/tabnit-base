@@ -1,0 +1,11 @@
+# 퇴직연금 Pack. 퇴직연금 사업자의 규약 준수와 운영 업무를 본뜬 예시 Pack 이다 (D2 AD-49, AD-294 ~ AD-298).
+# 모든 이름은 지어낸 것이다. 실제 기관, 사업장, 사람, 규정과 관계가 없다.
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix tabnit: <urn:tabnit:vocab:> .
+
+<urn:tabnit:pack:retirement-pension:> a tabnit:Pack ;
+    tabnit:packId "retirement-pension" ;
+    rdfs:label "퇴직연금 Pack: 퇴직연금 사업자의 규약 준수와 운영 (지어낸 자료)" ;
+    # 운영요건에서 출발하면 운용상품 → 연금계좌 → 연금가입자 → 가입사업장 → 기업담당자 까지가 깊이 5 이다.
+    # 운영규약에서 출발하면 기업담당자가 깊이 6 이라 한계에서 멈춘다.
+    tabnit:defaultMaxDepth 5 .

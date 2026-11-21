@@ -380,15 +380,15 @@ function Detail({ action, onAction }: { action: Action; onAction: (changed: Acti
   async function decide(decision: "CONFIRM" | "HOLD") {
     setDeciding(true);
     setRefused(null);
-    const request = ++latestHistory.current;
     try {
       const { data, error, response } = await api.POST("/api/v1/action-decisions", {
         body: { actionId: action.id, decision, note: note === "" ? null : note },
       });
       if (data) {
-        if (request === latestHistory.current) {
-          accept(data);
-        }
+        // 방금 바꾼 결과가 가장 새것이다. 그 전에 보낸 이력 요청의 답이 늦게 와도 쓰지 않는다.
+        // 실패했을 때는 번호를 올리지 않는다: 받고 있던 이력을 버리면 이력이 끝내 오지 않는다.
+        ++latestHistory.current;
+        accept(data);
         setNote("");
       } else {
         setRefused(messageOf(error, response.status));

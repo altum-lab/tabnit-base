@@ -44,6 +44,23 @@ public class EditionRecords {
                 """, EDITION, editionId).stream().findFirst();
     }
 
+    /**
+     * 입력 자료의 가장 새 판: 판 번호가 가장 큰 판이다. 다음 판의 적용일은 이 판의 적용일보다 늦어야 한다.
+     *
+     * @return 그 입력 자료에 판이 없으면 (없는 Pack, 없는 입력 자료 포함) 비어 있다
+     */
+    public Optional<Edition> latestEdition(String packId, String inputSourceId) {
+        Objects.requireNonNull(packId, "Pack 의 식별자는 반드시 있어야 합니다");
+        Objects.requireNonNull(inputSourceId, "입력 자료의 식별자는 반드시 있어야 합니다");
+        return jdbc.query("""
+                select id, pack_id, input_source_id, edition_no, effective_date, content_hash, file_name, received_at
+                  from edition
+                 where pack_id = ? and input_source_id = ?
+                 order by edition_no desc
+                 limit 1
+                """, EDITION, packId, inputSourceId).stream().findFirst();
+    }
+
     /** 판의 원본: 받은 파일의 바이트 그대로 (D2 AD-150). 그런 판이 없으면 비어 있다. */
     public Optional<byte[]> originalContent(String editionId) {
         Objects.requireNonNull(editionId, "판의 식별자는 반드시 있어야 합니다");

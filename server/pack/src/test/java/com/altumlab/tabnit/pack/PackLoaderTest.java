@@ -153,6 +153,25 @@ class PackLoaderTest {
     }
 
     @Test
+    void 적재된_Pack_의_식별자를_글자_코드_순으로_돌려준다() throws IOException {
+        // 넣는 차례는 일부러 섞는다. 숫자가 글자보다 앞서고, 수가 아니라 글자로 견준다 (10 이 2 보다 앞선다).
+        for (String packId : List.of("p-ids-b", "p-ids-a", "p-ids-10", "p-ids-2")) {
+            loader.load(pack(packId, 1, "ex:Thing a owl:Class ; rdfs:label \"것\" ."), LOADED_AT);
+        }
+
+        List<String> first = definitions.packIds();
+        List<String> second = definitions.packIds();
+
+        // 이 데이터베이스에는 다른 시험이 넣은 Pack 도 있다. 이 시험이 넣은 것만 골라 차례를 본다.
+        assertThat(first.stream().filter(id -> id.startsWith("p-ids-")))
+            .containsExactly("p-ids-10", "p-ids-2", "p-ids-a", "p-ids-b");
+        assertThat(first).doesNotHaveDuplicates().isSortedAccordingTo(PackOrder.STRINGS);
+        assertThat(second).isEqualTo(first);
+        // 식별자가 있으면 정의도 읽힌다.
+        assertThat(definitions.find("p-ids-a")).isPresent();
+    }
+
+    @Test
     void Turtle을_적는_여러_방법이_같은_정의로_읽힌다() throws IOException {
         // 주석, 접두사 없이 전체 주소로 적기, rdf:type 풀어 적기, 한 정의를 여러 곳에 나눠 적기, 한글 이름.
         Path dir = pack("p-styles", 1, """

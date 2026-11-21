@@ -1,6 +1,6 @@
 # Tabnit Base 의 API 규격. 기준 문서는 docs/D7-api-contract.md 다.
 # 이 파일을 먼저 고치고 구현한다. 화면의 호출 코드는 이 파일에서 만든다 (D2 AD-09, AD-77).
-# 상태: 초안. 지금은 시점 조회, 판 올리기, 조치 목록, 변동의 영향 범위, 조치 하나와 이력, 확정과 보류가 들어 있다.
+# 상태: 초안. 지금은 시점 조회, 판 올리기, 조치 목록, 변동의 영향 범위, 조치 하나와 이력, 확정과 보류, Pack 과 입력 자료의 목록이 들어 있다.
 openapi: 3.1.0
 info:
   title: Tabnit Base API
@@ -45,6 +45,28 @@ paths:
         '403':
           $ref: '#/components/responses/Problem'
         '404':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/Problem'
+  /api/v1/packs:
+    get:
+      operationId: listPacks
+      summary: 적재된 Pack 과 그 입력 자료의 목록을 돌려준다
+      description: >-
+        판을 올릴 때 Pack 과 입력 자료를 고르는 데 쓴다. 입력 자료마다 지금의 가장 새 판을 함께 준다:
+        다음에 올리는 판의 적용일은 그 판의 적용일보다 늦어야 한다. 담당자와 관리자가 부를 수 있다
+      responses:
+        '200':
+          description: >-
+            Pack 의 순서는 Pack 의 id 의 글자 코드 순이고, 입력 자료의 순서는 입력 자료의 id 의 글자 코드 순이다.
+            적재된 Pack 이 없으면 빈 목록이다
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackList'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
           $ref: '#/components/responses/Problem'
         '500':
           $ref: '#/components/responses/Problem'
@@ -324,6 +346,59 @@ components:
         editionNo:
           type: integer
           minimum: 1
+    PackList:
+      type: object
+      required: [packs]
+      properties:
+        packs:
+          type: array
+          items:
+            $ref: '#/components/schemas/PackSummary'
+    PackSummary:
+      type: object
+      required: [packId, label, inputSources]
+      properties:
+        packId:
+          type: string
+          description: Pack 의 id
+        label:
+          type: string
+          description: Pack 의 이름
+        inputSources:
+          type: array
+          description: 그 Pack 이 받는 입력 자료. 매핑이 하나도 없는 Pack 이면 비어 있다
+          items:
+            $ref: '#/components/schemas/InputSourceSummary'
+    InputSourceSummary:
+      type: object
+      required: [inputSourceId, fileFormat, latestEdition]
+      properties:
+        inputSourceId:
+          type: string
+          description: 입력 자료의 id
+        fileFormat:
+          type: string
+          enum: [CSV, XLSX]
+          description: 받는 파일의 형식
+        latestEdition:
+          description: 지금의 가장 새 판. 아직 판이 없으면 null
+          oneOf:
+            - $ref: '#/components/schemas/EditionSummary'
+            - type: 'null'
+    EditionSummary:
+      type: object
+      required: [editionId, editionNo, effectiveDate]
+      properties:
+        editionId:
+          type: string
+        editionNo:
+          type: integer
+          minimum: 1
+          description: 그 입력 자료 안에서의 판 번호
+        effectiveDate:
+          type: string
+          format: date
+          description: 그 판의 적용일
     ActionStatus:
       type: string
       enum: [PENDING, CONFIRMED, ON_HOLD]

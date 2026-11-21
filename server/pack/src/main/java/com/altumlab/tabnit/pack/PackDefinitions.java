@@ -1,5 +1,6 @@
 package com.altumlab.tabnit.pack;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import javax.sql.DataSource;
@@ -27,6 +28,21 @@ public class PackDefinitions {
         this.snapshot = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
         this.snapshot.setReadOnly(true);
         this.snapshot.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
+    }
+
+    /**
+     * 적재된 Pack 의 식별자를 모두 돌려준다.
+     *
+     * @return 식별자의 글자 코드 순. 적재된 Pack 이 없으면 빈 목록
+     * @throws PackStorageException 저장소에서 읽지 못했을 때
+     */
+    public List<String> packIds() {
+        try {
+            return tables.packIds();
+        }
+        catch (DataAccessException e) {
+            throw new PackStorageException("적재된 Pack 의 목록을 읽지 못했습니다. 저장소의 상태를 확인한 뒤 다시 시도하세요.", e);
+        }
     }
 
     /**

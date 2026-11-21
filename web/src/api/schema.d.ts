@@ -21,6 +21,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/packs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 적재된 Pack 과 그 입력 자료의 목록을 돌려준다
+         * @description 판을 올릴 때 Pack 과 입력 자료를 고르는 데 쓴다. 입력 자료마다 지금의 가장 새 판을 함께 준다: 다음에 올리는 판의 적용일은 그 판의 적용일보다 늦어야 한다. 담당자와 관리자가 부를 수 있다
+         */
+        get: operations["listPacks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/editions": {
         parameters: {
             query?: never;
@@ -162,6 +182,38 @@ export interface components {
         Provenance: {
             inputSourceId: string;
             editionNo: number;
+        };
+        PackList: {
+            packs: components["schemas"]["PackSummary"][];
+        };
+        PackSummary: {
+            /** @description Pack 의 id */
+            packId: string;
+            /** @description Pack 의 이름 */
+            label: string;
+            /** @description 그 Pack 이 받는 입력 자료. 매핑이 하나도 없는 Pack 이면 비어 있다 */
+            inputSources: components["schemas"]["InputSourceSummary"][];
+        };
+        InputSourceSummary: {
+            /** @description 입력 자료의 id */
+            inputSourceId: string;
+            /**
+             * @description 받는 파일의 형식
+             * @enum {string}
+             */
+            fileFormat: "CSV" | "XLSX";
+            /** @description 지금의 가장 새 판. 아직 판이 없으면 null */
+            latestEdition: components["schemas"]["EditionSummary"] | null;
+        };
+        EditionSummary: {
+            editionId: string;
+            /** @description 그 입력 자료 안에서의 판 번호 */
+            editionNo: number;
+            /**
+             * Format: date
+             * @description 그 판의 적용일
+             */
+            effectiveDate: string;
         };
         /**
          * @description 조치의 상태. PENDING 대기, CONFIRMED 확정, ON_HOLD 보류
@@ -485,6 +537,29 @@ export interface operations {
             401: components["responses"]["Problem"];
             403: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    listPacks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pack 의 순서는 Pack 의 id 의 글자 코드 순이고, 입력 자료의 순서는 입력 자료의 id 의 글자 코드 순이다. 적재된 Pack 이 없으면 빈 목록이다 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackList"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
             500: components["responses"]["Problem"];
         };
     };

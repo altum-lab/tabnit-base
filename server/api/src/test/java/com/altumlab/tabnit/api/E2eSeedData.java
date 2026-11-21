@@ -15,8 +15,8 @@ import org.springframework.context.annotation.Bean;
 /**
  * 화면 흐름 시험(web/tests)이 보는 지어낸 자료. 시험용 실행(bootTestRun)에서만 넣는다.
  *
- * <p>이 클래스는 시험 쪽 코드라 배포물에 들어가지 않는다. Pack 적재와 link 가 생기면 이 자료는
- * 시험용 Pack 과 입력 파일로 바꾼다. 값은 모두 지어낸 것이고 어느 Pack 의 것도 아니다.
+ * <p>이 클래스는 시험 쪽 코드라 배포물에 들어가지 않는다. 관계 조회 화면의 자료는 core 에 직접 넣은 지어낸 값이고
+ * 어느 Pack 의 것도 아니다. 변동 감지 화면의 자료는 시험용 Pack 의 사본을 적재해 둔다.
  */
 @TestConfiguration(proxyBeanMethods = false)
 class E2eSeedData {
@@ -25,6 +25,9 @@ class E2eSeedData {
 	private static final Instant RECORDED_AT = Instant.parse("2026-01-01T00:00:00Z");
 
 	private static final String PACK = "e2e";
+
+	/** 화면 시험(web/tests/changes.spec.ts)이 고르는 Pack 의 식별자. */
+	private static final String CHANGES_PACK = "e2e-changes";
 
 	private static final Provenance SRC_1 = new Provenance("src", 1);
 
@@ -50,6 +53,8 @@ class E2eSeedData {
 
 			// 관계가 하나도 없는 개체.
 			entity(store, "alone");
+			// 변동 감지 화면의 시험이 판을 올릴 Pack: 시험용 Pack 의 사본이다. 판은 시험이 화면으로 올린다.
+			PackCopies.load(dataSource, java.nio.file.Files.createTempDirectory("tabnit-e2e-pack"), CHANGES_PACK, text -> text);
 		};
 	}
 

@@ -44,6 +44,7 @@ class PackRuleTest {
             ex:since a owl:DatatypeProperty ; rdfs:label "시작" ; rdfs:domain ex:Base ; rdfs:range xsd:date .
             ex:active a owl:DatatypeProperty ; rdfs:label "쓰는가" ; rdfs:domain ex:Base ; rdfs:range xsd:boolean .
             ex:otherName a owl:DatatypeProperty ; rdfs:label "다른 이름" ; rdfs:domain ex:Other ; rdfs:range xsd:string .
+            ex:subOnly a owl:DatatypeProperty ; rdfs:label "아래만" ; rdfs:domain ex:Sub ; rdfs:range xsd:string .
             """;
 
     /** 가장 작은 규칙: 반드시 적는 항목만 있다. */
@@ -360,6 +361,46 @@ class PackRuleTest {
         // 대상이 변동 대상 자신이면 영향 대상이 없다 (D2 AD-118).
         assertThat(problemsOf(rejected)).singleElement()
             .satisfies(p -> assertThat(p.message()).contains("0001").contains("tabnit:ImpactTarget"));
+    }
+
+    @Test
+    void 규칙의_대상을_보는_조건의_속성은_대상_유형과_이어진_유형의_것이어야_한다() throws IOException {
+        // 대상 유형은 Base 다. otherName 은 Other 의 속성이라 Base 의 개체에는 값이 있을 수 없다 (D2 AD-223).
+        String condition = "tabnit:condition [ tabnit:subject SUBJECT ; tabnit:property ex:PROPERTY ; "
+                + "tabnit:operator tabnit:HasValue ] ;\n    tabnit:actionText";
+        Path unrelated = pack("r-related-bad", "rules.ttl", MINIMAL.replace("tabnit:actionText",
+                condition.replace("SUBJECT", "tabnit:ImpactTarget").replace("PROPERTY", "otherName")));
+        assertThat(problemsOf(unrelated)).singleElement().satisfies(p -> {
+            assertThat(p.item()).isEqualTo("r1");
+            assertThat(p.message()).contains("0001").contains("otherName").contains("Base");
+        });
+        // 대상이 변동 대상인 규칙도 같다.
+        Path unrelatedChange = pack("r-related-bad-2", "rules.ttl",
+                MINIMAL.replace("tabnit:appliesTo tabnit:ImpactTarget", "tabnit:appliesTo tabnit:ChangeTarget")
+                    .replace("tabnit:actionText",
+                            condition.replace("SUBJECT", "tabnit:ChangeTarget").replace("PROPERTY", "otherName")));
+        assertThat(problemsOf(unrelatedChange)).singleElement();
+
+        // 받는 것: 대상 유형의 속성, 상위 유형의 속성 (대상 유형이 Sub), 하위 유형만 가진 속성 (대상 유형이 Base).
+        int accepted = 0;
+        for (String[] rule : new String[][] { { "ex:Base", "count" }, { "ex:Sub", "count" }, { "ex:Base", "subOnly" } }) {
+            Path dir = pack("r-related-ok-" + (++accepted), "rules.ttl",
+                    MINIMAL.replace("tabnit:targetType ex:Base", "tabnit:targetType " + rule[0])
+                        .replace("tabnit:actionText",
+                                condition.replace("SUBJECT", "tabnit:ImpactTarget").replace("PROPERTY", rule[1])));
+            assertThat(loader.load(dir, LOADED_AT).outcome()).as(rule[0] + " " + rule[1])
+                .isEqualTo(PackLoadResult.Outcome.LOADED);
+        }
+        // 상위 유형이 둘인 유형이 있으면: Base 의 대상이면서 Other 의 속성을 가진 개체가 있을 수 있다. 받는다.
+        Path multi = pack("r-related-multi", "rules.ttl", MINIMAL.replace("tabnit:actionText",
+                condition.replace("SUBJECT", "tabnit:ImpactTarget").replace("PROPERTY", "otherName")));
+        Files.writeString(multi.resolve("ontology.ttl"), Files.readString(multi.resolve("ontology.ttl"), StandardCharsets.UTF_8)
+                + "ex:Both a owl:Class ; rdfs:label \"둘 다\" ; rdfs:subClassOf ex:Base , ex:Other .\n", StandardCharsets.UTF_8);
+        assertThat(loader.load(multi, LOADED_AT).outcome()).isEqualTo(PackLoadResult.Outcome.LOADED);
+        // 조건이 규칙의 대상이 아닌 쪽을 보면 그 유형을 미리 알 수 없다. 검사하지 않는다.
+        Path otherSide = pack("r-related-other-side", "rules.ttl", MINIMAL.replace("tabnit:actionText",
+                condition.replace("SUBJECT", "tabnit:ChangeTarget").replace("PROPERTY", "otherName")));
+        assertThat(loader.load(otherSide, LOADED_AT).outcome()).isEqualTo(PackLoadResult.Outcome.LOADED);
     }
 
     @Test

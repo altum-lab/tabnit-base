@@ -11,6 +11,7 @@ import java.util.TreeMap;
 import javax.sql.DataSource;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 
 /**
  * 저장된 영향 범위와 조치를 읽는다 (D5 6절). 읽기만 한다.
@@ -20,6 +21,14 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * 조치의 상태는 B-07 부터 바뀔 수 있다. 조치는 한 문장으로 읽는다.
  */
 public class ActionRecords {
+
+    private static final RowMapper<Action> ACTION = (rs, row) -> new Action(rs.getString("id"), rs.getString("pack_id"),
+            rs.getString("change_event_id"), rs.getString("rule_no"), rs.getString("rule_label"),
+            rs.getString("action_text"), rs.getInt("priority"), RuleSubject.valueOf(rs.getString("applies_to")),
+            rs.getString("target_entity_id"), rs.getString("target_entity_type"), rs.getString("basis_entity_id"),
+            rs.getString("basis_input_source_id"), rs.getInt("basis_edition_no"), rs.getObject("as_of", LocalDate.class),
+            rs.getObject("due_date", LocalDate.class), ActionStatus.valueOf(rs.getString("status")),
+            rs.getObject("created_at", OffsetDateTime.class).toInstant());
 
     private final JdbcTemplate jdbc;
 
@@ -45,18 +54,61 @@ public class ActionRecords {
                      where a.change_event_hash = ?
                      order by a.priority, a.rule_no, a.target_entity_id
                     """,
-                    (rs, row) -> new Action(rs.getString("id"), rs.getString("pack_id"), rs.getString("change_event_id"),
-                            rs.getString("rule_no"), rs.getString("rule_label"), rs.getString("action_text"),
-                            rs.getInt("priority"), RuleSubject.valueOf(rs.getString("applies_to")),
-                            rs.getString("target_entity_id"), rs.getString("target_entity_type"),
-                            rs.getString("basis_entity_id"), rs.getString("basis_input_source_id"),
-                            rs.getInt("basis_edition_no"), rs.getObject("as_of", LocalDate.class),
-                            rs.getObject("due_date", LocalDate.class), ActionStatus.valueOf(rs.getString("status")),
-                            rs.getObject("created_at", OffsetDateTime.class).toInstant()),
+                    ACTION,
                     RulesHash.sha256Hex(changeEventId));
         }
         catch (DataAccessException e) {
             throw new ActionStorageException("변동 이벤트 " + changeEventId + " 의 조치를 읽지 못했습니다. 저장소의 상태를 확인한 뒤 다시 시도하세요.", e);
+        }
+    }
+
+    /**
+     * 변동 이벤트의 식별자로 읽을 수 있는 글자인가. 저장소가 그대로 담지 못하는 글자(NUL, 짝 없는 대리 문자)가 들어
+     * 있으면 어떤 변동 이벤트의 것도 아니다. 부르는 쪽이 요청을 먼저 가릴 때 쓴다: 아닌 것을 조회에 넘기면
+     * {@link IllegalArgumentException} 이다.
+     */
+    public static boolean isReadableChangeEventId(String changeEventId) {
+        return changeEventId != null && !changeEventId.isEmpty() && ActionGenerator.storable(changeEventId);
+    }
+
+    /**
+     * Pack 하나의 조치 목록.
+     *
+     * @param status 이 상태의 조치만. null 이면 가리지 않는다
+     * @param changeEventId 이 변동 이벤트의 조치만. null 이면 가리지 않는다
+     * @return 기한이 이른 것부터, 같으면 우선순위, 규칙 번호, 대상 개체의 식별자, 조치의 식별자 순 (D2 AD-243).
+     *         해당하는 것이 없으면 (없는 Pack, 다른 Pack 의 변동 포함) 빈 목록
+     */
+    public List<Action> packActions(String packId, ActionStatus status, String changeEventId) {
+        Objects.requireNonNull(packId, "Pack 의 식별자는 반드시 있어야 합니다");
+        if (changeEventId != null) {
+            ActionGenerator.requireStorable(changeEventId, "변동 이벤트의 식별자");
+        }
+        // 거르는 조건은 정해진 조각만 잇는다. 값은 모두 자리표시로 묶는다.
+        StringBuilder sql = new StringBuilder("""
+                select a.id, a.pack_id, s.change_event_id, a.rule_no, a.rule_label, a.action_text, a.priority,
+                       a.applies_to, a.target_entity_id, a.target_entity_type, a.basis_entity_id,
+                       a.basis_input_source_id, a.basis_edition_no, a.as_of, a.due_date, a.status, a.created_at
+                  from action a
+                  join impact_scope s on s.change_event_hash = a.change_event_hash
+                 where a.pack_id = ?
+                """);
+        List<Object> arguments = new ArrayList<>();
+        arguments.add(packId);
+        if (status != null) {
+            sql.append(" and a.status = ?\n");
+            arguments.add(status.name());
+        }
+        if (changeEventId != null) {
+            sql.append(" and a.change_event_hash = ?\n");
+            arguments.add(RulesHash.sha256Hex(changeEventId));
+        }
+        sql.append(" order by a.due_date, a.priority, a.rule_no, a.target_entity_id, a.id");
+        try {
+            return jdbc.query(sql.toString(), ACTION, arguments.toArray());
+        }
+        catch (DataAccessException e) {
+            throw new ActionStorageException("Pack " + packId + " 의 조치를 읽지 못했습니다. 저장소의 상태를 확인한 뒤 다시 시도하세요.", e);
         }
     }
 
@@ -114,6 +166,14 @@ public class ActionRecords {
                             rs.getObject("path_as_of", LocalDate.class),
                             steps.getOrDefault(rs.getString("entity_hash"), List.of())),
                     hash);
+            for (StoredImpactTarget target : targets) {
+                if (target.steps().size() != target.depth()) {
+                    // 근거 경로 없는 영향 대상은 저장되지 않는다. 여기 오면 저장소가 어긋난 것이다. 근거 없이 내보내지 않는다.
+                    throw new ActionStorageException("변동 이벤트 " + changeEventId + " 의 영향 대상 " + target.entityId()
+                            + " 의 근거 경로가 깊이와 맞지 않습니다 (깊이 " + target.depth() + ", 단계 " + target.steps().size()
+                            + "). 저장소의 상태를 확인하세요.", null);
+                }
+            }
             StoredImpactScope head = heads.get(0);
             return Optional.of(new StoredImpactScope(head.changeEventId(), head.packId(), head.asOfPrevious(),
                     head.asOfEffective(), head.maxDepth(), head.truncated(), head.storedAt(), targets));

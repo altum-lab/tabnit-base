@@ -2,7 +2,11 @@ package com.altumlab.tabnit.rules;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * 저장된 영향 범위 (D5 6절 impact_scope). 변동 이벤트마다 하나이고, 저장한 뒤에는 바뀌지 않는다 (D2 AD-119).
@@ -18,5 +22,26 @@ public record StoredImpactScope(String changeEventId, String packId, LocalDate a
         int maxDepth, boolean truncated, Instant storedAt, List<StoredImpactTarget> targets) {
     public StoredImpactScope {
         targets = List.copyOf(targets);
+    }
+
+    /**
+     * 개체 유형별 영향 대상의 수. 유형의 이름의 글자 코드 순이다. 저장하지 않고 영향 대상에서 센다 (D5 6절).
+     * 합계는 영향 대상의 수와 같다 (D2 AD-63).
+     */
+    public Map<String, Integer> countsByType() {
+        TreeMap<String, Integer> counts = new TreeMap<>(RulesOrder.STRINGS);
+        for (StoredImpactTarget target : targets) {
+            counts.merge(target.entityType(), 1, Integer::sum);
+        }
+        return Collections.unmodifiableMap(new LinkedHashMap<>(counts));
+    }
+
+    /** 깊이별 영향 대상의 수. 깊이 순이다. 합계는 영향 대상의 수와 같다. */
+    public Map<Integer, Integer> countsByDepth() {
+        TreeMap<Integer, Integer> counts = new TreeMap<>();
+        for (StoredImpactTarget target : targets) {
+            counts.merge(target.depth(), 1, Integer::sum);
+        }
+        return Collections.unmodifiableMap(new LinkedHashMap<>(counts));
     }
 }

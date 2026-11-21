@@ -1,5 +1,7 @@
 package com.altumlab.tabnit.api;
 
+import com.altumlab.tabnit.link.EditionRecords;
+import org.springframework.util.unit.DataSize;
 import com.altumlab.tabnit.core.RelationQuery;
 import java.time.Clock;
 import java.time.ZoneId;
@@ -32,10 +34,17 @@ class ApiConfiguration {
 		return new RelationQuery(dataSource);
 	}
 
-	/** 판을 투입하고 그 변동을 조치까지 잇는다 (D2 AD-233). 부르는 HTTP API 는 아직 없다. */
+	/** 판을 투입하고 그 변동을 조치까지 잇는다 (D2 AD-233). */
 	@Bean
-	EditionProcessing editionProcessing(DataSource dataSource, Clock clock) {
-		return new EditionProcessing(dataSource, clock);
+	EditionProcessing editionProcessing(DataSource dataSource, Clock clock,
+			@Value("${spring.servlet.multipart.max-file-size:20MB}") DataSize maxFileSize) {
+		// 파일 크기의 한도는 설정 하나로 정한다. 서버가 요청을 받을 때와 link 가 투입할 때 같은 값을 쓴다 (D7 5절).
+		return new EditionProcessing(dataSource, clock, maxFileSize.toBytes());
+	}
+
+	@Bean
+	EditionRecords editionRecords(DataSource dataSource) {
+		return new EditionRecords(dataSource);
 	}
 
 }

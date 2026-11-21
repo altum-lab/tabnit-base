@@ -1,6 +1,6 @@
 # Tabnit Base 의 API 규격. 기준 문서는 docs/D7-api-contract.md 다.
 # 이 파일을 먼저 고치고 구현한다. 화면의 호출 코드는 이 파일에서 만든다 (D2 AD-09, AD-77).
-# 상태: 초안. 지금은 시점 조회 하나만 들어 있다.
+# 상태: 초안. 지금은 시점 조회와 판 올리기가 들어 있다.
 openapi: 3.1.0
 info:
   title: Tabnit Base API
@@ -46,6 +46,69 @@ paths:
           $ref: '#/components/responses/Problem'
         '404':
           $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/Problem'
+  /api/v1/editions:
+    post:
+      operationId: submitEdition
+      summary: 파일 하나를 입력 자료의 새 판으로 올리고, 바뀐 항목과 그 처리 결과를 돌려준다
+      description: >-
+        받아들인 판은 앞 판과 비교해 바뀐 항목(변동)을 찾고, 이어서 변동마다 영향 범위를 계산해
+        조치를 만들어 저장한다. 응답이 오면 그 판의 조치가 만들어져 있다.
+        한 Pack 에서는 한 번에 하나만 처리한다. 뒤에 온 요청은 앞의 것이 끝날 때까지 기다린다.
+        담당자와 관리자가 부를 수 있다.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [packId, inputSourceId, effectiveDate, file]
+              properties:
+                packId:
+                  type: string
+                  minLength: 1
+                  description: Pack 의 식별자
+                inputSourceId:
+                  type: string
+                  minLength: 1
+                  description: 입력 자료의 식별자. 그 Pack 의 매핑 가운데 하나다
+                effectiveDate:
+                  type: string
+                  format: date
+                  description: 판의 적용일. 이 날부터 새 판의 내용이 유효하다
+                file:
+                  type: string
+                  format: binary
+                  description: 올리는 파일. 파일의 이름은 기록에 남긴다
+      responses:
+        '200':
+          description: >-
+            판을 받아들였거나(ACCEPTED), 내용이 바로 앞 판과 같아 판을 만들지 않았다(UNCHANGED).
+            changes 의 순서는 항목의 키의 글자 코드 순이다. notices 의 순서는 행 번호, 종류, 코드, 내용 순이다.
+            retriedChanges 의 순서는 처리한 차례다 (판을 받은 차례, 받은 때가 같으면 입력 자료의 id 순과 판 번호 순, 그 안에서 항목의 키의 글자 코드 순)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EditionSubmission'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '413':
+          $ref: '#/components/responses/Problem'
+        '422':
+          description: >-
+            파일을 받아들이지 않았다. 판은 만들어지지 않았고 투입 기록에 거부로 남았다.
+            공통 오류 형식에 거부한 이유의 코드(reasonCode)와 값(reasonDetail)을 더해 담는다
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/EditionRejectedProblem'
         '500':
           $ref: '#/components/responses/Problem'
 components:
@@ -109,6 +172,143 @@ components:
         editionNo:
           type: integer
           minimum: 1
+    EditionSubmission:
+      type: object
+      required: [outcome, editionId, packId, inputSourceId, editionNo, effectiveDate, itemCount, changes, notices, retriedChanges, processingNotStarted]
+      properties:
+        outcome:
+          type: string
+          enum: [ACCEPTED, UNCHANGED]
+          description: ACCEPTED 는 새 판을 만들었다. UNCHANGED 는 내용이 바로 앞 판과 같아 판을 만들지 않았다
+        editionId:
+          type: string
+          description: 만든 판의 id. UNCHANGED 면 내용이 같았던 앞 판의 id
+        packId:
+          type: string
+        inputSourceId:
+          type: string
+        editionNo:
+          type: integer
+          minimum: 1
+          description: 그 입력 자료 안에서의 판 번호
+        effectiveDate:
+          type: string
+          format: date
+          description: 그 판의 적용일. UNCHANGED 면 앞 판의 것이다
+        itemCount:
+          type: integer
+          minimum: 0
+          description: 받아들인 항목(행)의 수. UNCHANGED 면 0
+        changes:
+          type: array
+          description: 앞 판과 비교해 바뀐 항목. 첫 판이거나 UNCHANGED 면 비어 있다
+          items:
+            $ref: '#/components/schemas/EditionChange'
+        notices:
+          type: array
+          description: 투입의 알림 (건너뛴 행 등). UNCHANGED 면 비어 있다
+          items:
+            $ref: '#/components/schemas/EditionNotice'
+        retriedChanges:
+          type: array
+          description: 이 요청이 함께 다시 처리한, 앞선 판의 변동. 전에 처리에 실패해 남아 있던 것이다. 보통 비어 있다
+          items:
+            $ref: '#/components/schemas/RetriedChange'
+        processingNotStarted:
+          type: boolean
+          description: >-
+            판은 받아들였지만 변동의 처리를 시작하지 못했는가. true 면 changes 의 처리 상태는 모두 PENDING 이고,
+            다음에 받아들여진 판을 올릴 때 처리된다
+    EditionChange:
+      type: object
+      required: [changeEventId, itemKey, kind, primaryEntityId, targetEntityIds, processing]
+      properties:
+        changeEventId:
+          type: string
+          description: 변동 이벤트의 id
+        itemKey:
+          type: string
+          description: 바뀐 항목의 키
+        kind:
+          type: string
+          enum: [ADDED, CHANGED, REMOVED]
+          description: 추가, 변경, 삭제
+        primaryEntityId:
+          type: string
+          description: 그 행의 주 개체의 id. 조치의 근거가 된다
+        targetEntityIds:
+          type: array
+          description: 변동 대상 개체의 id. 글자 코드 순이다
+          items:
+            type: string
+        processing:
+          $ref: '#/components/schemas/ChangeProcessing'
+    ChangeProcessing:
+      type: object
+      description: 변동 하나를 영향 범위 계산과 조치 생성까지 처리한 결과
+      required: [status, failedStage, failureCode, actionCount]
+      properties:
+        status:
+          type: string
+          enum: [PROCESSED, FAILED, PENDING]
+          description: PROCESSED 는 조치까지 저장했다. FAILED 는 실패했고 뒤에 다시 시도된다. PENDING 은 아직 처리하지 못했다
+        failedStage:
+          type: [string, 'null']
+          enum: [IMPACT, RULES, null]
+          description: 실패했을 때 어느 단계인가. IMPACT 는 영향 범위 계산, RULES 는 규칙 실행. 아니면 null
+        failureCode:
+          type: [string, 'null']
+          description: 실패한 이유의 코드. 아니면 null
+        actionCount:
+          type: integer
+          minimum: 0
+          description: 그 변동에서 만들어진 조치의 수. 처리되지 않았으면 0
+    RetriedChange:
+      type: object
+      required: [changeEventId, editionId, itemKey, processing]
+      properties:
+        changeEventId:
+          type: string
+        editionId:
+          type: string
+          description: 그 변동이 나온 판의 id
+        itemKey:
+          type: string
+        processing:
+          $ref: '#/components/schemas/ChangeProcessing'
+    EditionNotice:
+      type: object
+      description: 투입의 알림 하나. 문구가 아니라 종류와 이유의 코드와 값이다
+      required: [kind, rowNo, code, subject, detail]
+      properties:
+        kind:
+          type: string
+          description: 종류. SKIPPED_ROW, REFERENCE_ONLY_ENTITY, ATTRIBUTE_CONFLICT, RELATION_CONFLICT, PERIOD_ADJUSTED
+        rowNo:
+          type: integer
+          description: 걸린 행의 번호
+        code:
+          type: string
+          description: 이유의 코드
+        subject:
+          type: [string, 'null']
+          description: 걸린 열의 이름이나 개체·속성의 id. 없으면 null
+        detail:
+          type: [string, 'null']
+          description: 걸린 값. 없으면 null
+    EditionRejectedProblem:
+      description: 공통 오류 형식에 거부한 이유를 더했다
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          required: [reasonCode, reasonDetail]
+          properties:
+            reasonCode:
+              type: string
+              description: 거부한 이유의 코드. 투입 기록에 남은 것과 같다
+            reasonDetail:
+              type: [string, 'null']
+              description: 거부한 이유의 값 (예. 없는 열의 이름). 없으면 null
     Problem:
       type: object
       description: RFC 9457 의 항목에 code 와 field 를 더했다
@@ -129,7 +329,7 @@ components:
         code:
           type: string
           description: 오류의 종류. 화면이 이것으로 가른다. 바뀌지 않는 값이다
-          enum: [MISSING_ENTITY_ID, INVALID_AS_OF, ENTITY_NOT_FOUND, UNAUTHENTICATED, FORBIDDEN, INTERNAL]
+          enum: [MISSING_ENTITY_ID, INVALID_AS_OF, ENTITY_NOT_FOUND, MISSING_PACK_ID, MISSING_INPUT_SOURCE_ID, MISSING_EFFECTIVE_DATE, INVALID_EFFECTIVE_DATE, MISSING_FILE, INVALID_EDITION, PACK_NOT_FOUND, INPUT_SOURCE_NOT_FOUND, FILE_TOO_LARGE, EDITION_REJECTED, UNAUTHENTICATED, FORBIDDEN, INTERNAL]
         field:
           type: string
           description: 틀린 항목의 이름. 입력 오류일 때만 있다

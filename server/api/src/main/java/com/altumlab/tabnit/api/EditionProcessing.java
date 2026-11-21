@@ -80,6 +80,8 @@ class EditionProcessing {
 
 	private final ActionGenerator actions;
 
+	private final long maxFileBytes;
+
 	/**
 	 * 이 프로세스 안에서 Pack 마다 기다리게 하는 잠금. 정해진 수만 두고 Pack 의 식별자로 고른다: 없는 Pack 의
 	 * 식별자가 아무리 들어와도 늘지 않는다. 다른 Pack 이 같은 잠금에 걸리면 서로 기다릴 뿐 결과는 같다.
@@ -90,10 +92,18 @@ class EditionProcessing {
 	private final ThreadLocal<String> current = new ThreadLocal<>();
 
 	EditionProcessing(DataSource dataSource, Clock clock) {
+		this(dataSource, clock, EditionIngest.DEFAULT_MAX_FILE_BYTES);
+	}
+
+	/**
+	 * @param maxFileBytes 받는 파일 크기의 한도 (바이트). 설치 설정에서 읽어 넘긴다
+	 */
+	EditionProcessing(DataSource dataSource, Clock clock, long maxFileBytes) {
+		this.maxFileBytes = maxFileBytes;
 		this.dataSource = Objects.requireNonNull(dataSource, "데이터 원본은 반드시 있어야 합니다");
 		this.clock = Objects.requireNonNull(clock, "시계는 반드시 있어야 합니다");
 		this.packs = new PackDefinitions(dataSource);
-		this.ingest = new EditionIngest(dataSource);
+		this.ingest = new EditionIngest(dataSource, maxFileBytes);
 		this.editions = new EditionRecords(dataSource);
 		this.changeEvents = new ChangeEvents(dataSource);
 		this.impact = new ImpactQuery(dataSource);
@@ -101,6 +111,11 @@ class EditionProcessing {
 		for (int i = 0; i < this.localLocks.length; i++) {
 			this.localLocks[i] = new ReentrantLock();
 		}
+	}
+
+	/** 받는 파일 크기의 한도 (바이트). */
+	long maxFileBytes() {
+		return this.maxFileBytes;
 	}
 
 	/**
@@ -122,35 +137,51 @@ class EditionProcessing {
 		Objects.requireNonNull(inputSourceId, "입력 자료의 식별자는 반드시 있어야 합니다");
 		Objects.requireNonNull(content, "파일의 내용은 반드시 있어야 합니다");
 		Objects.requireNonNull(effectiveDate, "적용일은 반드시 있어야 합니다");
+		// link 가 받지 않는 값은 여기서 먼저 가린다. 무엇이 틀렸는지를 api 의 문구로 알린다.
+		if (effectiveDate.isBefore(LocalDate.of(1, 1, 1)) || effectiveDate.isAfter(LocalDate.of(9999, 12, 31))) {
+			throw new ApiProblemException(HttpStatus.BAD_REQUEST, "INVALID_EDITION", "effectiveDate",
+					"적용일은 0001-01-01 부터 9999-12-31 까지만 받습니다. 적용일을 확인해 다시 보내세요.");
+		}
+		if (fileName != null && fileName.indexOf('\u0000') >= 0) {
+			throw new ApiProblemException(HttpStatus.BAD_REQUEST, "INVALID_EDITION", "file",
+					"파일의 이름에 쓸 수 없는 글자가 있습니다. 파일의 이름을 고쳐 다시 올리세요.");
+		}
 		return oneAtATime(packId, () -> {
 			PackDefinition pack = pack(packId);
 			if (pack.mappings().stream().noneMatch(mapping -> mapping.inputSourceId().equals(inputSourceId))) {
 				throw new ApiProblemException(HttpStatus.NOT_FOUND, "INPUT_SOURCE_NOT_FOUND", "inputSourceId",
 						"Pack " + packId + " 에 입력 자료 " + inputSourceId + " 가 없습니다. 입력 자료의 식별자를 확인하세요.");
 			}
-			IngestResult result;
-			try {
-				// 받은 때는 잠금을 잡은 뒤에 읽는다. 받은 차례와 처리하는 차례가 같아진다.
-				result = this.ingest.ingest(pack, inputSourceId, fileName, content, effectiveDate, this.clock.instant());
-			}
-			catch (IllegalArgumentException e) {
-				// link 가 받지 않는 값이다 (범위 밖의 적용일, 쓸 수 없는 글자가 든 파일 이름). 문구는 link 가 사용자에게 쓰는 것이다.
-				throw new ApiProblemException(HttpStatus.BAD_REQUEST, "INVALID_EDITION", null, e.getMessage());
-			}
+			// 받은 때는 잠금을 잡은 뒤에 읽는다. 받은 차례와 처리하는 차례가 같아진다.
+			IngestResult result = this.ingest.ingest(pack, inputSourceId, fileName, content, effectiveDate,
+					this.clock.instant());
 			if (result.outcome() != IngestOutcome.ACCEPTED) {
 				// 판이 생기지 않았다 (내용이 같거나 거부). 새로 처리할 변동이 없다.
-				return new EditionProcessingResult(result, List.of(), false);
+				return new EditionProcessingResult(result, List.of(), false, List.of());
 			}
 			try {
-				return new EditionProcessingResult(result, process(pack), false);
+				List<ProcessedChange> done = process(pack);
+				// 그 판의 변동 이벤트는 잠금을 놓기 전에 읽는다. 뒤에 온 요청이 상태를 바꾸기 전의 것이다.
+				return new EditionProcessingResult(result, done, false, this.editions.changeEvents(result.editionId()));
 			}
 			catch (RuntimeException e) {
 				// 판은 이미 받아들여졌다. 투입의 결과를 잃지 않게 돌려주고, 변동의 처리를 하지 못했다고 알린다.
 				// 변동은 대기로 남아 있다: 다음에 받아들여진 투입이나 남은 변동의 처리에서 처리된다.
 				log.error("판 {} 은 받아들였지만 변동의 처리를 시작하지 못했습니다.", result.editionId(), e);
-				return new EditionProcessingResult(result, List.of(), true);
+				return new EditionProcessingResult(result, List.of(), true, pendingEvents(result.editionId()));
 			}
 		});
+	}
+
+	/** 처리를 시작하지 못한 판의 변동 이벤트. 읽지 못하면 빈 목록이다 (같은 저장소 오류일 것이다). */
+	private List<ChangeEvent> pendingEvents(String editionId) {
+		try {
+			return this.editions.changeEvents(editionId);
+		}
+		catch (RuntimeException e) {
+			log.error("판 {} 의 변동 이벤트를 읽지 못했습니다.", editionId, e);
+			return List.of();
+		}
 	}
 
 	/**

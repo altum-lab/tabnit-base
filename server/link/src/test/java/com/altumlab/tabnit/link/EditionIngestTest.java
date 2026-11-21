@@ -399,6 +399,42 @@ class EditionIngestTest {
     }
 
     @Test
+    void 받은_때가_앞_판보다_이르면_거부하고_같으면_받는다() {
+        PackDefinition pack = pack("i-received", full("src"));
+        ingest.ingest(pack, "src", "f.csv", bytes(CSV), EFFECTIVE, RECEIVED_AT);
+        byte[] next = bytes("code,title,other\nB-1,바뀐 이름,O-1\n");
+
+        // 받은 때는 부르는 쪽이 넘긴다. 앞 판보다 이르면 변동을 처리하는 차례가 뒤집힌다 (D2 AD-208).
+        IngestResult earlier = ingest.ingest(pack, "src", "g.csv", next, EFFECTIVE.plusDays(1),
+                RECEIVED_AT.minusSeconds(1));
+        assertThat(earlier.outcome()).isEqualTo(IngestOutcome.REJECTED);
+        assertThat(earlier.reasonCode()).isEqualTo("RECEIVED_BEFORE_PREVIOUS");
+        assertThat(earlier.reasonDetail()).isEqualTo("2026-03-02T01:00:00Z");
+        assertThat(records.findEdition("i-received|src|2")).isEmpty();
+
+        // 같은 때는 받는다. 저장소가 담는 정밀도(마이크로초) 아래만 이른 것도 같은 때다.
+        IngestResult same = ingest.ingest(pack, "src", "g.csv", next, EFFECTIVE.plusDays(1), RECEIVED_AT);
+        assertThat(same.outcome()).isEqualTo(IngestOutcome.ACCEPTED);
+        IngestResult third = ingest.ingest(pack, "src", "h.csv", bytes("code,title,other\nB-1,또 바뀐 이름,O-1\n"),
+                EFFECTIVE.plusDays(2), RECEIVED_AT.plusNanos(999));
+        assertThat(third.outcome()).isEqualTo(IngestOutcome.ACCEPTED);
+        // 마이크로초 아래는 잘라서 저장한다 (반올림하지 않는다). 앞 판이 ...1.6 마이크로초에 들어왔어도
+        // 같은 때의 다음 판이 더 이른 것으로 보이지 않는다.
+        PackDefinition rounding = pack("i-received-round", full("src"));
+        Instant odd = RECEIVED_AT.plusNanos(1_600);
+        ingest.ingest(rounding, "src", "f.csv", bytes(CSV), EFFECTIVE, odd);
+        assertThat(records.findEdition("i-received-round|src|1").orElseThrow().receivedAt())
+            .isEqualTo(RECEIVED_AT.plusNanos(1_000));
+        assertThat(ingest.ingest(rounding, "src", "g.csv", next, EFFECTIVE.plusDays(1), odd).outcome())
+            .isEqualTo(IngestOutcome.ACCEPTED);
+        // 다른 입력 자료와는 견주지 않는다.
+        PackDefinition two = pack("i-received-2", full("one"), shared("two"));
+        ingest.ingest(two, "one", "1.csv", bytes(CSV), EFFECTIVE, RECEIVED_AT);
+        assertThat(ingest.ingest(two, "two", "2.csv", bytes("line,other,otherName\n1,O-9,상대\n"), EFFECTIVE,
+                RECEIVED_AT.minusSeconds(100)).outcome()).isEqualTo(IngestOutcome.ACCEPTED);
+    }
+
+    @Test
     void 내용이_다른_다음_파일은_둘째_판이_된다() {
         PackDefinition pack = pack("i-second", full("src"));
         ingest.ingest(pack, "src", "f.csv", bytes(CSV), EFFECTIVE, RECEIVED_AT);

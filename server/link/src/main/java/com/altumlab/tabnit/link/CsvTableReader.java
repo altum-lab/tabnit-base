@@ -59,6 +59,27 @@ final class CsvTableReader {
         return new CsvTableReader(text).parse();
     }
 
+    /**
+     * 앞뒤에서 떼는 빈칸인가: 유니코드의 공백 글자(전각 빈칸 포함)와 줄바꿈하지 않는 빈칸(U+00A0).
+     * U+00A0 은 엑셀에서 옮긴 자료에 흔하고 눈에 보이지 않아, 떼지 않으면 같은 키가 다른 키가 된다 (D2 AD-313).
+     */
+    private static boolean isBlank(char c) {
+        return Character.isWhitespace(c) || c == '\u00A0';
+    }
+
+    /** 칸의 앞뒤 빈칸을 뗀다. 가운데의 빈칸은 그대로 둔다 (D2 AD-167). */
+    private static String trim(CharSequence cell) {
+        int start = 0;
+        int end = cell.length();
+        while (start < end && isBlank(cell.charAt(start))) {
+            start++;
+        }
+        while (end > start && isBlank(cell.charAt(end - 1))) {
+            end--;
+        }
+        return cell.subSequence(start, end).toString();
+    }
+
     private TableFile parse() {
         List<String> cells = new ArrayList<>();
         StringBuilder cell = new StringBuilder();
@@ -109,7 +130,7 @@ final class CsvTableReader {
                     i++;
                 }
                 if (rowHasContent) {
-                    cells.add(cell.toString().strip());
+                    cells.add(trim(cell));
                     emit(rowStartLine, cells, textAfterQuote);
                 }
                 cells = new ArrayList<>();
@@ -124,14 +145,14 @@ final class CsvTableReader {
             }
             rowHasContent = true;
             if (c == ',') {
-                cells.add(cell.toString().strip());
+                cells.add(trim(cell));
                 cell.setLength(0);
                 closedQuote = false;
                 cellBlank = true;
             }
             else if (closedQuote) {
                 // 닫는 큰따옴표 뒤에는 빈칸만 올 수 있다.
-                if (!Character.isWhitespace(c)) {
+                if (!isBlank(c)) {
                     textAfterQuote = true;
                 }
             }
@@ -144,7 +165,7 @@ final class CsvTableReader {
             else {
                 // 감싸지 않은 값 가운데의 큰따옴표는 글자 그대로다.
                 cell.append(c);
-                if (!Character.isWhitespace(c)) {
+                if (!isBlank(c)) {
                     cellBlank = false;
                 }
             }
@@ -154,7 +175,7 @@ final class CsvTableReader {
                     + "행에서 연 큰따옴표가 닫히지 않은 채 파일이 끝났습니다. 그 줄의 큰따옴표를 확인해 고친 뒤 다시 넣으세요.");
         }
         if (rowHasContent) {
-            cells.add(cell.toString().strip());
+            cells.add(trim(cell));
             emit(rowStartLine, cells, textAfterQuote);
         }
         if (columns == null) {

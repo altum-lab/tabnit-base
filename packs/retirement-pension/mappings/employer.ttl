@@ -1,0 +1,27 @@
+# 매핑. 형식은 D6 7절이다.
+@prefix tabnit: <urn:tabnit:vocab:> .
+@prefix ex:     <urn:tabnit:pack:retirement-pension:> .
+
+ex:매핑-employer a tabnit:Mapping ;
+    tabnit:inputSourceId "employer" ;
+    tabnit:fileFormat tabnit:Csv ;
+    tabnit:requiredColumns ( "사업장번호" "사업장명칭" "사업장업종" "담당자번호" "소속집단" ) ;
+    tabnit:itemKeyColumns ( "사업장번호" ) ;
+    # 이 행이 나타내는 개체. 이 행에서 나온 변동의 근거가 된다 (D2 AD-120).
+    tabnit:primaryEntity [ tabnit:entityType ex:가입사업장 ; tabnit:keyColumn "사업장번호" ] ;
+    tabnit:entity [
+        tabnit:entityType ex:가입사업장 ;
+        tabnit:keyColumn "사업장번호" ;
+        tabnit:attribute [ tabnit:property ex:사업장명칭 ; tabnit:column "사업장명칭" ] ;
+        tabnit:attribute [ tabnit:property ex:사업장업종 ; tabnit:column "사업장업종" ]
+    ] ;
+    tabnit:relation [
+        tabnit:relationType ex:사업장담당 ;
+        tabnit:sourceEntity [ tabnit:entityType ex:가입사업장 ; tabnit:keyColumn "사업장번호" ] ;
+        tabnit:targetEntity [ tabnit:entityType ex:기업담당자 ; tabnit:keyColumn "담당자번호" ]
+    ] ;
+    tabnit:relation [
+        tabnit:relationType ex:집단지배 ;
+        tabnit:sourceEntity [ tabnit:entityType ex:가입사업장 ; tabnit:keyColumn "사업장번호" ] ;
+        tabnit:targetEntity [ tabnit:entityType ex:기업집단 ; tabnit:keyColumn "소속집단" ]
+    ] .

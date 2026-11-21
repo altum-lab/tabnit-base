@@ -1,0 +1,25 @@
+# 매핑. 형식은 D6 7절이다.
+@prefix tabnit: <urn:tabnit:vocab:> .
+@prefix ex:     <urn:tabnit:pack:retirement-pension:> .
+
+ex:매핑-requirement a tabnit:Mapping ;
+    tabnit:inputSourceId "requirement" ;
+    tabnit:fileFormat tabnit:Csv ;
+    tabnit:requiredColumns ( "요건번호" "요건명칭" "요건구분" "위험자산한도" "최저등급점수" "최저적립비율" "근거규약" ) ;
+    tabnit:itemKeyColumns ( "요건번호" ) ;
+    # 이 행이 나타내는 개체. 이 행에서 나온 변동의 근거가 된다 (D2 AD-120).
+    tabnit:primaryEntity [ tabnit:entityType ex:운영요건 ; tabnit:keyColumn "요건번호" ] ;
+    tabnit:entity [
+        tabnit:entityType ex:운영요건 ;
+        tabnit:keyColumn "요건번호" ;
+        tabnit:attribute [ tabnit:property ex:요건명칭 ; tabnit:column "요건명칭" ] ;
+        tabnit:attribute [ tabnit:property ex:요건구분 ; tabnit:column "요건구분" ] ;
+        tabnit:attribute [ tabnit:property ex:위험자산한도 ; tabnit:column "위험자산한도" ] ;
+        tabnit:attribute [ tabnit:property ex:최저등급점수 ; tabnit:column "최저등급점수" ] ;
+        tabnit:attribute [ tabnit:property ex:최저적립비율 ; tabnit:column "최저적립비율" ]
+    ] ;
+    tabnit:relation [
+        tabnit:relationType ex:규약부과 ;
+        tabnit:sourceEntity [ tabnit:entityType ex:운영규약 ; tabnit:keyColumn "근거규약" ] ;
+        tabnit:targetEntity [ tabnit:entityType ex:운영요건 ; tabnit:keyColumn "요건번호" ]
+    ] .

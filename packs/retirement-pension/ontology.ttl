@@ -1,0 +1,302 @@
+# 퇴직연금 Pack. 퇴직연금 사업자의 규약 준수와 운영 업무를 본뜬 예시 Pack 이다 (D2 AD-49, AD-294 ~ AD-298).
+# 모든 이름은 지어낸 것이다. 실제 기관, 사업장, 사람, 규정과 관계가 없다.
+# 온톨로지. 형식은 D6 4절 ~ 5절이다. 구조는 시연 자료의 설계도(유형 12개 가운데 변동 이벤트를 뺀 11개, 관계 14개 가운데 12개)를 본떴다.
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl:    <http://www.w3.org/2002/07/owl#> .
+@prefix xsd:    <http://www.w3.org/2001/XMLSchema#> .
+@prefix tabnit: <urn:tabnit:vocab:> .
+@prefix ex:     <urn:tabnit:pack:retirement-pension:> .
+
+# ── 개체 유형 ──────────────────────────────────────────────
+# 요건적용대상은 요건이 걸리는 네 유형(상품, 제도, 기관, 기본 운용 방법)을 묶는 상위 유형이다. 이 유형의 개체는 없다.
+
+ex:요건적용대상 a owl:Class ;
+    rdfs:label "요건이 적용되는 대상" .
+
+ex:운영규약 a owl:Class ;
+    rdfs:label "운영 규약" ;
+    tabnit:displayNameProperty ex:규약명칭 .
+
+ex:운영요건 a owl:Class ;
+    rdfs:label "운영 요건" ;
+    tabnit:displayNameProperty ex:요건명칭 .
+
+ex:금융기관 a owl:Class ;
+    rdfs:label "금융기관" ;
+    rdfs:subClassOf ex:요건적용대상 ;
+    tabnit:displayNameProperty ex:기관명칭 .
+
+ex:운용상품 a owl:Class ;
+    rdfs:label "운용 상품" ;
+    rdfs:subClassOf ex:요건적용대상 ;
+    tabnit:displayNameProperty ex:상품명칭 .
+
+ex:기본운용방법 a owl:Class ;
+    rdfs:label "기본 운용 방법" ;
+    rdfs:subClassOf ex:요건적용대상 ;
+    tabnit:displayNameProperty ex:방법명칭 .
+
+ex:연금계좌 a owl:Class ;
+    rdfs:label "연금 계좌" ;
+    tabnit:displayNameProperty ex:계좌구분 .
+
+ex:연금가입자 a owl:Class ;
+    rdfs:label "가입자" ;
+    tabnit:displayNameProperty ex:가입자이름 .
+
+ex:연금제도 a owl:Class ;
+    rdfs:label "연금 제도" ;
+    rdfs:subClassOf ex:요건적용대상 ;
+    tabnit:displayNameProperty ex:제도구분 .
+
+ex:가입사업장 a owl:Class ;
+    rdfs:label "사업장" ;
+    tabnit:displayNameProperty ex:사업장명칭 .
+
+ex:기업집단 a owl:Class ;
+    rdfs:label "기업집단" ;
+    tabnit:displayNameProperty ex:집단명칭 .
+
+ex:기업담당자 a owl:Class ;
+    rdfs:label "기업 담당자" ;
+    tabnit:displayNameProperty ex:담당자이름 .
+
+# ── 관계 유형 ──────────────────────────────────────────────
+# 영향 방향은 관계 유형마다 하나다. 시연에서 시나리오마다 방향을 달리 따라간 관계는 주된 쪽 하나로 정했다 (D2 AD-297).
+
+# 규약이 바뀌면 그 규약이 부과한 요건이 영향을 받는다.
+ex:규약부과 a owl:ObjectProperty ;
+    rdfs:label "규약이 요건을 부과" ;
+    rdfs:domain ex:운영규약 ;
+    rdfs:range  ex:운영요건 ;
+    tabnit:impactDirection tabnit:SourceToTarget .
+
+# 요건이 바뀌면 그 요건이 걸린 대상이 영향을 받는다.
+ex:요건적용 a owl:ObjectProperty ;
+    rdfs:label "요건 적용" ;
+    rdfs:domain ex:운영요건 ;
+    rdfs:range  ex:요건적용대상 ;
+    tabnit:impactDirection tabnit:SourceToTarget .
+
+# 금융기관이 바뀌면 그 기관이 제공하는 상품이 영향을 받는다.
+ex:상품제공 a owl:ObjectProperty ;
+    rdfs:label "상품 제공" ;
+    rdfs:domain ex:운용상품 ;
+    rdfs:range  ex:금융기관 ;
+    tabnit:impactDirection tabnit:TargetToSource .
+
+# 상품이 바뀌면 그 상품으로 구성된 기본 운용 방법이 영향을 받는다.
+ex:방법구성 a owl:ObjectProperty ;
+    rdfs:label "기본 운용 방법의 구성" ;
+    rdfs:domain ex:기본운용방법 ;
+    rdfs:range  ex:운용상품 ;
+    tabnit:impactDirection tabnit:TargetToSource .
+
+# 상품이 바뀌면 그 상품을 보유한 계좌가 영향을 받는다.
+ex:상품보유 a owl:ObjectProperty ;
+    rdfs:label "상품 보유" ;
+    rdfs:domain ex:연금계좌 ;
+    rdfs:range  ex:운용상품 ;
+    tabnit:impactDirection tabnit:TargetToSource .
+
+# 기본 운용 방법이 바뀌면 그것을 지정한 계좌가 영향을 받는다.
+ex:방법지정 a owl:ObjectProperty ;
+    rdfs:label "기본 운용 방법 지정" ;
+    rdfs:domain ex:연금계좌 ;
+    rdfs:range  ex:기본운용방법 ;
+    tabnit:impactDirection tabnit:TargetToSource .
+
+# 계좌가 영향을 받으면 그 가입자가 영향을 받는다.
+ex:계좌소유 a owl:ObjectProperty ;
+    rdfs:label "계좌 소유" ;
+    rdfs:domain ex:연금계좌 ;
+    rdfs:range  ex:연금가입자 ;
+    tabnit:impactDirection tabnit:SourceToTarget .
+
+# 제도가 바뀌면 그 제도에 가입한 계좌가 영향을 받는다.
+ex:제도가입 a owl:ObjectProperty ;
+    rdfs:label "제도 가입" ;
+    rdfs:domain ex:연금계좌 ;
+    rdfs:range  ex:연금제도 ;
+    tabnit:impactDirection tabnit:TargetToSource .
+
+# 가입자가 영향을 받으면 재직하는 사업장에 알린다.
+ex:사업장재직 a owl:ObjectProperty ;
+    rdfs:label "재직" ;
+    rdfs:domain ex:연금가입자 ;
+    rdfs:range  ex:가입사업장 ;
+    tabnit:impactDirection tabnit:SourceToTarget .
+
+# 제도가 바뀌면 그 제도를 설정한 사업장이 영향을 받는다.
+ex:제도설정 a owl:ObjectProperty ;
+    rdfs:label "제도 설정" ;
+    rdfs:domain ex:연금제도 ;
+    rdfs:range  ex:가입사업장 ;
+    tabnit:impactDirection tabnit:SourceToTarget .
+
+# 사업장이 영향을 받으면 그 담당자가 영향을 받는다.
+ex:사업장담당 a owl:ObjectProperty ;
+    rdfs:label "사업장 담당" ;
+    rdfs:domain ex:가입사업장 ;
+    rdfs:range  ex:기업담당자 ;
+    tabnit:impactDirection tabnit:SourceToTarget .
+
+# 시연의 "같은 집단의 다른 사업장"은 위로 갔다가 내려오는 탐색이라 옮기지 못했다. 퍼지지 않게 둔다.
+ex:집단지배 a owl:ObjectProperty ;
+    rdfs:label "기업집단 소속" ;
+    rdfs:domain ex:가입사업장 ;
+    rdfs:range  ex:기업집단 ;
+    tabnit:impactDirection tabnit:None .
+
+# ── 속성 ───────────────────────────────────────────────────
+# 위험자산비중과 등급점수는 원장과 평가 체계가 계산해 준 값을 받는다. 엔진은 집계나 등급의 순서를 계산하지 않는다 (D6 "결정 필요" 16번).
+
+ex:규약명칭 a owl:DatatypeProperty ;
+    rdfs:label "규약 이름" ;
+    rdfs:domain ex:운영규약 ;
+    rdfs:range  xsd:string .
+
+ex:규약시행일 a owl:DatatypeProperty ;
+    rdfs:label "시행일" ;
+    rdfs:domain ex:운영규약 ;
+    rdfs:range  xsd:date .
+
+ex:요건명칭 a owl:DatatypeProperty ;
+    rdfs:label "요건 이름" ;
+    rdfs:domain ex:운영요건 ;
+    rdfs:range  xsd:string .
+
+ex:요건구분 a owl:DatatypeProperty ;
+    rdfs:label "요건 구분" ;
+    rdfs:domain ex:운영요건 ;
+    rdfs:range  xsd:string .
+
+ex:위험자산한도 a owl:DatatypeProperty ;
+    rdfs:label "위험자산 편입 한도 (비율)" ;
+    rdfs:domain ex:운영요건 ;
+    rdfs:range  xsd:decimal .
+
+ex:최저등급점수 a owl:DatatypeProperty ;
+    rdfs:label "기관의 최저 등급 점수" ;
+    rdfs:domain ex:운영요건 ;
+    rdfs:range  xsd:integer .
+
+ex:최저적립비율 a owl:DatatypeProperty ;
+    rdfs:label "최저 적립 비율" ;
+    rdfs:domain ex:운영요건 ;
+    rdfs:range  xsd:decimal .
+
+ex:기관명칭 a owl:DatatypeProperty ;
+    rdfs:label "기관 이름" ;
+    rdfs:domain ex:금융기관 ;
+    rdfs:range  xsd:string .
+
+ex:기관구분 a owl:DatatypeProperty ;
+    rdfs:label "기관 구분" ;
+    rdfs:domain ex:금융기관 ;
+    rdfs:range  xsd:string .
+
+ex:신용등급 a owl:DatatypeProperty ;
+    rdfs:label "신용등급" ;
+    rdfs:domain ex:금융기관 ;
+    rdfs:range  xsd:string .
+
+ex:등급점수 a owl:DatatypeProperty ;
+    rdfs:label "등급 점수 (클수록 높은 등급)" ;
+    rdfs:domain ex:금융기관 ;
+    rdfs:range  xsd:integer .
+
+ex:상품명칭 a owl:DatatypeProperty ;
+    rdfs:label "상품 이름" ;
+    rdfs:domain ex:운용상품 ;
+    rdfs:range  xsd:string .
+
+ex:상품구분 a owl:DatatypeProperty ;
+    rdfs:label "상품 구분" ;
+    rdfs:domain ex:운용상품 ;
+    rdfs:range  xsd:string .
+
+ex:위험등급 a owl:DatatypeProperty ;
+    rdfs:label "위험 등급" ;
+    rdfs:domain ex:운용상품 ;
+    rdfs:range  xsd:integer .
+
+ex:방법명칭 a owl:DatatypeProperty ;
+    rdfs:label "방법 이름" ;
+    rdfs:domain ex:기본운용방법 ;
+    rdfs:range  xsd:string .
+
+ex:위험성향 a owl:DatatypeProperty ;
+    rdfs:label "위험 성향" ;
+    rdfs:domain ex:기본운용방법 ;
+    rdfs:range  xsd:string .
+
+ex:계좌구분 a owl:DatatypeProperty ;
+    rdfs:label "계좌 구분" ;
+    rdfs:domain ex:연금계좌 ;
+    rdfs:range  xsd:string .
+
+ex:적립금 a owl:DatatypeProperty ;
+    rdfs:label "적립금 (원)" ;
+    rdfs:domain ex:연금계좌 ;
+    rdfs:range  xsd:integer .
+
+ex:위험자산비중 a owl:DatatypeProperty ;
+    rdfs:label "위험자산 비중 (비율)" ;
+    rdfs:domain ex:연금계좌 ;
+    rdfs:range  xsd:decimal .
+
+ex:가입자이름 a owl:DatatypeProperty ;
+    rdfs:label "가입자 이름" ;
+    rdfs:domain ex:연금가입자 ;
+    rdfs:range  xsd:string .
+
+ex:출생연도 a owl:DatatypeProperty ;
+    rdfs:label "출생 연도" ;
+    rdfs:domain ex:연금가입자 ;
+    rdfs:range  xsd:integer .
+
+ex:퇴직일 a owl:DatatypeProperty ;
+    rdfs:label "퇴직일" ;
+    rdfs:domain ex:연금가입자 ;
+    rdfs:range  xsd:date .
+
+ex:제도구분 a owl:DatatypeProperty ;
+    rdfs:label "제도 구분" ;
+    rdfs:domain ex:연금제도 ;
+    rdfs:range  xsd:string .
+
+ex:적립비율 a owl:DatatypeProperty ;
+    rdfs:label "적립 비율" ;
+    rdfs:domain ex:연금제도 ;
+    rdfs:range  xsd:decimal .
+
+ex:사업연도종료일 a owl:DatatypeProperty ;
+    rdfs:label "사업연도 종료일" ;
+    rdfs:domain ex:연금제도 ;
+    rdfs:range  xsd:date .
+
+ex:사업장명칭 a owl:DatatypeProperty ;
+    rdfs:label "사업장 이름" ;
+    rdfs:domain ex:가입사업장 ;
+    rdfs:range  xsd:string .
+
+ex:사업장업종 a owl:DatatypeProperty ;
+    rdfs:label "업종" ;
+    rdfs:domain ex:가입사업장 ;
+    rdfs:range  xsd:string .
+
+ex:집단명칭 a owl:DatatypeProperty ;
+    rdfs:label "집단 이름" ;
+    rdfs:domain ex:기업집단 ;
+    rdfs:range  xsd:string .
+
+ex:담당자이름 a owl:DatatypeProperty ;
+    rdfs:label "담당자 이름" ;
+    rdfs:domain ex:기업담당자 ;
+    rdfs:range  xsd:string .
+
+ex:담당팀 a owl:DatatypeProperty ;
+    rdfs:label "담당 팀" ;
+    rdfs:domain ex:기업담당자 ;
+    rdfs:range  xsd:string .

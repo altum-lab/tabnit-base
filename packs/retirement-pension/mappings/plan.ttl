@@ -1,0 +1,20 @@
+# 매핑. 형식은 D6 7절이다.
+# 제도와 사업장을 잇는 관계는 plan-employer 가 넣는다. 이 행이 사업장을 가리키면 사업장도 변동 대상이 되어,
+# 적립비율이 바뀐 변동에서 사업장이 영향 대상이 되지 못한다 (D6 "결정 필요" 15번의 요령).
+@prefix tabnit: <urn:tabnit:vocab:> .
+@prefix ex:     <urn:tabnit:pack:retirement-pension:> .
+
+ex:매핑-plan a tabnit:Mapping ;
+    tabnit:inputSourceId "plan" ;
+    tabnit:fileFormat tabnit:Csv ;
+    tabnit:requiredColumns ( "제도번호" "제도구분" "적립비율" "사업연도종료일" ) ;
+    tabnit:itemKeyColumns ( "제도번호" ) ;
+    # 이 행이 나타내는 개체. 이 행에서 나온 변동의 근거가 된다 (D2 AD-120).
+    tabnit:primaryEntity [ tabnit:entityType ex:연금제도 ; tabnit:keyColumn "제도번호" ] ;
+    tabnit:entity [
+        tabnit:entityType ex:연금제도 ;
+        tabnit:keyColumn "제도번호" ;
+        tabnit:attribute [ tabnit:property ex:제도구분 ; tabnit:column "제도구분" ] ;
+        tabnit:attribute [ tabnit:property ex:적립비율 ; tabnit:column "적립비율" ] ;
+        tabnit:attribute [ tabnit:property ex:사업연도종료일 ; tabnit:column "사업연도종료일" ]
+    ] .

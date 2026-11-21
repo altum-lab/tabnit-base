@@ -1,0 +1,33 @@
+# 매핑. 형식은 D6 7절이다.
+@prefix tabnit: <urn:tabnit:vocab:> .
+@prefix ex:     <urn:tabnit:pack:retirement-pension:> .
+
+ex:매핑-account a tabnit:Mapping ;
+    tabnit:inputSourceId "account" ;
+    tabnit:fileFormat tabnit:Csv ;
+    tabnit:requiredColumns ( "계좌번호" "계좌구분" "적립금" "위험자산비중" "소유가입자" "가입제도" "지정방법" ) ;
+    tabnit:itemKeyColumns ( "계좌번호" ) ;
+    # 이 행이 나타내는 개체. 이 행에서 나온 변동의 근거가 된다 (D2 AD-120).
+    tabnit:primaryEntity [ tabnit:entityType ex:연금계좌 ; tabnit:keyColumn "계좌번호" ] ;
+    tabnit:entity [
+        tabnit:entityType ex:연금계좌 ;
+        tabnit:keyColumn "계좌번호" ;
+        tabnit:attribute [ tabnit:property ex:계좌구분 ; tabnit:column "계좌구분" ] ;
+        tabnit:attribute [ tabnit:property ex:적립금 ; tabnit:column "적립금" ] ;
+        tabnit:attribute [ tabnit:property ex:위험자산비중 ; tabnit:column "위험자산비중" ]
+    ] ;
+    tabnit:relation [
+        tabnit:relationType ex:계좌소유 ;
+        tabnit:sourceEntity [ tabnit:entityType ex:연금계좌 ; tabnit:keyColumn "계좌번호" ] ;
+        tabnit:targetEntity [ tabnit:entityType ex:연금가입자 ; tabnit:keyColumn "소유가입자" ]
+    ] ;
+    tabnit:relation [
+        tabnit:relationType ex:제도가입 ;
+        tabnit:sourceEntity [ tabnit:entityType ex:연금계좌 ; tabnit:keyColumn "계좌번호" ] ;
+        tabnit:targetEntity [ tabnit:entityType ex:연금제도 ; tabnit:keyColumn "가입제도" ]
+    ] ;
+    tabnit:relation [
+        tabnit:relationType ex:방법지정 ;
+        tabnit:sourceEntity [ tabnit:entityType ex:연금계좌 ; tabnit:keyColumn "계좌번호" ] ;
+        tabnit:targetEntity [ tabnit:entityType ex:기본운용방법 ; tabnit:keyColumn "지정방법" ]
+    ] .

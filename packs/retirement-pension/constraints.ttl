@@ -1,0 +1,40 @@
+# 퇴직연금 Pack. 퇴직연금 사업자의 규약 준수와 운영 업무를 본뜬 예시 Pack 이다 (D2 AD-49, AD-294 ~ AD-298).
+# 모든 이름은 지어낸 것이다. 실제 기관, 사업장, 사람, 규정과 관계가 없다.
+# 제약. 형식은 D6 6절이다.
+@prefix sh:     <http://www.w3.org/ns/shacl#> .
+@prefix xsd:    <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:     <urn:tabnit:pack:retirement-pension:> .
+
+ex:연금계좌제약 a sh:NodeShape ;
+    sh:targetClass ex:연금계좌 ;
+    sh:property [
+        sh:path ex:계좌구분 ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+    ] ;
+    sh:property [
+        sh:path ex:위험자산비중 ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 0 ;
+    ] .
+
+ex:금융기관제약 a sh:NodeShape ;
+    sh:targetClass ex:금융기관 ;
+    sh:property [
+        sh:path ex:기관명칭 ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+    ] ;
+    sh:property [
+        sh:path ex:등급점수 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+    ] .
+
+ex:연금제도제약 a sh:NodeShape ;
+    sh:targetClass ex:연금제도 ;
+    sh:property [
+        sh:path ex:적립비율 ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 0 ;
+    ] .

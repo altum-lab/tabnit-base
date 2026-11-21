@@ -1,0 +1,17 @@
+# 매핑. 형식은 D6 7절이다.
+# 요건이 걸리는 대상의 유형이 넷이라 입력 자료를 유형마다 나눴다 (D6 "결정 필요" 15번).
+@prefix tabnit: <urn:tabnit:vocab:> .
+@prefix ex:     <urn:tabnit:pack:retirement-pension:> .
+
+ex:매핑-requirement-product a tabnit:Mapping ;
+    tabnit:inputSourceId "requirement-product" ;
+    tabnit:fileFormat tabnit:Csv ;
+    tabnit:requiredColumns ( "요건번호" "상품번호" ) ;
+    tabnit:itemKeyColumns ( "요건번호" "상품번호" ) ;
+    # 이 행이 나타내는 개체. 이 행에서 나온 변동의 근거가 된다 (D2 AD-120).
+    tabnit:primaryEntity [ tabnit:entityType ex:운영요건 ; tabnit:keyColumn "요건번호" ] ;
+    tabnit:relation [
+        tabnit:relationType ex:요건적용 ;
+        tabnit:sourceEntity [ tabnit:entityType ex:운영요건 ; tabnit:keyColumn "요건번호" ] ;
+        tabnit:targetEntity [ tabnit:entityType ex:운용상품 ; tabnit:keyColumn "상품번호" ]
+    ] .

@@ -1,0 +1,16 @@
+# 매핑. 형식은 D6 7절이다.
+@prefix tabnit: <urn:tabnit:vocab:> .
+@prefix ex:     <urn:tabnit:pack:retirement-pension:> .
+
+ex:매핑-group a tabnit:Mapping ;
+    tabnit:inputSourceId "group" ;
+    tabnit:fileFormat tabnit:Csv ;
+    tabnit:requiredColumns ( "집단번호" "집단명칭" ) ;
+    tabnit:itemKeyColumns ( "집단번호" ) ;
+    # 이 행이 나타내는 개체. 이 행에서 나온 변동의 근거가 된다 (D2 AD-120).
+    tabnit:primaryEntity [ tabnit:entityType ex:기업집단 ; tabnit:keyColumn "집단번호" ] ;
+    tabnit:entity [
+        tabnit:entityType ex:기업집단 ;
+        tabnit:keyColumn "집단번호" ;
+        tabnit:attribute [ tabnit:property ex:집단명칭 ; tabnit:column "집단명칭" ]
+    ] .

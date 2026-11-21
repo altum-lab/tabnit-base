@@ -225,14 +225,15 @@ final class Evaluator {
         if (expected.containsKey("countsByType")) {
             List<Object> pairs = new ArrayList<>();
             for (Object item : (List<?>) body.get("countsByType")) {
-                pairs.add(List.of(String.valueOf(((Map<?, ?>) item).get("entityType")), ((Map<?, ?>) item).get("count")));
+                // 값이 비어 있어도 견줄 수 있게 담는다. 틀린 답은 오류가 아니라 기대와 실제의 차이로 낸다.
+                pairs.add(java.util.Arrays.asList(String.valueOf(((Map<?, ?>) item).get("entityType")), ((Map<?, ?>) item).get("count")));
             }
             actual.put("countsByType", pairs);
         }
         if (expected.containsKey("countsByDepth")) {
             List<Object> pairs = new ArrayList<>();
             for (Object item : (List<?>) body.get("countsByDepth")) {
-                pairs.add(List.of(String.valueOf(((Map<?, ?>) item).get("depth")), ((Map<?, ?>) item).get("count")));
+                pairs.add(java.util.Arrays.asList(String.valueOf(((Map<?, ?>) item).get("depth")), ((Map<?, ?>) item).get("count")));
             }
             actual.put("countsByDepth", pairs);
         }

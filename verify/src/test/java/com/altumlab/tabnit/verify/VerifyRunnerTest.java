@@ -357,6 +357,7 @@ class VerifyRunnerTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void 적은_수와_한계는_견주고_적지_않은_것은_견주지_않으며_빈_목록과_조치의_어긋남도_잡는다() throws IOException {
         String target = """
                         - entity: { type: TypeB, key: k-9 }
@@ -389,6 +390,23 @@ class VerifyRunnerTest {
         // 견준 실패에는 기대와 실제가 붙는다.
         assertThat(results.get(1).expected()).contains("countsByType");
         assertThat(results.get(1).actual()).contains("countsByType");
+
+        // 제품의 답에서 수가 비어 있어도 오류가 아니라 기대와 실제가 다른 것으로 낸다.
+        Product broken = new FakeProduct() {
+            @Override
+            public Reply impactScope(String changeEventId) {
+                Map<String, Object> body = new LinkedHashMap<>((Map<String, Object>) super.impactScope(changeEventId).body());
+                Map<String, Object> count = new LinkedHashMap<>();
+                count.put("entityType", "TypeB");
+                count.put("count", null);
+                body.put("countsByType", List.of(count));
+                return new Reply(200, body);
+            }
+        };
+        Evaluator.Result emptyCount = new Evaluator(PACK, broken).evaluate(file, product.steps()).get(1);
+        assertThat(emptyCount.passed()).isFalse();
+        assertThat(emptyCount.reason()).isNull();
+        assertThat(emptyCount.actual()).contains("null");
     }
 
     @Test
@@ -472,6 +490,8 @@ class VerifyRunnerTest {
             if (exchange.getRequestMethod().equals("POST") && exchange.getRequestURI().getPath().equals("/api/v1/session")) {
                 exchange.getResponseHeaders().add("Set-Cookie", "JSESSIONID=ses-1; Path=/; HttpOnly; Secure");
             }
+            // 값이 없는 쿠키 헤더가 섞여 와도 멈추지 않는다.
+            exchange.getResponseHeaders().add("Set-Cookie", "broken-without-value");
             byte[] answer = "{\"relations\":[],\"n\":1,\"name\":\"가 \\\"나\\\"\"}".getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
             exchange.sendResponseHeaders(exchange.getRequestURI().getPath().endsWith("/relations") ? 404 : 200, answer.length);
@@ -547,6 +567,14 @@ class VerifyRunnerTest {
             .containsExactly("Q-02");
         assertThat(Report.differences(first, List.of(result("Q-01", false, "[a]"), result("Q-02", true, "[b]"))))
             .containsExactly("Q-01", "Q-03");
+        // 두 번 모두 묻기 전에 막혔으면 같은 것이다. 까닭의 문구에는 실행마다 다른 값(포트 같은 것)이 들 수 있다.
+        assertThat(Report.differences(
+                List.of(new Evaluator.Result("Q-01", "changes", "", false, null, null, "지어낸 까닭: 포트 5001")),
+                List.of(new Evaluator.Result("Q-01", "changes", "", false, null, null, "지어낸 까닭: 포트 5002")))).isEmpty();
+        // 한 번은 막히고 한 번은 견주었으면 다른 것이다.
+        assertThat(Report.differences(
+                List.of(new Evaluator.Result("Q-01", "changes", "", false, null, null, "지어낸 까닭")),
+                List.of(result("Q-01", false, "[a]")))).containsExactly("Q-01");
     }
 
     @Test
@@ -597,7 +625,7 @@ class VerifyRunnerTest {
     }
 
     /** 지어낸 제품. 정해 둔 답을 준다. */
-    private static final class FakeProduct implements Product {
+    private static class FakeProduct implements Product {
 
         final List<String> asked = new ArrayList<>();
 

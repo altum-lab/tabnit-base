@@ -35,7 +35,7 @@ final class Report {
         return problems;
     }
 
-    /** 두 번 돌린 결과가 다른 질문의 번호. 통과 여부나 제품의 답이 다르면 다른 것이다. 번호 순이다. */
+    /** 두 번 돌린 결과가 다른 질문의 번호. 통과 여부나 제품의 답이 다르면 다른 것이다. 번호의 글자 코드 순이다. */
     static List<String> differences(List<Evaluator.Result> first, List<Evaluator.Result> second) {
         Map<String, Evaluator.Result> one = byId(first);
         Map<String, Evaluator.Result> two = byId(second);
@@ -46,8 +46,9 @@ final class Report {
         for (String id : ids) {
             Evaluator.Result a = one.get(id);
             Evaluator.Result b = two.get(id);
-            if (a == null || b == null || a.passed() != b.passed() || !java.util.Objects.equals(a.actual(), b.actual())
-                    || !java.util.Objects.equals(a.reason(), b.reason())) {
+            // 견주기 전에 막힌 까닭의 문구는 견주지 않는다: 실행마다 다른 값(포트, 접속 주소)이 들 수 있다.
+            // 한 번은 막히고 한 번은 견주었으면 제품의 답이 한쪽에만 있어 다른 것으로 잡힌다.
+            if (a == null || b == null || a.passed() != b.passed() || !java.util.Objects.equals(a.actual(), b.actual())) {
                 different.add(id);
             }
         }

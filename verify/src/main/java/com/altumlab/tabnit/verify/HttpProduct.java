@@ -116,6 +116,10 @@ final class HttpProduct implements Product {
         }
         for (String setCookie : response.headers().allValues("Set-Cookie")) {
             String pair = setCookie.split(";", 2)[0];
+            if (pair.indexOf('=') < 0) {
+                // 이름과 값의 꼴이 아닌 헤더는 쿠키가 아니다. 넘어간다.
+                continue;
+            }
             String name = pair.substring(0, pair.indexOf('='));
             String value = pair.substring(pair.indexOf('=') + 1);
             if (value.isEmpty()) {

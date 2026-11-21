@@ -21,6 +21,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/editions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 파일 하나를 입력 자료의 새 판으로 올리고, 바뀐 항목과 그 처리 결과를 돌려준다
+         * @description 받아들인 판은 앞 판과 비교해 바뀐 항목(변동)을 찾고, 이어서 변동마다 영향 범위를 계산해 조치를 만들어 저장한다. 응답이 오면 그 판의 조치가 만들어져 있다. 한 Pack 에서는 한 번에 하나만 처리한다. 뒤에 온 요청은 앞의 것이 끝날 때까지 기다린다. 담당자와 관리자가 부를 수 있다.
+         */
+        post: operations["submitEdition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -63,6 +83,94 @@ export interface components {
             inputSourceId: string;
             editionNo: number;
         };
+        EditionSubmission: {
+            /**
+             * @description ACCEPTED 는 새 판을 만들었다. UNCHANGED 는 내용이 바로 앞 판과 같아 판을 만들지 않았다
+             * @enum {string}
+             */
+            outcome: "ACCEPTED" | "UNCHANGED";
+            /** @description 만든 판의 id. UNCHANGED 면 내용이 같았던 앞 판의 id */
+            editionId: string;
+            packId: string;
+            inputSourceId: string;
+            /** @description 그 입력 자료 안에서의 판 번호 */
+            editionNo: number;
+            /**
+             * Format: date
+             * @description 그 판의 적용일. UNCHANGED 면 앞 판의 것이다
+             */
+            effectiveDate: string;
+            /** @description 받아들인 항목(행)의 수. UNCHANGED 면 0 */
+            itemCount: number;
+            /** @description 앞 판과 비교해 바뀐 항목. 첫 판이거나 UNCHANGED 면 비어 있다 */
+            changes: components["schemas"]["EditionChange"][];
+            /** @description 투입의 알림 (건너뛴 행 등). UNCHANGED 면 비어 있다 */
+            notices: components["schemas"]["EditionNotice"][];
+            /** @description 이 요청이 함께 다시 처리한, 앞선 판의 변동. 전에 처리에 실패해 남아 있던 것이다. 보통 비어 있다 */
+            retriedChanges: components["schemas"]["RetriedChange"][];
+            /** @description 판은 받아들였지만 변동의 처리를 시작하지 못했는가. true 면 changes 의 처리 상태는 모두 PENDING 이고, 다음에 받아들여진 판을 올릴 때 처리된다 */
+            processingNotStarted: boolean;
+        };
+        EditionChange: {
+            /** @description 변동 이벤트의 id */
+            changeEventId: string;
+            /** @description 바뀐 항목의 키 */
+            itemKey: string;
+            /**
+             * @description 추가, 변경, 삭제
+             * @enum {string}
+             */
+            kind: "ADDED" | "CHANGED" | "REMOVED";
+            /** @description 그 행의 주 개체의 id. 조치의 근거가 된다 */
+            primaryEntityId: string;
+            /** @description 변동 대상 개체의 id. 글자 코드 순이다 */
+            targetEntityIds: string[];
+            processing: components["schemas"]["ChangeProcessing"];
+        };
+        /** @description 변동 하나를 영향 범위 계산과 조치 생성까지 처리한 결과 */
+        ChangeProcessing: {
+            /**
+             * @description PROCESSED 는 조치까지 저장했다. FAILED 는 실패했고 뒤에 다시 시도된다. PENDING 은 아직 처리하지 못했다
+             * @enum {string}
+             */
+            status: "PROCESSED" | "FAILED" | "PENDING";
+            /**
+             * @description 실패했을 때 어느 단계인가. IMPACT 는 영향 범위 계산, RULES 는 규칙 실행. 아니면 null
+             * @enum {string|null}
+             */
+            failedStage: "IMPACT" | "RULES" | null;
+            /** @description 실패한 이유의 코드. 아니면 null */
+            failureCode: string | null;
+            /** @description 그 변동에서 만들어진 조치의 수. 처리되지 않았으면 0 */
+            actionCount: number;
+        };
+        RetriedChange: {
+            changeEventId: string;
+            /** @description 그 변동이 나온 판의 id */
+            editionId: string;
+            itemKey: string;
+            processing: components["schemas"]["ChangeProcessing"];
+        };
+        /** @description 투입의 알림 하나. 문구가 아니라 종류와 이유의 코드와 값이다 */
+        EditionNotice: {
+            /** @description 종류. SKIPPED_ROW, REFERENCE_ONLY_ENTITY, ATTRIBUTE_CONFLICT, RELATION_CONFLICT, PERIOD_ADJUSTED */
+            kind: string;
+            /** @description 걸린 행의 번호 */
+            rowNo: number;
+            /** @description 이유의 코드 */
+            code: string;
+            /** @description 걸린 열의 이름이나 개체·속성의 id. 없으면 null */
+            subject: string | null;
+            /** @description 걸린 값. 없으면 null */
+            detail: string | null;
+        };
+        /** @description 공통 오류 형식에 거부한 이유를 더했다 */
+        EditionRejectedProblem: components["schemas"]["Problem"] & {
+            /** @description 거부한 이유의 코드. 투입 기록에 남은 것과 같다 */
+            reasonCode: string;
+            /** @description 거부한 이유의 값 (예. 없는 열의 이름). 없으면 null */
+            reasonDetail: string | null;
+        };
         /** @description RFC 9457 의 항목에 code 와 field 를 더했다 */
         Problem: {
             /** @description 오류 종류의 주소. 따로 정하지 않은 오류는 about:blank */
@@ -77,7 +185,7 @@ export interface components {
              * @description 오류의 종류. 화면이 이것으로 가른다. 바뀌지 않는 값이다
              * @enum {string}
              */
-            code: "MISSING_ENTITY_ID" | "INVALID_AS_OF" | "ENTITY_NOT_FOUND" | "UNAUTHENTICATED" | "FORBIDDEN" | "INTERNAL";
+            code: "MISSING_ENTITY_ID" | "INVALID_AS_OF" | "ENTITY_NOT_FOUND" | "MISSING_PACK_ID" | "MISSING_INPUT_SOURCE_ID" | "MISSING_EFFECTIVE_DATE" | "INVALID_EFFECTIVE_DATE" | "MISSING_FILE" | "INVALID_EDITION" | "PACK_NOT_FOUND" | "INPUT_SOURCE_NOT_FOUND" | "FILE_TOO_LARGE" | "EDITION_REJECTED" | "UNAUTHENTICATED" | "FORBIDDEN" | "INTERNAL";
             /** @description 틀린 항목의 이름. 입력 오류일 때만 있다 */
             field?: string;
         };
@@ -127,6 +235,60 @@ export interface operations {
             401: components["responses"]["Problem"];
             403: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    submitEdition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** @description Pack 의 식별자 */
+                    packId: string;
+                    /** @description 입력 자료의 식별자. 그 Pack 의 매핑 가운데 하나다 */
+                    inputSourceId: string;
+                    /**
+                     * Format: date
+                     * @description 판의 적용일. 이 날부터 새 판의 내용이 유효하다
+                     */
+                    effectiveDate: string;
+                    /**
+                     * Format: binary
+                     * @description 올리는 파일. 파일의 이름은 기록에 남긴다
+                     */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 판을 받아들였거나(ACCEPTED), 내용이 바로 앞 판과 같아 판을 만들지 않았다(UNCHANGED). changes 의 순서는 항목의 키의 글자 코드 순이다. notices 의 순서는 행 번호, 종류, 코드, 내용 순이다. retriedChanges 의 순서는 처리한 차례다 (판을 받은 차례, 받은 때가 같으면 입력 자료의 id 순과 판 번호 순, 그 안에서 항목의 키의 글자 코드 순) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditionSubmission"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            413: components["responses"]["Problem"];
+            /** @description 파일을 받아들이지 않았다. 판은 만들어지지 않았고 투입 기록에 거부로 남았다. 공통 오류 형식에 거부한 이유의 코드(reasonCode)와 값(reasonDetail)을 더해 담는다 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["EditionRejectedProblem"];
+                };
+            };
             500: components["responses"]["Problem"];
         };
     };

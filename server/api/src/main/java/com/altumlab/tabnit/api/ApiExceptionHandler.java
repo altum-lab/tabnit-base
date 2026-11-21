@@ -1,5 +1,12 @@
 package com.altumlab.tabnit.api;
 
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.util.unit.DataSize;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import com.altumlab.tabnit.core.EntityNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,9 +29,38 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
 	private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
+	private final DataSize maxFileSize;
+
+	ApiExceptionHandler(@Value("${spring.servlet.multipart.max-file-size:20MB}") DataSize maxFileSize) {
+		this.maxFileSize = maxFileSize;
+	}
+
 	@ExceptionHandler(ApiProblemException.class)
 	ProblemDetail handle(ApiProblemException e) {
 		return problem(e.status(), title(e.status()), e.code(), e.field(), e.getMessage());
+	}
+
+	/** 올린 파일을 받아들이지 않았다. 거부한 이유의 코드와 값을 함께 담는다 (D7 5절). */
+	@ExceptionHandler(EditionRejectedException.class)
+	ProblemDetail handle(EditionRejectedException e) {
+		HttpStatus status = e.tooLarge() ? HttpStatus.CONTENT_TOO_LARGE : HttpStatus.UNPROCESSABLE_CONTENT;
+		ProblemDetail problem = problem(status, title(status), e.tooLarge() ? "FILE_TOO_LARGE" : "EDITION_REJECTED",
+				e.tooLarge() ? "file" : null, e.getMessage());
+		if (!e.tooLarge()) {
+			problem.setProperty("reasonCode", e.reasonCode());
+			problem.setProperty("reasonDetail", e.reasonDetail());
+		}
+		return problem;
+	}
+
+	/** 서버가 본문을 읽기 전에 크기 한도에 걸린 요청. 프레임워크의 형식에 code 를 더한다. */
+	@Override
+	protected ResponseEntity<Object> handleMaxUploadSizeExceededException(MaxUploadSizeExceededException ex,
+			HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+		ProblemDetail problem = problem(HttpStatus.CONTENT_TOO_LARGE, title(HttpStatus.CONTENT_TOO_LARGE), "FILE_TOO_LARGE",
+				"file", "파일이 너무 큽니다. 받는 크기의 한도는 " + this.maxFileSize.toBytes()
+						+ " 바이트입니다. 파일을 나누거나 줄여 다시 올리세요.");
+		return handleExceptionInternal(ex, problem, headers, HttpStatus.CONTENT_TOO_LARGE, request);
 	}
 
 	@ExceptionHandler(EntityNotFoundException.class)
@@ -55,6 +91,8 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 		return switch (status) {
 			case BAD_REQUEST -> "잘못된 요청";
 			case NOT_FOUND -> "대상을 찾을 수 없음";
+			case CONTENT_TOO_LARGE -> "너무 큰 파일";
+			case UNPROCESSABLE_CONTENT -> "받아들일 수 없는 파일";
 			default -> "서버 오류";
 		};
 	}

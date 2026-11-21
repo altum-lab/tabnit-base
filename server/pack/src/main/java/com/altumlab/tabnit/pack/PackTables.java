@@ -17,6 +17,10 @@ final class PackTables {
         this.jdbc = jdbc;
     }
 
+    List<String> packIds() {
+        return jdbc.queryForList("select pack_id from pack_definition order by pack_id collate \"C\"", String.class);
+    }
+
     Optional<PackDefinition> read(String packId) {
         Map<String, List<String>> parents = new TreeMap<>(PackOrder.STRINGS);
         jdbc.query("""

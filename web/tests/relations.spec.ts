@@ -6,7 +6,7 @@ import { expect, type Page, test } from "@playwright/test";
 // 화면은 서버가 준 값과 순서를 그대로 보여 줘야 한다. 다시 세거나 정렬하지 않는다.
 
 async function search(page: Page, entityId: string, asOf?: string) {
-  await page.goto("/");
+  await page.goto("/relations");
   await page.getByLabel("개체 id").fill(entityId);
   if (asOf) {
     await page.getByLabel("조회 시점").fill(asOf);

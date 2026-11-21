@@ -110,6 +110,37 @@ class EditionIngestTest {
     }
 
     @Test
+    void 입력_자료의_가장_새_판은_판_번호가_가장_큰_판이다() {
+        PackDefinition pack = pack("i-latest", full("src"), full("other"));
+
+        // 판이 없는 입력 자료, 없는 Pack.
+        assertThat(records.latestEdition("i-latest", "src")).isEmpty();
+        assertThat(records.latestEdition("i-latest-없는-pack", "src")).isEmpty();
+        // 판이 열 개를 넘어도 수로 견준다 (글자로 견주면 10 이 2 보다 앞선다).
+        for (int no = 1; no <= 11; no++) {
+            ingest.ingest(pack, "src", null, bytes("code,title,other\nB-1,제목 " + no + ",O-1\n"), EFFECTIVE.plusDays(no),
+                    RECEIVED_AT.plusSeconds(no));
+        }
+        // 거부된 투입과 내용이 같은 투입은 판이 아니다.
+        ingest.ingest(pack, "src", null, bytes("이런 열은 없다\n값\n"), EFFECTIVE.plusDays(20), RECEIVED_AT.plusSeconds(20));
+        ingest.ingest(pack, "src", null, bytes("code,title,other\nB-1,제목 11,O-1\n"), EFFECTIVE.plusDays(21),
+                RECEIVED_AT.plusSeconds(21));
+        // 다른 입력 자료의 판은 섞이지 않는다.
+        ingest.ingest(pack, "other", null, bytes("code,title,other\nB-9,아홉,O-9\n"), EFFECTIVE.plusDays(30),
+                RECEIVED_AT.plusSeconds(30));
+
+        Edition latest = records.latestEdition("i-latest", "src").orElseThrow();
+
+        assertThat(latest.id()).isEqualTo("i-latest|src|11");
+        assertThat(latest.editionNo()).isEqualTo(11);
+        assertThat(latest.effectiveDate()).isEqualTo(EFFECTIVE.plusDays(11));
+        assertThat(latest).isEqualTo(records.findEdition("i-latest|src|11").orElseThrow());
+        assertThat(records.latestEdition("i-latest", "other").orElseThrow().editionNo()).isEqualTo(1);
+        assertThatThrownBy(() -> records.latestEdition(null, "src")).isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> records.latestEdition("i-latest", null)).isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
     void 내용의_해시는_받은_바이트의_SHA_256_이다() {
         PackDefinition pack = pack("i-hash", full("src"));
 

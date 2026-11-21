@@ -15,7 +15,7 @@ Tabnit Base v1.0. 문서나 규정이 바뀌면(변동) 그 영향이 닿는 대
 
 ## 2. 기술 스택
 
-- 서버: Java 21, Spring Boot. 저장소: PostgreSQL (관계에 유효기간 열, 재귀 질의).
+- 서버: Java 21, Spring Boot, Spring Security (AD-263). 저장소: PostgreSQL (관계에 유효기간 열, 재귀 질의).
 - 화면: React, TypeScript. 서버와는 API로만 통한다. API 계약은 OpenAPI 3.1.
 - 시험: JUnit, Testcontainers(실제 PostgreSQL), Playwright(화면).
 - 배포: 컨테이너 2개(앱, PostgreSQL). 온프레미스 설치.
@@ -43,6 +43,7 @@ tools/     점검 스크립트, 개발 보드
 | 서버 전체 빌드와 시험 | `cd server && ./gradlew build` (Docker가 켜져 있어야 한다) |
 | 모듈 하나만 시험 | `cd server && ./gradlew :core:test` |
 | 서버 실행 | `cd server && ./gradlew :api:bootRun` (PostgreSQL 컨테이너가 함께 뜬다) |
+| 개발 환경 한 번에 띄우기 | `bash tools/up.sh` |
 | 화면 실행 | `cd web && npm run dev` |
 | 화면 빌드 | `cd web && npm run build` |
 | 화면 시험 | `cd web && npx playwright test` (Docker가 켜져 있어야 한다. 시험용 서버와 PostgreSQL 컨테이너를 스스로 띄운다) |

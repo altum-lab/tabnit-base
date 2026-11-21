@@ -40,7 +40,7 @@ scenario:
     - { step: 18, inputSource: requirement-storage, file: data/requirement-storage-v1.csv, effectiveDate: 2026-01-01 }
     - { step: 19, inputSource: requirement-emission, file: data/requirement-emission-v1.csv, effectiveDate: 2026-01-01 }
     - { step: 20, inputSource: requirement-equipment, file: data/requirement-equipment-v1.csv, effectiveDate: 2026-01-01 }
-    # 2026-09-02: 불산 자료(SDS-01)가 7판이 되며 유해성 구분이 오르고 특별관리 대상이 된다. 황산 자료(SDS-04)는 노출기준만 바뀐다.
+    # 2026-09-02: 불산 자료(SDS-01)가 7판이 되며 유해성 구분이 오르고 특별관리 대상이 된다. 황산 자료(SDS-04)는 7판이 되며 노출기준이 바뀐다.
     - { step: 21, inputSource: safety-sheet, file: data/safety-sheet-v2.csv, effectiveDate: 2026-09-02 }
     # 2026-10-01: W-1003 이 가-세정-01 에서 나-세정-02 로 옮기고, W-1061 이 새로 오고, W-1052 가 빠진다.
     - { step: 22, inputSource: worker, file: data/worker-v2.csv, effectiveDate: 2026-10-01 }

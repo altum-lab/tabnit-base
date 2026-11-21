@@ -1,0 +1,141 @@
+package com.altumlab.tabnit.api;
+
+import com.altumlab.tabnit.pack.PackChangeRejectedException;
+import com.altumlab.tabnit.pack.PackInvalidException;
+import com.altumlab.tabnit.pack.PackLoadResult;
+import com.altumlab.tabnit.pack.PackLoader;
+import com.altumlab.tabnit.pack.PackProblem;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
+import java.time.Clock;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.regex.Pattern;
+import javax.sql.DataSource;
+import org.springframework.http.HttpStatus;
+
+/**
+ * 서버의 Pack 폴더에 있는 Pack 하나를 적재한다 (D2 AD-272, D7 10절).
+ *
+ * <p>Pack 은 올리지 않는다. 설치할 때 정한 폴더 바로 아래의 폴더를 이름으로 고른다. 읽고 검증하고 저장하는 것은 pack 이
+ * 한다. 여기서는 이름이 그 폴더 밖을 가리키지 못하게 하고, pack 의 거부를 응답에 담을 모양으로 바꾼다.
+ */
+class PackLoading {
+
+	/** 폴더의 이름으로 받는 글자. 경로를 가르는 글자와 점이 들어올 수 없다. Pack 의 식별자의 규칙은 pack 이 본다. */
+	private static final Pattern SAFE_NAME = Pattern.compile("[a-z0-9-]{1,100}");
+
+	/** 가린 자리에 적는 글자. Pack 의 폴더는 그 안의 이름이 이어지도록 빈 글자로, 그 위의 폴더는 표시로 바꾼다. */
+	private static final String HIDDEN_FOLDER = "";
+
+	private static final String HIDDEN_ROOT = "(Pack 폴더)";
+
+	private final PackLoader loader;
+
+	private final Clock clock;
+
+	/** 설치 설정 tabnit.packs-dir. 정하지 않았으면 빈 글자다. */
+	private final String packsDirectory;
+
+	/** 적재는 한 번에 하나씩 한다. */
+	private final ReentrantLock oneAtATime = new ReentrantLock();
+
+	PackLoading(DataSource dataSource, Clock clock, String packsDirectory) {
+		this.loader = new PackLoader(dataSource);
+		this.clock = clock;
+		this.packsDirectory = packsDirectory == null ? "" : packsDirectory;
+	}
+
+	/** 폴더의 이름으로 받을 수 있는 글자인가. */
+	static boolean isAcceptableName(String packId) {
+		return packId != null && SAFE_NAME.matcher(packId).matches();
+	}
+
+	/**
+	 * @param packId Pack 폴더 바로 아래에 있는 폴더의 이름
+	 * @throws ApiProblemException 이름이 틀렸거나 그 폴더가 없을 때
+	 * @throws PackLoadRejectedException pack 이 적재를 거부했을 때
+	 */
+	PackLoadResult load(String packId) {
+		if (!isAcceptableName(packId)) {
+			throw new ApiProblemException(HttpStatus.BAD_REQUEST, "INVALID_PACK_ID", "packId",
+					"Pack 의 이름에 쓸 수 없는 글자가 있거나 너무 깁니다. 영어 소문자, 숫자, 붙임표(-)만 써서 100자 이하로 적어 다시 보내세요.");
+		}
+		Path folder = folderOf(packId);
+		this.oneAtATime.lock();
+		try {
+			return this.loader.load(folder, this.clock.instant());
+		}
+		catch (PackInvalidException e) {
+			List<PackProblem> problems = new ArrayList<>();
+			for (PackProblem problem : e.problems()) {
+				problems.add(new PackProblem(withoutServerPath(problem.file(), folder),
+						withoutServerPath(problem.item(), folder), withoutServerPath(problem.message(), folder)));
+			}
+			throw PackLoadRejectedException.invalid(problems);
+		}
+		catch (PackChangeRejectedException e) {
+			throw PackLoadRejectedException
+				.changeRejected(e.reasons().stream().map(reason -> withoutServerPath(reason, folder)).toList());
+		}
+		finally {
+			this.oneAtATime.unlock();
+		}
+	}
+
+	/**
+	 * 문구에서 서버의 폴더 경로를 가린다 (D7 10절: 응답에 서버의 폴더 경로를 담지 않는다).
+	 *
+	 * <p>pack 의 문구에 경로가 섞이는 경우가 있다: 상대 주소로 적은 정의는 읽을 때 파일의 자리가 붙고, 읽지 못한 폴더는
+	 * 그 경로가 문구에 들어간다. 주소의 꼴(file:)과 경로의 꼴을 모두 가린다. Pack 폴더 안에서의 이름은 남긴다.
+	 */
+	private static String withoutServerPath(String text, Path folder) {
+		Path root = folder.getParent();
+		String shown = text;
+		// 긴 것부터 가린다: Pack 의 폴더, 그 위의 Pack 폴더.
+		for (Path path : new Path[] { folder, root }) {
+			String uri = path.toUri().toString();
+			String asciiUri = path.toUri().toASCIIString();
+			for (String form : new String[] { uri, asciiUri, uri.replaceFirst("/$", ""), asciiUri.replaceFirst("/$", ""),
+					path.toString() + path.getFileSystem().getSeparator(), path.toString() }) {
+				shown = shown.replace(form, path == folder ? HIDDEN_FOLDER : HIDDEN_ROOT);
+			}
+		}
+		return shown;
+	}
+
+	/** 그 이름의 폴더. Pack 폴더 바로 아래에 실제로 있는 폴더여야 한다. */
+	private Path folderOf(String packId) {
+		if (this.packsDirectory.isBlank()) {
+			throw notConfigured();
+		}
+		try {
+			Path root = Path.of(this.packsDirectory);
+			if (!Files.isDirectory(root)) {
+				throw notConfigured();
+			}
+			Path realRoot = root.toRealPath();
+			Path folder = realRoot.resolve(packId);
+			// 바로가기는 따라가지 않는다. 따라간 곳이 Pack 폴더 밖일 수 있다.
+			if (!Files.isDirectory(folder, LinkOption.NOFOLLOW_LINKS) || !realRoot.equals(folder.toRealPath().getParent())) {
+				throw new ApiProblemException(HttpStatus.NOT_FOUND, "PACK_FOLDER_NOT_FOUND", "packId",
+						"서버의 Pack 폴더에 그 이름의 폴더가 없습니다. Pack 의 이름을 확인하거나, 서버의 Pack 폴더에 Pack 을 둔 뒤 다시 시도하세요.");
+			}
+			return folder;
+		}
+		catch (IOException | InvalidPathException e) {
+			// 폴더를 읽지 못했다. 서버 쪽의 문제다. 경로는 기록에만 남긴다.
+			throw new IllegalStateException("Pack 폴더를 읽지 못했습니다: " + this.packsDirectory, e);
+		}
+	}
+
+	private static ApiProblemException notConfigured() {
+		return new ApiProblemException(HttpStatus.NOT_FOUND, "PACK_FOLDER_NOT_FOUND", "packId",
+				"이 서버에는 Pack 폴더가 정해져 있지 않거나 그 폴더가 없습니다. 설치 설정 tabnit.packs-dir 에 Pack 을 둔 폴더를 적고 서버를 다시 띄운 뒤 시도하세요.");
+	}
+
+}

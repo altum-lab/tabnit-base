@@ -69,6 +69,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pack-loads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 서버의 Pack 폴더에 있는 Pack 하나를 적재한다
+         * @description 관리자만 부를 수 있다. 설치할 때 정한 Pack 폴더(설치 설정 tabnit.packs-dir) 바로 아래의 폴더를 이름으로 고른다. 폴더의 이름이 Pack 의 id 다. 서버가 그 폴더를 읽어 검증하고 정의를 적재한다. 문제가 하나라도 있으면 아무것도 적재하지 않는다. 같은 Pack 을 다시 적재하면 바뀐 것만 고친다
+         */
+        post: operations["loadPack"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/editions": {
         parameters: {
             query?: never;
@@ -225,6 +245,27 @@ export interface components {
             loginId: string;
             /** @description 비밀번호. 서버는 이 값을 저장하거나 기록에 남기지 않는다 */
             password: string;
+        };
+        PackLoadRequest: {
+            /** @description 적재할 Pack 의 id. 서버의 Pack 폴더 바로 아래에 있는 폴더의 이름이다 */
+            packId: string;
+        };
+        PackLoad: {
+            packId: string;
+            /**
+             * @description LOADED 처음 적재했다. UPDATED 이미 있던 정의를 고친 것으로 바꿨다. UNCHANGED 이미 있는 것과 같아 바꾸지 않았다
+             * @enum {string}
+             */
+            outcome: "LOADED" | "UPDATED" | "UNCHANGED";
+        };
+        /** @description Pack 에서 찾은 문제 하나 */
+        PackProblem: {
+            /** @description Pack 폴더 안에서의 파일 이름. 폴더 자체의 문제면 빈 글자 */
+            file: string;
+            /** @description 틀린 항목. 정의의 이름이다 */
+            item: string;
+            /** @description 무엇이 틀렸고 어떻게 고치면 되는지 */
+            message: string;
         };
         PackList: {
             packs: components["schemas"]["PackSummary"][];
@@ -530,9 +571,13 @@ export interface components {
              * @description 오류의 종류. 화면이 이것으로 가른다. 바뀌지 않는 값이다
              * @enum {string}
              */
-            code: "MISSING_ENTITY_ID" | "INVALID_AS_OF" | "ENTITY_NOT_FOUND" | "MISSING_LOGIN_ID" | "MISSING_PASSWORD" | "LOGIN_FAILED" | "MISSING_PACK_ID" | "MISSING_INPUT_SOURCE_ID" | "MISSING_EFFECTIVE_DATE" | "INVALID_EFFECTIVE_DATE" | "MISSING_FILE" | "INVALID_EDITION" | "PACK_NOT_FOUND" | "INPUT_SOURCE_NOT_FOUND" | "FILE_TOO_LARGE" | "EDITION_REJECTED" | "INVALID_STATUS" | "MISSING_ACTION_ID" | "INVALID_ACTION_ID" | "ACTION_NOT_FOUND" | "INVALID_BODY" | "MISSING_DECISION" | "INVALID_DECISION" | "INVALID_NOTE" | "ACTION_DECISION_CONFLICT" | "MISSING_CHANGE_EVENT_ID" | "INVALID_CHANGE_EVENT_ID" | "IMPACT_SCOPE_NOT_FOUND" | "UNAUTHENTICATED" | "FORBIDDEN" | "INTERNAL";
+            code: "MISSING_ENTITY_ID" | "INVALID_AS_OF" | "ENTITY_NOT_FOUND" | "MISSING_LOGIN_ID" | "MISSING_PASSWORD" | "LOGIN_FAILED" | "MISSING_PACK_ID" | "MISSING_INPUT_SOURCE_ID" | "MISSING_EFFECTIVE_DATE" | "INVALID_EFFECTIVE_DATE" | "MISSING_FILE" | "INVALID_EDITION" | "PACK_NOT_FOUND" | "INPUT_SOURCE_NOT_FOUND" | "FILE_TOO_LARGE" | "EDITION_REJECTED" | "INVALID_STATUS" | "MISSING_ACTION_ID" | "INVALID_ACTION_ID" | "ACTION_NOT_FOUND" | "INVALID_BODY" | "MISSING_DECISION" | "INVALID_DECISION" | "INVALID_NOTE" | "ACTION_DECISION_CONFLICT" | "MISSING_CHANGE_EVENT_ID" | "INVALID_CHANGE_EVENT_ID" | "IMPACT_SCOPE_NOT_FOUND" | "UNAUTHENTICATED" | "FORBIDDEN" | "INTERNAL" | "INVALID_PACK_ID" | "PACK_FOLDER_NOT_FOUND" | "PACK_INVALID" | "PACK_CHANGE_REJECTED";
             /** @description 틀린 항목의 이름. 입력 오류일 때만 있다 */
             field?: string;
+            /** @description code 가 PACK_INVALID 일 때만 있다. Pack 에서 찾은 문제 전부. pack 이 준 순서 그대로다 */
+            problems?: components["schemas"]["PackProblem"][];
+            /** @description code 가 PACK_CHANGE_REJECTED 일 때만 있다. 이미 적재된 정의와 맞지 않는 곳. pack 이 준 순서 그대로다 */
+            reasons?: string[];
         };
     };
     responses: {
@@ -673,6 +718,37 @@ export interface operations {
             };
             401: components["responses"]["Problem"];
             403: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    loadPack: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PackLoadRequest"];
+            };
+        };
+        responses: {
+            /** @description 적재한 결과 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackLoad"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
             500: components["responses"]["Problem"];
         };
     };

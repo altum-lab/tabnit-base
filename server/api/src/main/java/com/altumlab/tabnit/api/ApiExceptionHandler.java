@@ -54,6 +54,22 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 		return problem;
 	}
 
+	/** Pack 을 적재하지 않았다. Pack 의 문제나 맞지 않는 곳을 pack 이 준 그대로 함께 담는다 (D7 10절). */
+	@ExceptionHandler(PackLoadRejectedException.class)
+	ProblemDetail handle(PackLoadRejectedException e) {
+		boolean invalid = e.problems() != null;
+		HttpStatus status = invalid ? HttpStatus.UNPROCESSABLE_CONTENT : HttpStatus.CONFLICT;
+		ProblemDetail problem = problem(status, invalid ? "받아들일 수 없는 Pack" : title(status),
+				invalid ? "PACK_INVALID" : "PACK_CHANGE_REJECTED", null, e.getMessage());
+		if (invalid) {
+			problem.setProperty("problems", e.problems());
+		}
+		else {
+			problem.setProperty("reasons", e.reasons());
+		}
+		return problem;
+	}
+
 	/** 지금의 상태에서는 할 수 없는 확정이나 보류. 조치의 지금 상태와 마지막 이력을 함께 담는다 (D7 7절). */
 	@ExceptionHandler(ActionDecisionConflictException.class)
 	ProblemDetail handle(ActionDecisionConflictException e) {

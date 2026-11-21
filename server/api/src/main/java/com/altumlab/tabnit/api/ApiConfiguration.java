@@ -55,6 +55,12 @@ class ApiConfiguration {
 		return new UserCreationCommand(accounts, clock, loginId, role, System::getenv);
 	}
 
+	/** 서버의 Pack 폴더에서 Pack 을 적재한다. 폴더는 설치 설정에서 받는다. 정하지 않으면 적재할 수 없다 (D2 AD-272). */
+	@Bean
+	PackLoading packLoading(DataSource dataSource, Clock clock, @Value("${tabnit.packs-dir:}") String packsDirectory) {
+		return new PackLoading(dataSource, clock, packsDirectory);
+	}
+
 	@Bean
 	RelationQuery relationQuery(DataSource dataSource) {
 		return new RelationQuery(dataSource);

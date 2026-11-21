@@ -25,7 +25,18 @@ final class PackCopies {
 	 */
 	static Path load(DataSource dataSource, Path temp, String packId, UnaryOperator<String> change) throws IOException {
 		// 폴더의 이름이 Pack 의 식별자와 같아야 한다.
-		Path copy = temp.resolve(String.valueOf(System.nanoTime())).resolve(packId);
+		Path copy = copyInto(temp.resolve(String.valueOf(System.nanoTime())), packId, change);
+		new PackLoader(dataSource).load(copy, Instant.parse("2026-07-01T00:00:00Z"));
+		return copy;
+	}
+
+	/**
+	 * 사본을 만들기만 하고 적재하지 않는다. 이미 있으면 정의 파일을 덮어쓴다.
+	 *
+	 * @param parent 사본의 폴더를 둘 곳. 그 아래에 Pack 의 식별자와 같은 이름의 폴더가 생긴다
+	 */
+	static Path copyInto(Path parent, String packId, UnaryOperator<String> change) throws IOException {
+		Path copy = parent.resolve(packId);
 		try (Stream<Path> files = Files.walk(SOURCE)) {
 			for (Path source : files.toList()) {
 				Path target = copy.resolve(SOURCE.relativize(source).toString());
@@ -38,11 +49,10 @@ final class PackCopies {
 							StandardCharsets.UTF_8);
 				}
 				else {
-					Files.copy(source, target);
+					Files.copy(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 				}
 			}
 		}
-		new PackLoader(dataSource).load(copy, Instant.parse("2026-07-01T00:00:00Z"));
 		return copy;
 	}
 }

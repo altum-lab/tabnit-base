@@ -48,6 +48,8 @@ final class RuleReader {
 
     private static final String XSD = PackReader.XSD;
 
+    private static final String XSD_STRING = PackReader.XSD + "string";
+
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("uuuu-MM-dd", Locale.ROOT)
         .withResolverStyle(ResolverStyle.STRICT);
 
@@ -57,7 +59,10 @@ final class RuleReader {
         .thenComparing(RuleCondition::typeIs, Comparator.nullsFirst(PackOrder.STRINGS))
         .thenComparing(RuleCondition::attributeName, Comparator.nullsFirst(PackOrder.STRINGS))
         .thenComparing(RuleCondition::operator, Comparator.nullsFirst(Comparator.naturalOrder()))
-        .thenComparing((RuleCondition c) -> String.join("\u0000", c.values()), PackOrder.STRINGS);
+        .thenComparing((RuleCondition c) -> String.join("\u0000", c.values()), PackOrder.STRINGS)
+        .thenComparing(RuleCondition::compareTo)
+        .thenComparing(RuleCondition::compareSubject, Comparator.nullsFirst(Comparator.naturalOrder()))
+        .thenComparing(RuleCondition::compareAttributeName, Comparator.nullsFirst(PackOrder.STRINGS));
 
     private final Path directory;
 
@@ -68,6 +73,12 @@ final class RuleReader {
     private final Map<String, AttributeDefinition> attributes;
 
     private final List<PackProblem> problems;
+
+    /** 그 Pack 의 관계 유형의 이름. 규칙이 "바뀐 것"으로 가리킬 수 있다. */
+    private final Set<String> relationTypes;
+
+    /** 그 Pack 의 매핑이 받는 입력 자료의 식별자. 규칙이 "걸리는 입력 자료"로 가리킬 수 있다. */
+    private final Set<String> inputSources;
 
     /** 규칙 번호마다 그것을 적은 파일. 겹치는지 보는 데 쓴다. */
     private final TreeMap<String, List<String>> filesByRuleNo = new TreeMap<>(PackOrder.STRINGS);
@@ -87,7 +98,10 @@ final class RuleReader {
     private String ruleNo;
 
     private RuleReader(Path directory, String prefix, Map<String, EntityTypeDefinition> entityTypes,
-            Map<String, AttributeDefinition> attributes, List<PackProblem> problems) {
+            Map<String, AttributeDefinition> attributes, Set<String> relationTypes, Set<String> inputSources,
+            List<PackProblem> problems) {
+        this.relationTypes = relationTypes;
+        this.inputSources = inputSources;
         this.directory = directory;
         this.prefix = prefix;
         this.entityTypes = entityTypes;
@@ -97,8 +111,9 @@ final class RuleReader {
 
     /** 규칙을 모두 읽는다. 문제는 problems 에 더한다. 돌려주는 목록은 규칙 번호의 글자 코드 순이다. */
     static List<RuleDefinition> read(Path directory, String prefix, Map<String, EntityTypeDefinition> entityTypes,
-            Map<String, AttributeDefinition> attributes, List<PackProblem> problems) {
-        return new RuleReader(directory, prefix, entityTypes, attributes, problems).readAll();
+            Map<String, AttributeDefinition> attributes, Set<String> relationTypes, Set<String> inputSources,
+            List<PackProblem> problems) {
+        return new RuleReader(directory, prefix, entityTypes, attributes, relationTypes, inputSources, problems).readAll();
     }
 
     private List<RuleDefinition> readAll() {
@@ -257,6 +272,42 @@ final class RuleReader {
         if (kinds.isEmpty()) {
             kinds.addAll(List.of(RuleChangeKind.values()));
         }
+        // 어느 입력 자료에서 나온 변동에 걸리는가. 적지 않으면 모든 입력 자료다 (D2 AD-290).
+        TreeSet<String> sources = new TreeSet<>(PackOrder.STRINGS);
+        for (Node node : top.take(V + "whenInputSource")) {
+            String source = node.isLiteral() && XSD_STRING.equals(node.getLiteralDatatypeURI())
+                    && node.getLiteralLanguage().isEmpty() ? node.getLiteralLexicalForm() : null;
+            if (source == null || source.isEmpty()) {
+                problem(item, "tabnit:whenInputSource 의 값 " + PackReader.show(node)
+                        + " 을(를) 쓸 수 없습니다. 입력 자료의 식별자를 따옴표로 감싼 글자로 적으세요 (예: \"source-a\").");
+            }
+            else if (!inputSources.contains(source)) {
+                problem(item, "tabnit:whenInputSource 의 입력 자료 " + source
+                        + " 이(가) 이 Pack 의 매핑에 없습니다. 매핑의 tabnit:inputSourceId 와 같게 적거나 그 매핑을 더하세요.");
+            }
+            else {
+                sources.add(source);
+            }
+        }
+        // 그 행에서 무엇이 바뀐 변동에 걸리는가. 속성이나 관계 유형의 이름이다. 적지 않으면 무엇이 바뀌든 걸린다 (D2 AD-291).
+        TreeSet<String> changedAttributes = new TreeSet<>(PackOrder.STRINGS);
+        TreeSet<String> changedRelationTypes = new TreeSet<>(PackOrder.STRINGS);
+        for (Node node : top.take(V + "whenChanged")) {
+            String name = localName(node, "tabnit:whenChanged", item);
+            if (name == null) {
+                continue;
+            }
+            if (attributes.containsKey(name)) {
+                changedAttributes.add(name);
+            }
+            else if (relationTypes.contains(name)) {
+                changedRelationTypes.add(name);
+            }
+            else {
+                problem(item, "tabnit:whenChanged 의 " + name
+                        + " 은(는) 이 Pack 의 속성도 관계 유형도 아닙니다. 속성이나 관계 유형의 이름을 적으세요.");
+            }
+        }
         RuleSubject appliesTo = subject(top, V + "appliesTo", "tabnit:appliesTo", item);
         String targetType = name(top, V + "targetType", "tabnit:targetType", item);
         if (targetType != null && !entityTypes.containsKey(targetType)) {
@@ -270,6 +321,13 @@ final class RuleReader {
                 conditions.add(condition);
             }
         }
+        // 대상이 변동 대상 자신이면 영향 대상이 없다. 영향 대상의 속성과 견주는 조건도 둘 수 없다 (D2 AD-118, AD-292).
+        if (appliesTo == RuleSubject.CHANGE_TARGET
+                && conditions.stream().anyMatch(c -> c.subject() != RuleSubject.IMPACT_TARGET
+                        && c.compareSubject() == RuleSubject.IMPACT_TARGET)) {
+            problem(item, "대상이 변동 대상인 규칙(tabnit:appliesTo tabnit:ChangeTarget)의 조건이 영향 대상의 속성과 견줍니다 "
+                    + "(tabnit:compareToSubject tabnit:ImpactTarget). 그 조건을 빼거나 규칙의 대상을 영향 대상으로 바꾸세요.");
+        }
         // 대상이 변동 대상 자신이면 영향 대상이 없다. 영향 대상을 보는 조건을 둘 수 없다 (D2 AD-118).
         if (appliesTo == RuleSubject.CHANGE_TARGET
                 && conditions.stream().anyMatch(c -> c.subject() == RuleSubject.IMPACT_TARGET)) {
@@ -281,10 +339,19 @@ final class RuleReader {
         // 그런 유형이 없으면 그 대상에 값이 있을 수 없어, 규칙이 조용히 아무 데도 걸리지 않는다 (D2 AD-223).
         // 조건이 다른 쪽을 보면 (영향 대상에 거는 규칙이 변동 대상을 보는 조건) 그 유형을 미리 알 수 없어 보지 않는다.
         if (appliesTo != null && targetType != null && entityTypes.containsKey(targetType)) {
+            // 조건이 보는 속성과, 견주는 상대의 속성(D2 AD-292) 가운데 규칙의 대상에서 읽는 것을 모은다.
+            TreeSet<String> onTarget = new TreeSet<>(PackOrder.STRINGS);
             for (RuleCondition condition : conditions) {
-                AttributeDefinition attribute = condition.attributeName() == null ? null
-                        : attributes.get(condition.attributeName());
-                if (attribute == null || condition.subject() != appliesTo) {
+                if (condition.attributeName() != null && condition.subject() == appliesTo) {
+                    onTarget.add(condition.attributeName());
+                }
+                if (condition.compareAttributeName() != null && condition.compareSubject() == appliesTo) {
+                    onTarget.add(condition.compareAttributeName());
+                }
+            }
+            for (String name : onTarget) {
+                AttributeDefinition attribute = attributes.get(name);
+                if (attribute == null) {
                     continue;
                 }
                 String owner = attribute.entityType();
@@ -297,7 +364,7 @@ final class RuleReader {
                     }
                 }
                 if (!possible) {
-                    problem(item, "조건의 속성 " + condition.attributeName() + " 은(는) 유형 " + owner + " 의 속성인데 이 규칙의 대상 유형은 "
+                    problem(item, "조건의 속성 " + name + " 은(는) 유형 " + owner + " 의 속성인데 이 규칙의 대상 유형은 "
                             + targetType + " 입니다. 그 대상에는 이 속성의 값이 있을 수 없습니다. 대상 유형의 속성을 적거나 대상 유형을 고치세요.");
                 }
             }
@@ -307,7 +374,8 @@ final class RuleReader {
             return null;
         }
         return new RuleDefinition(number, label, priority, List.copyOf(kinds), appliesTo, targetType,
-                List.copyOf(conditions), actionText, dueInDays);
+                List.copyOf(conditions), actionText, dueInDays, List.copyOf(sources), List.copyOf(changedAttributes),
+                List.copyOf(changedRelationTypes));
     }
 
     /** 조건 하나를 읽는다. 문제가 있으면 알리고 null. */
@@ -322,9 +390,24 @@ final class RuleReader {
         List<Node> properties = block.take(V + "property");
         List<Node> operators = block.take(V + "operator");
         List<Node> values = block.take(V + "value");
+        // 고정 값 대신 견줄 상대: 판의 적용일, 다른 대상의 속성 (D2 AD-292).
+        List<Node> compareTo = block.take(V + "compareTo");
+        List<Node> compareSubjects = block.take(V + "compareToSubject");
+        List<Node> compareProperties = block.take(V + "compareToProperty");
+        boolean other = !compareTo.isEmpty() || !compareSubjects.isEmpty() || !compareProperties.isEmpty();
         RuleCondition condition = null;
         if (!types.isEmpty()) {
-            condition = typeCondition(subject, types, properties, operators, values, item);
+            if (other) {
+                problem(item, "유형을 보는 조건(tabnit:typeIs)에는 tabnit:compareTo, tabnit:compareToSubject, "
+                        + "tabnit:compareToProperty 를 함께 적지 않습니다. 속성 값을 보는 조건은 따로 적으세요.");
+            }
+            else {
+                condition = typeCondition(subject, types, properties, operators, values, item);
+            }
+        }
+        else if (other) {
+            condition = otherCondition(subject, properties, operators, values, compareTo, compareSubjects, compareProperties,
+                    item);
         }
         else if (properties.isEmpty() && operators.isEmpty() && values.isEmpty()) {
             problem(item, "조건이 아무것도 보지 않습니다. 유형을 보려면 tabnit:typeIs 를, 속성 값을 보려면 tabnit:property 와 "
@@ -340,6 +423,111 @@ final class RuleReader {
             return null;
         }
         return condition;
+    }
+
+    /**
+     * 속성 값을 판의 적용일이나 다른 대상의 속성과 견주는 조건 (D2 AD-292).
+     *
+     * <p>적용일과는 날짜 속성만, 다른 속성과는 형식이 같은 것끼리만 견준다. 비교는 같다·다르다와 크기의 여섯이다.
+     * 글자와 참·거짓은 같다·다르다만 쓴다. 고정 값(tabnit:value)을 함께 적지 않는다.
+     */
+    private RuleCondition otherCondition(RuleSubject subject, List<Node> properties, List<Node> operators, List<Node> values,
+            List<Node> compareTo, List<Node> compareSubjects, List<Node> compareProperties, String item) {
+        if (properties.size() != 1) {
+            problem(item, "조건의 tabnit:property 는 반드시 하나 적습니다 (지금 " + properties.size() + "개).");
+            return null;
+        }
+        String name = localName(properties.get(0), "조건의 tabnit:property", item);
+        if (name == null) {
+            return null;
+        }
+        AttributeDefinition attribute = attributes.get(name);
+        if (attribute == null) {
+            problem(item, "조건의 tabnit:property 의 속성 " + name + " 이(가) 정의되지 않았습니다. 그 속성을 정의하거나 이름을 고치세요.");
+            return null;
+        }
+        if (!values.isEmpty()) {
+            problem(item, "고정 값(tabnit:value)과 다른 상대(tabnit:compareTo, tabnit:compareToProperty)를 함께 적을 수 없습니다 (속성 "
+                    + name + "). 하나만 적으세요.");
+            return null;
+        }
+        boolean date = !compareTo.isEmpty();
+        boolean property = !compareSubjects.isEmpty() || !compareProperties.isEmpty();
+        if (date && property) {
+            problem(item, "판의 적용일(tabnit:compareTo)과 다른 대상의 속성(tabnit:compareToProperty)을 함께 적을 수 없습니다 (속성 "
+                    + name + "). 하나만 적으세요.");
+            return null;
+        }
+        if (operators.size() != 1) {
+            problem(item, "조건의 tabnit:operator 는 반드시 하나 적습니다 (속성 " + name + ", 지금 " + operators.size() + "개).");
+            return null;
+        }
+        RuleOperator operator = operator(operators.get(0));
+        boolean ordering = operator == RuleOperator.GREATER_THAN || operator == RuleOperator.GREATER_THAN_OR_EQUAL
+                || operator == RuleOperator.LESS_THAN || operator == RuleOperator.LESS_THAN_OR_EQUAL;
+        if (operator == null || !(ordering || operator == RuleOperator.EQUALS || operator == RuleOperator.NOT_EQUALS)) {
+            problem(item, "판의 적용일이나 다른 속성과 견줄 때의 tabnit:operator 는 tabnit:Equals, tabnit:NotEquals, "
+                    + "tabnit:GreaterThan, tabnit:GreaterThanOrEqual, tabnit:LessThan, tabnit:LessThanOrEqual 가운데 하나입니다 (속성 "
+                    + name + ").");
+            return null;
+        }
+        ValueFormat format = attribute.valueFormat();
+        if (date) {
+            if (compareTo.size() != 1 || !isUri(compareTo.get(0), V + "EffectiveDate")) {
+                compareTo.stream().filter(Node::isBlank).forEach(this::discard);
+                problem(item, "조건의 tabnit:compareTo 에는 tabnit:EffectiveDate (그 변동이 나온 판의 적용일) 하나만 적습니다 (속성 "
+                        + name + ").");
+                return null;
+            }
+            if (format != ValueFormat.DATE) {
+                problem(item, "판의 적용일과는 날짜 속성만 견줍니다. 속성 " + name + " 은(는) 날짜가 아닙니다 (" + shown(format) + ").");
+                return null;
+            }
+            return subject == null ? null
+                    : new RuleCondition(subject, null, name, operator, List.of(), RuleCompareTo.EFFECTIVE_DATE, null, null);
+        }
+        if (compareSubjects.isEmpty()) {
+            problem(item, "다른 대상의 속성과 견주려면 tabnit:compareToSubject (변동 대상인가 영향 대상인가)를 함께 적으세요 (속성 " + name
+                    + ").");
+            return null;
+        }
+        if (compareProperties.isEmpty()) {
+            problem(item, "다른 대상의 속성과 견주려면 tabnit:compareToProperty (견줄 속성)를 함께 적으세요 (속성 " + name + ").");
+            return null;
+        }
+        if (compareSubjects.size() != 1 || compareProperties.size() != 1) {
+            problem(item, "조건의 tabnit:compareToSubject 와 tabnit:compareToProperty 는 하나씩만 적습니다 (속성 " + name + ").");
+            return null;
+        }
+        Node subjectNode = compareSubjects.get(0);
+        RuleSubject compareSubject = isUri(subjectNode, V + "ChangeTarget") ? RuleSubject.CHANGE_TARGET
+                : isUri(subjectNode, V + "ImpactTarget") ? RuleSubject.IMPACT_TARGET : null;
+        if (compareSubject == null) {
+            problem(item, "조건의 tabnit:compareToSubject 의 값 " + PackReader.show(subjectNode)
+                    + " 을(를) 모릅니다. tabnit:ChangeTarget 이나 tabnit:ImpactTarget 을 적으세요.");
+            return null;
+        }
+        String otherName = localName(compareProperties.get(0), "조건의 tabnit:compareToProperty", item);
+        if (otherName == null) {
+            return null;
+        }
+        AttributeDefinition otherAttribute = attributes.get(otherName);
+        if (otherAttribute == null) {
+            problem(item, "조건의 tabnit:compareToProperty 의 속성 " + otherName + " 이(가) 정의되지 않았습니다. 그 속성을 정의하거나 이름을 고치세요.");
+            return null;
+        }
+        if (otherAttribute.valueFormat() != format) {
+            problem(item, "견주는 두 속성의 형식이 다릅니다: " + name + " 은(는) " + shown(format) + ", " + otherName + " 은(는) "
+                    + shown(otherAttribute.valueFormat()) + ". 형식이 같은 속성끼리 견주세요.");
+            return null;
+        }
+        if (ordering && format != ValueFormat.INTEGER && format != ValueFormat.DECIMAL && format != ValueFormat.DATE) {
+            problem(item, "크기를 견주는 비교는 정수, 소수, 날짜 속성에만 씁니다. 속성 " + name + " 은(는) 그 형식이 아닙니다. "
+                    + "tabnit:Equals 나 tabnit:NotEquals 를 쓰세요.");
+            return null;
+        }
+        return subject == null ? null
+                : new RuleCondition(subject, null, name, operator, List.of(), RuleCompareTo.ATTRIBUTE, compareSubject, otherName);
     }
 
     private RuleCondition typeCondition(RuleSubject subject, List<Node> types, List<Node> properties,

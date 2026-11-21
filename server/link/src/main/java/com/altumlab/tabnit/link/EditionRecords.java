@@ -114,14 +114,15 @@ public class EditionRecords {
                 .add(rs.getString("entity_id"));
         }, editionId);
         return jdbc.query("""
-                select id, edition_id, item_key, change_kind, primary_entity_id, status, failed_stage, failure_code
+                select id, edition_id, item_key, change_kind, primary_entity_id, status, failed_stage, failure_code,
+                       changed_items_recorded
                   from change_event
                  where edition_id = ?
                  order by item_key
-                """, (rs, n) -> new ChangeEvent(rs.getString("id"), rs.getString("edition_id"), rs.getString("item_key"),
-                ChangeKind.valueOf(rs.getString("change_kind")), rs.getString("primary_entity_id"),
-                ChangeEventStatus.valueOf(rs.getString("status")), rs.getString("failed_stage"),
-                rs.getString("failure_code"), targets.getOrDefault(rs.getString("id"), List.of())), editionId);
+                """, ChangeEvents.mapper(targets, ChangedItems.read(jdbc, """
+                  join change_event e on e.id = c.change_event_id
+                 where e.edition_id = ?
+                """, editionId)), editionId);
     }
 
     /** 앞 판의 항목과 그 기록. 판 비교에 쓴다. 항목의 키 순이다. */

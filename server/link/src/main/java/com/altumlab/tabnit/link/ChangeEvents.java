@@ -26,7 +26,7 @@ public class ChangeEvents {
 
     private static final String COLUMNS = """
             e.id, e.edition_id, e.item_key, e.change_kind, e.primary_entity_id, e.status, e.failed_stage,
-            e.failure_code
+            e.failure_code, e.changed_items_recorded
             """;
 
     private final JdbcTemplate jdbc;
@@ -70,7 +70,11 @@ public class ChangeEvents {
                   join edition d on d.id = e.edition_id
                  where d.pack_id = ? and e.status in ('PENDING', 'FAILED')
                  order by d.received_at, d.input_source_id, d.edition_no, e.item_key
-                """, mapper(targets), packId);
+                """, mapper(targets, ChangedItems.read(jdbc, """
+                  join change_event e on e.id = c.change_event_id
+                  join edition d on d.id = e.edition_id
+                 where d.pack_id = ? and e.status in ('PENDING', 'FAILED')
+                """, packId)), packId);
     }
 
     /** 변동 이벤트 하나. 없으면 비어 있다. */
@@ -90,7 +94,8 @@ public class ChangeEvents {
         return jdbc.query("select " + COLUMNS + """
                   from change_event e
                  where e.id = ?
-                """, mapper(targets), changeEventId).stream().findFirst();
+                """, mapper(targets, ChangedItems.read(jdbc, "where c.change_event_id = ?", changeEventId)),
+                changeEventId).stream().findFirst();
     }
 
     /**
@@ -160,10 +165,12 @@ public class ChangeEvents {
                 "변동 이벤트가 없습니다: " + changeEventId + ". 식별자를 확인하세요."));
     }
 
-    private static RowMapper<ChangeEvent> mapper(Map<String, List<String>> targets) {
+    static RowMapper<ChangeEvent> mapper(Map<String, List<String>> targets, ChangedItems changed) {
         return (rs, n) -> new ChangeEvent(rs.getString("id"), rs.getString("edition_id"), rs.getString("item_key"),
                 ChangeKind.valueOf(rs.getString("change_kind")), rs.getString("primary_entity_id"),
                 ChangeEventStatus.valueOf(rs.getString("status")), rs.getString("failed_stage"),
-                rs.getString("failure_code"), targets.getOrDefault(rs.getString("id"), List.of()));
+                rs.getString("failure_code"), targets.getOrDefault(rs.getString("id"), List.of()),
+                changed.attributes(rs.getString("id"), rs.getBoolean("changed_items_recorded")),
+                changed.relationTypes(rs.getString("id"), rs.getBoolean("changed_items_recorded")));
     }
 }

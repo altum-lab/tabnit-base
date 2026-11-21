@@ -214,6 +214,7 @@ public class EditionIngest {
         // 변동 이벤트: 바뀐 항목마다 하나. 뒤 단계를 아직 하지 않았으므로 PENDING 이다 (D2 AD-154, AD-164).
         List<Object[]> events = new ArrayList<>();
         List<Object[]> targets = new ArrayList<>();
+        List<Object[]> changedItems = new ArrayList<>();
         for (ItemChange change : outcome.changes()) {
             String eventId = LinkOrder.join(List.of(attempt.packId(), attempt.inputSourceId(),
                     Integer.toString(editionNo), change.itemKey()));
@@ -222,12 +223,22 @@ public class EditionIngest {
             for (String entityId : change.targetEntityIds()) {
                 targets.add(new Object[] { eventId, entityId });
             }
+            for (String name : change.changedAttributes()) {
+                changedItems.add(new Object[] { eventId, ChangedItems.ATTRIBUTE, name });
+            }
+            for (String name : change.changedRelationTypes()) {
+                changedItems.add(new Object[] { eventId, ChangedItems.RELATION_TYPE, name });
+            }
         }
+        // 그 행에서 바뀐 것을 함께 남긴다. 남겼다는 표시가 있어야 "바뀐 것이 없다"와 "모른다"가 갈린다 (D2 AD-291).
         jdbc.batchUpdate("""
-                insert into change_event (id, edition_id, item_key, change_kind, primary_entity_id, status)
-                values (?, ?, ?, ?, ?, ?)
+                insert into change_event (id, edition_id, item_key, change_kind, primary_entity_id, status,
+                                          changed_items_recorded)
+                values (?, ?, ?, ?, ?, ?, true)
                 """, events);
         jdbc.batchUpdate("insert into change_target (change_event_id, entity_id) values (?, ?)", targets);
+        jdbc.batchUpdate("insert into change_event_changed_item (change_event_id, item_kind, name) values (?, ?, ?)",
+                changedItems);
         // 알림의 번호는 정해진 차례(행 번호, 종류, 코드, 내용)로 1 부터 매긴다 (D2 AD-153). 결과가 이미 그 차례다.
         List<Object[]> notices = new ArrayList<>();
         int noticeNo = 0;

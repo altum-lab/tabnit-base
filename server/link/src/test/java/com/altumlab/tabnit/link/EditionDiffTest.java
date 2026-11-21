@@ -607,6 +607,141 @@ class EditionDiffTest {
         return found;
     }
 
+    // ── 그 행에서 바뀐 것 (B-03, D2 AD-291) ──────────────────────
+
+    @Test
+    void 변경된_행은_바뀐_속성과_관계_유형만_남긴다() {
+        PackDefinition pack = pack("d-items", full());
+        put(pack, 1, D1, HEADER + "B-1,첫째,1,O-1\nB-2,둘째,2,O-1\nB-3,셋째,3,O-1\nB-4,넷째,4,O-1\nB-5,다섯째,5,O-1\n");
+
+        // B-1 은 제목만, B-2 는 잇는 곳만, B-3 은 수와 잇는 곳이 바뀐다. B-4 는 수가 빈 칸이 된다. B-5 는 그대로다.
+        put(pack, 2, D2, HEADER + "B-1,첫째 고침,1,O-1\nB-2,둘째,+2,O-2\nB-3,셋째,30,O-2\nB-4,넷째,,O-1\nB-5,다섯째,5,O-1\n");
+
+        assertThat(records.changeEvents("d-items|src|2"))
+            .extracting(ChangeEvent::itemKey, ChangeEvent::changedAttributes, ChangeEvent::changedRelationTypes)
+            .containsExactly(tuple("B-1", List.of("title"), List.of()), tuple("B-2", List.of(), List.of("links")),
+                    tuple("B-3", List.of("count"), List.of("links")), tuple("B-4", List.of("count"), List.of()));
+    }
+
+    @Test
+    void 추가된_행은_넣은_것_전부를_삭제된_행은_넣었던_것_전부를_남긴다() {
+        PackDefinition pack = pack("d-items-all", full());
+        put(pack, 1, D1, HEADER + "B-1,첫째,1,O-1\nB-2,둘째,,\n");
+
+        // B-1 과 B-2 가 없어지고 B-3 (수가 빈 칸)과 B-4 가 생긴다.
+        put(pack, 2, D2, HEADER + "B-3,셋째,,O-1\nB-4,넷째,4,O-2\n");
+
+        assertThat(records.changeEvents("d-items-all|src|2"))
+            .extracting(ChangeEvent::itemKey, ChangeEvent::kind, ChangeEvent::changedAttributes,
+                    ChangeEvent::changedRelationTypes)
+            .containsExactly(tuple("B-1", ChangeKind.REMOVED, List.of("count", "title"), List.of("links")),
+                    // 빈 칸이던 것은 넣었던 것이 아니다.
+                    tuple("B-2", ChangeKind.REMOVED, List.of("title"), List.of()),
+                    tuple("B-3", ChangeKind.ADDED, List.of("title"), List.of("links")),
+                    tuple("B-4", ChangeKind.ADDED, List.of("count", "title"), List.of("links")));
+    }
+
+    @Test
+    void 삭제된_행은_다른_행이_같은_값을_넣고_있어_끝나지_않은_것도_넣었던_것으로_남긴다() {
+        PackDefinition pack = pack("d-items-shared", shared());
+        put(pack, 1, D1, "line,other,otherName\n1,O-1,상대\n2,O-1,상대\n");
+
+        put(pack, 2, D2, "line,other,otherName\n2,O-1,상대\n");
+
+        // 저장된 이름은 2번 행이 넣고 있어 끝나지 않는다 (D2 AD-121). 그래도 1번 행이 넣었던 것이다 (D2 AD-291).
+        assertThat(values.valueAsOf("d-items-shared|Other|O-1", "otherName", D2)).isPresent();
+        assertThat(records.changeEvents("d-items-shared|src|2"))
+            .extracting(ChangeEvent::itemKey, ChangeEvent::kind, ChangeEvent::changedAttributes)
+            .containsExactly(tuple("1", ChangeKind.REMOVED, List.of("otherName")));
+    }
+
+    @Test
+    void 값은_같고_유효기간만_달라져도_그_속성이_바뀐_것이다() {
+        PackDefinition pack = pack("d-items-period", dated());
+        put(pack, 1, D1, "code,title,from,to\nB-1,이름,2026-01-01,\nB-2,다른 이름,2026-01-01,\n");
+
+        // B-1 의 값은 그대로이고 종료일만 생겼다.
+        put(pack, 2, D2, "code,title,from,to\nB-1,이름,2026-01-01,2026-12-01\nB-2,다른 이름,2026-01-01,\n");
+
+        assertThat(records.changeEvents("d-items-period|src|2"))
+            .extracting(ChangeEvent::itemKey, ChangeEvent::changedAttributes, ChangeEvent::changedRelationTypes)
+            .containsExactly(tuple("B-1", List.of("title"), List.of()));
+    }
+
+    @Test
+    void 추가된_행이_적었지만_이미_지난_기간이라_넣지_않은_것은_바뀐_것에_들지_않는다() {
+        PackDefinition pack = pack("d-items-past", dated());
+        put(pack, 1, D1, "code,title,from,to\nB-2,이름,2026-01-01,\n");
+
+        // 새 행 B-1 의 제목은 적용일(2026-06-01)보다 앞에 끝난 기간이다. 넣지 않는다.
+        put(pack, 2, D2, "code,title,from,to\nB-1,옛 이름,2025-01-01,2026-01-01\nB-2,이름,2026-01-01,\n");
+
+        List<ChangeEvent> events = records.changeEvents("d-items-past|src|2");
+        assertThat(events).extracting(ChangeEvent::itemKey, ChangeEvent::kind)
+            .containsExactly(tuple("B-1", ChangeKind.ADDED));
+        // 바뀐 것이 없다(빈 목록)이지 모른다(null)가 아니다.
+        assertThat(events.get(0).changedAttributes()).isNotNull().isEmpty();
+        assertThat(events.get(0).changedRelationTypes()).isNotNull().isEmpty();
+    }
+
+    @Test
+    void 바뀐_것은_어느_조회로_읽어도_같고_다시_읽어도_같다() {
+        PackDefinition pack = pack("d-items-read", full());
+        put(pack, 1, D1, HEADER + "B-1,첫째,1,O-1\n");
+        put(pack, 2, D2, HEADER + "B-1,첫째 고침,2,O-2\n");
+        ChangeEvents events = new ChangeEvents(LinkTestDatabase.dataSource());
+
+        ChangeEvent listed = records.changeEvents("d-items-read|src|2").get(0);
+
+        assertThat(listed.changedAttributes()).containsExactly("count", "title");
+        assertThat(listed.changedRelationTypes()).containsExactly("links");
+        assertThat(events.find(listed.id())).contains(listed);
+        assertThat(events.unprocessed("d-items-read")).containsExactly(listed);
+        assertThat(records.changeEvents("d-items-read|src|2")).containsExactly(listed);
+    }
+
+    @Test
+    void 바뀐_것을_남기기_전에_만들어진_변동_이벤트는_바뀐_것을_모른다고_답한다() {
+        PackDefinition pack = pack("d-items-old", full());
+        put(pack, 1, D1, HEADER + "B-1,첫째,1,O-1\n");
+        put(pack, 2, D2, HEADER + "B-1,첫째 고침,1,O-1\n");
+        String eventId = records.changeEvents("d-items-old|src|2").get(0).id();
+        // 스키마 변경 전에 만들어진 이벤트의 모양으로 되돌린다: 바뀐 것의 행이 없고 남겼다는 표시가 없다.
+        org.springframework.jdbc.core.JdbcTemplate jdbc = new org.springframework.jdbc.core.JdbcTemplate(
+                LinkTestDatabase.dataSource());
+        jdbc.update("delete from change_event_changed_item where change_event_id = ?", eventId);
+        jdbc.update("update change_event set changed_items_recorded = false where id = ?", eventId);
+
+        ChangeEvent old = records.changeEvents("d-items-old|src|2").get(0);
+
+        // 바뀐 것이 없다(빈 목록)가 아니라 모른다(null)이다.
+        assertThat(old.changedAttributes()).isNull();
+        assertThat(old.changedRelationTypes()).isNull();
+        assertThat(new ChangeEvents(LinkTestDatabase.dataSource()).find(eventId)).contains(old);
+    }
+
+    @Test
+    void 이름에_세로_막대와_역빗금이_있어도_바뀐_것의_이름을_그대로_남긴다() {
+        MappedEntityRef base = new MappedEntityRef("Base", "code");
+        MappingDefinition mapping = new MappingDefinition("src", MappingFileFormat.CSV, null, null, List.of(),
+                List.of("code"), base,
+                List.of(new MappedEntity("Base", "code",
+                        List.of(new MappedAttribute("a|b\\c", "title", null, null, null, null, null, null)))),
+                List.of(new MappedRelation("r\\|s", base, new MappedEntityRef("Other", "other"), null, null)));
+        PackDefinition pack = new PackDefinition("d-items-esc", "이름표", 3, AT,
+                List.of(new EntityTypeDefinition("Base", "바탕", List.of(), null),
+                        new EntityTypeDefinition("Other", "다른 것", List.of(), null)),
+                List.of(new RelationTypeDefinition("r\\|s", "잇는다", "Base", "Other", PackImpactDirection.SOURCE_TO_TARGET)),
+                List.of(new AttributeDefinition("a|b\\c", "제목", "Base", ValueFormat.STRING)), List.of(), List.of(mapping));
+        put(pack, 1, D1, HEADER + "B|1,첫째,1,O-1\n");
+
+        put(pack, 2, D2, HEADER + "B|1,첫째 고침,1,O\\2\n");
+
+        assertThat(records.changeEvents("d-items-esc|src|2"))
+            .extracting(ChangeEvent::changedAttributes, ChangeEvent::changedRelationTypes)
+            .containsExactly(tuple(List.of("a|b\\c"), List.of("r\\|s")));
+    }
+
     // ── 도우미 ──────────────────────────────────────────────────
 
     private IngestResult put(PackDefinition pack, int editionNo, LocalDate effectiveDate, String csv) {

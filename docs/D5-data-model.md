@@ -366,6 +366,18 @@ Pack 적재는 정의(온톨로지, 제약, 매핑, 규칙, 검증 질문)만 �
 
 **pack_rule_condition_value** — 조건이 견주는 값. 속성의 형식에 맞는 정해진 표기로 담는다. 값의 글자 코드 순으로 번호를 매긴다.
 
+규칙의 형식을 넓힌 것 (B-03, 변경 파일 `V14__rule_scope_and_changed_items.sql`). 이미 올라간 V9 는 고치지 않고 더했다. [AD-289]
+
+| 테이블 또는 열 | 뜻 | 근거 |
+|---|---|---|
+| `pack_rule_input_source` (`pack_id`, `rule_no`, `input_source_id`) | 규칙이 걸리는 입력 자료. 행이 없는 규칙은 모든 입력 자료에 걸린다. `pack_mapping` 을 가리킨다 | [AD-290] |
+| `pack_rule_changed_attribute` (`pack_id`, `rule_no`, `attribute_name`) | 규칙이 걸리는 바뀐 속성. `pack_attribute` 를 가리킨다 | [AD-291] |
+| `pack_rule_changed_relation_type` (`pack_id`, `rule_no`, `relation_type`) | 규칙이 걸리는 바뀐 관계 유형. `pack_relation_type` 을 가리킨다. 두 테이블 모두에 행이 없는 규칙은 무엇이 바뀌든 걸린다 | [AD-291] |
+| `pack_rule_condition.compare_to` | 조건이 값을 견주는 상대: `VALUE` (고정 값, 기본), `EFFECTIVE_DATE` (판의 적용일), `ATTRIBUTE` (다른 대상의 속성) | [AD-292] |
+| `pack_rule_condition.compare_subject`, `compare_attribute_name` | `ATTRIBUTE` 일 때만 있다. 견줄 대상(`CHANGE_TARGET`, `IMPACT_TARGET`)과 그 속성 | [AD-292] |
+
+- V14 전에 적재된 규칙의 조건은 모두 `VALUE` 다 (열의 기본값). 뜻이 달라지지 않는다.
+
 - 규칙을 고친 Pack 을 다시 적재하면 그 Pack 의 규칙을 모두 지우고 새로 넣는다. [AD-216]
 
 ## 5. link 의 테이블
@@ -519,6 +531,21 @@ Pack 적재는 정의(온톨로지, 제약, 매핑, 규칙, 검증 질문)만 �
 - **상태의 바뀜.** 대기는 처리됨이나 실패가 된다. 실패는 다시 실행한 결과로 처리됨이나 실패가 된다. 처리됨은 끝이다: 같은 표시를 다시 하면 그대로 두고, 실패로 바꾸려 하면 거부한다. [AD-206]
 - **처리되지 않은 것(대기, 실패)의 목록**은 판을 받은 때, 입력 자료의 식별자, 판 번호(수로), `item_key` 순이다. [AD-207]
 - 실패한 이유의 코드는 부르는 쪽(api)이 넘긴다. 비어 있을 수 없다. 코드의 목록은 D7 을 쓸 때 정한다. 언제 표시했는지는 남지 않는다 (열이 없다. 요청은 api 의 감사 기록에 남는다). (구현하면서 정한 것, "결정 필요" 13번)
+
+### change_event_changed_item — 변동 이벤트의 행에서 바뀐 것
+
+변경 파일 `V14__rule_scope_and_changed_items.sql` (B-03). 규칙이 "그 행에서 무엇이 바뀌었는가"를 가릴 수 있게 판을 투입하는 트랜잭션에서 변동 이벤트와 함께 저장한다. [AD-291]
+
+| 열 | 형식 | 뜻 | 근거 |
+|---|---|---|---|
+| `change_event_id` | text | 어느 변동의 것인가 | [AD-291] |
+| `item_kind` | text | `ATTRIBUTE` (속성), `RELATION_TYPE` (관계 유형) 가운데 하나 | [AD-291] |
+| `name` | text | 속성이나 관계 유형의 이름 | [AD-291] |
+
+- 유일: 세 열 모두. 읽을 때는 종류, 이름의 글자 코드 순이다.
+- 변경된 행은 앞 판과 새 판에서 그 행이 만든 것이 다른 속성과 관계 유형이다. 추가된 행은 넣은 것 전부, 삭제된 행은 넣었던 것 전부다. [AD-291]
+- `change_event.changed_items_recorded` (boolean, 기본 거짓): 바뀐 것을 남긴 변동 이벤트인가. V14 뒤에 만들어진 이벤트는 참이다. **거짓이면 바뀐 것이 없는 것이 아니라 모르는 것이다**: link 의 공개 API 는 그 이벤트의 바뀐 것을 빈 목록이 아니라 없음(null)으로 준다. 바뀐 것을 가리는 규칙은 그런 이벤트에서 실패한다 (D8 7절).
+- HTTP API 의 응답에는 담지 않는다. [AD-293]
 
 ### change_target — 변동 대상
 

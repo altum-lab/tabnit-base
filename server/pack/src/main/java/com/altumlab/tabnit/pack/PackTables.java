@@ -219,7 +219,8 @@ final class PackTables {
     }
 
     private record ConditionRow(String ruleNo, int position, RuleSubject subject, String typeName,
-            String attributeName, RuleOperator operator) {
+            String attributeName, RuleOperator operator, RuleCompareTo compareTo, RuleSubject compareSubject,
+            String compareAttributeName) {
     }
 
     private List<RuleDefinition> readRules(String packId) {
@@ -233,12 +234,21 @@ final class PackTables {
                         rs.getString("action_text"), rs.getInt("due_in_days")),
                 packId);
         List<ConditionRow> conditionRows = jdbc.query("""
-                select rule_no, position, subject, type_name, attribute_name, operator
+                select rule_no, position, subject, type_name, attribute_name, operator, compare_to, compare_subject,
+                       compare_attribute_name
                 from pack_rule_condition where pack_id = ? order by rule_no, position""",
                 (rs, n) -> new ConditionRow(rs.getString("rule_no"), rs.getInt("position"),
                         RuleSubject.valueOf(rs.getString("subject")), rs.getString("type_name"),
                         rs.getString("attribute_name"),
-                        rs.getString("operator") == null ? null : RuleOperator.valueOf(rs.getString("operator"))),
+                        rs.getString("operator") == null ? null : RuleOperator.valueOf(rs.getString("operator")),
+                        RuleCompareTo.valueOf(rs.getString("compare_to")),
+                        rs.getString("compare_subject") == null ? null
+                                : RuleSubject.valueOf(rs.getString("compare_subject")),
+                        rs.getString("compare_attribute_name")),
+                packId);
+        Map<String, List<String>> sources = names("pack_rule_input_source", "input_source_id", packId);
+        Map<String, List<String>> changedAttributes = names("pack_rule_changed_attribute", "attribute_name", packId);
+        Map<String, List<String>> changedRelationTypes = names("pack_rule_changed_relation_type", "relation_type",
                 packId);
         // (규칙 번호, 조건의 번호)마다의 값. 값의 번호 순.
         Map<String, Map<Integer, List<String>>> values = new TreeMap<>(PackOrder.STRINGS);
@@ -253,7 +263,8 @@ final class PackTables {
         for (ConditionRow row : conditionRows) {
             conditions.computeIfAbsent(row.ruleNo(), k -> new ArrayList<>())
                 .add(new RuleCondition(row.subject(), row.typeName(), row.attributeName(), row.operator(),
-                        values.getOrDefault(row.ruleNo(), Map.of()).getOrDefault(row.position(), List.of())));
+                        values.getOrDefault(row.ruleNo(), Map.of()).getOrDefault(row.position(), List.of()),
+                        row.compareTo(), row.compareSubject(), row.compareAttributeName()));
         }
         List<RuleDefinition> rules = new ArrayList<>();
         for (RuleRow row : rows) {
@@ -269,9 +280,21 @@ final class PackTables {
             }
             rules.add(new RuleDefinition(row.ruleNo(), row.label(), row.priority(), kinds, row.appliesTo(),
                     row.targetType(), conditions.getOrDefault(row.ruleNo(), List.of()), row.actionText(),
-                    row.dueInDays()));
+                    row.dueInDays(), sources.getOrDefault(row.ruleNo(), List.of()),
+                    changedAttributes.getOrDefault(row.ruleNo(), List.of()),
+                    changedRelationTypes.getOrDefault(row.ruleNo(), List.of())));
         }
         return rules;
+    }
+
+    /** 규칙 번호마다의 이름 목록. 이름의 글자 코드 순. 테이블과 열의 이름은 이 클래스가 적은 고정 글자다. */
+    private Map<String, List<String>> names(String table, String column, String packId) {
+        Map<String, List<String>> byRule = new TreeMap<>(PackOrder.STRINGS);
+        jdbc.query("select rule_no, " + column + " from " + table + " where pack_id = ? order by rule_no, " + column,
+                rs -> {
+                    byRule.computeIfAbsent(rs.getString("rule_no"), k -> new ArrayList<>()).add(rs.getString(2));
+                }, packId);
+        return byRule;
     }
 
     private void insertRule(String packId, RuleDefinition rule) {
@@ -286,19 +309,38 @@ final class PackTables {
             RuleCondition condition = rule.conditions().get(i);
             jdbc.update("""
                     insert into pack_rule_condition (pack_id, rule_no, position, subject, type_name, attribute_name,
-                                                     operator) values (?, ?, ?, ?, ?, ?, ?)""", packId, rule.ruleNo(),
+                                                     operator, compare_to, compare_subject, compare_attribute_name)
+                    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", packId, rule.ruleNo(),
                     i + 1, condition.subject().name(), condition.typeIs(), condition.attributeName(),
-                    condition.operator() == null ? null : condition.operator().name());
+                    condition.operator() == null ? null : condition.operator().name(), condition.compareTo().name(),
+                    condition.compareSubject() == null ? null : condition.compareSubject().name(),
+                    condition.compareAttributeName());
             for (int j = 0; j < condition.values().size(); j++) {
                 jdbc.update("""
                         insert into pack_rule_condition_value (pack_id, rule_no, position, value_position, value)
                         values (?, ?, ?, ?, ?)""", packId, rule.ruleNo(), i + 1, j + 1, condition.values().get(j));
             }
         }
+        for (String source : rule.inputSources()) {
+            jdbc.update("insert into pack_rule_input_source (pack_id, rule_no, input_source_id) values (?, ?, ?)",
+                    packId, rule.ruleNo(), source);
+        }
+        for (String name : rule.changedAttributes()) {
+            jdbc.update("insert into pack_rule_changed_attribute (pack_id, rule_no, attribute_name) values (?, ?, ?)",
+                    packId, rule.ruleNo(), name);
+        }
+        for (String name : rule.changedRelationTypes()) {
+            jdbc.update(
+                    "insert into pack_rule_changed_relation_type (pack_id, rule_no, relation_type) values (?, ?, ?)",
+                    packId, rule.ruleNo(), name);
+        }
     }
 
     void delete(String packId) {
         // 규칙도 온톨로지의 정의를 가리키므로 먼저 지운다.
+        jdbc.update("delete from pack_rule_input_source where pack_id = ?", packId);
+        jdbc.update("delete from pack_rule_changed_attribute where pack_id = ?", packId);
+        jdbc.update("delete from pack_rule_changed_relation_type where pack_id = ?", packId);
         jdbc.update("delete from pack_rule_condition_value where pack_id = ?", packId);
         jdbc.update("delete from pack_rule_condition where pack_id = ?", packId);
         jdbc.update("delete from pack_rule where pack_id = ?", packId);

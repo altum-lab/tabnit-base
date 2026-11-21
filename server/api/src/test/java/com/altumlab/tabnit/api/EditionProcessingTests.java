@@ -127,6 +127,112 @@ class EditionProcessingTests {
 	}
 
 	@Test
+	void 입력_자료와_바뀐_것을_가리는_규칙은_투입부터_조치까지_그_변동에만_걸린다() throws Exception {
+		String packId = "b03-scope";
+		// 사본의 규칙 파일에 가리는 규칙 셋을 더한다 (D2 AD-290, AD-291). 모두 변동 대상인 지침에 건다.
+		String more = """
+
+				ex:규칙-0004 a tabnit:Rule ; tabnit:ruleNo "0004" ; rdfs:label "제목이 바뀐 지침" ; tabnit:priority 5 ;
+				    tabnit:whenChangeKind tabnit:Changed ; tabnit:whenChanged ex:지침제목 ;
+				    tabnit:appliesTo tabnit:ChangeTarget ; tabnit:targetType ex:운영지침 ;
+				    tabnit:actionText "제목을 확인한다" ; tabnit:dueInDays 1 .
+				ex:규칙-0005 a tabnit:Rule ; tabnit:ruleNo "0005" ; rdfs:label "적용 자료에서 나온 변동" ; tabnit:priority 5 ;
+				    tabnit:whenInputSource "guideline-program" ;
+				    tabnit:appliesTo tabnit:ChangeTarget ; tabnit:targetType ex:운영지침 ;
+				    tabnit:actionText "적용을 확인한다" ; tabnit:dueInDays 1 .
+				ex:규칙-0006 a tabnit:Rule ; tabnit:ruleNo "0006" ; rdfs:label "적용이 새로 생긴 지침" ; tabnit:priority 5 ;
+				    tabnit:whenChangeKind tabnit:Added ; tabnit:whenChanged ex:지침적용 , ex:점검주기일 ;
+				    tabnit:appliesTo tabnit:ChangeTarget ; tabnit:targetType ex:운영지침 ;
+				    tabnit:actionText "새 적용을 확인한다" ; tabnit:dueInDays 1 .
+				""";
+		Path pack = loadCopy(packId, text -> text.contains("a tabnit:Rule") ? text + more : text);
+		EditionProcessing processing = new EditionProcessing(this.dataSource, new TickingClock());
+		EditionRecords editions = new EditionRecords(this.dataSource);
+		ActionRecords actions = new ActionRecords(this.dataSource);
+		List<String> made = new ArrayList<>();
+		for (Map<String, Object> step : steps(questions())) {
+			EditionProcessingResult result = processing.submit(packId, (String) step.get("inputSource"), null,
+					Files.readAllBytes(pack.resolve((String) step.get("file"))), date(step.get("effectiveDate")));
+			assertThat(result.changes()).allSatisfy(change -> assertThat(change.processed()).isTrue());
+			for (ChangeEvent event : editions.changeEvents(result.ingest().editionId())) {
+				for (Action action : actions.actions(event.id())) {
+					if (action.ruleNo().compareTo("0004") >= 0) {
+						made.add(action.ruleNo() + " " + event.editionId().substring(packId.length() + 1) + " "
+								+ event.itemKey() + " " + action.targetEntityId().substring(packId.length() + 1));
+					}
+				}
+			}
+		}
+
+		assertThat(made).containsExactlyInAnyOrder(
+				// 제목이 바뀐 것은 셋째 판의 G-01 뿐이다. 둘째 판의 G-01 과 셋째 판의 G-04 는 주기만 바뀌었다.
+				"0004 guideline|3 G-01 운영지침|G-01",
+				// 적용 자료의 변동에만 걸린다. 지침 자료의 변동에는 걸리지 않는다.
+				"0005 guideline-program|2 G-03|P-03 운영지침|G-03", "0005 guideline-program|2 G-04|P-03 운영지침|G-04",
+				// 추가된 행은 넣은 것 전부가 바뀐 것이다: 적용 자료의 새 행은 적용이, 지침 자료의 새 행은 주기가 바뀐 것이다.
+				"0006 guideline-program|2 G-04|P-03 운영지침|G-04", "0006 guideline|2 G-04 운영지침|G-04");
+	}
+
+	@Test
+	void 바뀐_것을_모르는_옛_변동은_바뀐_것을_가리는_규칙에서_조용히_넘어가지_않고_실패로_남는다() throws Exception {
+		String packId = "b03-old-event";
+		Path pack = loadCopy(packId, text -> text);
+		EditionProcessing processing = new EditionProcessing(this.dataSource, new TickingClock());
+		List<Map<String, Object>> steps = steps(questions());
+		// 지침의 둘째 판(7단계)까지 넣는다. 그 판의 변동은 처리되어 있다.
+		String editionId = null;
+		for (Map<String, Object> step : steps.subList(0, 7)) {
+			editionId = processing.submit(packId, (String) step.get("inputSource"), null,
+					Files.readAllBytes(pack.resolve((String) step.get("file"))), date(step.get("effectiveDate")))
+				.ingest()
+				.editionId();
+		}
+		// 그 변동들을 바뀐 것을 남기기 전에 만들어져 아직 처리되지 않은 모양으로 되돌린다.
+		org.springframework.jdbc.core.JdbcTemplate jdbc = new org.springframework.jdbc.core.JdbcTemplate(this.dataSource);
+		EditionRecords editions = new EditionRecords(this.dataSource);
+		ActionRecords actions = new ActionRecords(this.dataSource);
+		List<ChangeEvent> events = editions.changeEvents(editionId);
+		assertThat(events).isNotEmpty();
+		for (ChangeEvent event : events) {
+			jdbc.update("delete from action_history where action_id_hash in (select id_hash from action where change_event_hash = (select change_event_hash from impact_scope where change_event_id = ?))", event.id());
+			jdbc.update("delete from action where change_event_hash = (select change_event_hash from impact_scope where change_event_id = ?)", event.id());
+			jdbc.update("delete from impact_path_step where change_event_hash = (select change_event_hash from impact_scope where change_event_id = ?)", event.id());
+			jdbc.update("delete from impact_target where change_event_hash = (select change_event_hash from impact_scope where change_event_id = ?)", event.id());
+			jdbc.update("delete from impact_scope where change_event_id = ?", event.id());
+			jdbc.update("delete from change_event_changed_item where change_event_id = ?", event.id());
+			jdbc.update("update change_event set status = 'PENDING', changed_items_recorded = false where id = ?", event.id());
+		}
+		// 바뀐 것을 가리는 규칙을 더한 Pack 을 다시 적재하고 남은 변동을 처리한다.
+		String more = """
+
+				ex:규칙-0004 a tabnit:Rule ; tabnit:ruleNo "0004" ; rdfs:label "제목이 바뀐 지침" ; tabnit:priority 5 ;
+				    tabnit:whenChangeKind tabnit:Changed ; tabnit:whenChanged ex:지침제목 ;
+				    tabnit:appliesTo tabnit:ChangeTarget ; tabnit:targetType ex:운영지침 ;
+				    tabnit:actionText "제목을 확인한다" ; tabnit:dueInDays 1 .
+				""";
+		loadCopy(packId, text -> text.contains("a tabnit:Rule") ? text + more : text);
+
+		List<ProcessedChange> retried = processing.processPending(packId);
+
+		// 변경인 변동은 규칙 0004 가 바뀐 것을 물어 실패한다. 추가와 삭제는 그 규칙의 종류가 아니라 처리된다.
+		assertThat(retried).hasSameSizeAs(events);
+		for (ProcessedChange change : retried) {
+			ChangeEvent event = events.stream().filter(e -> e.id().equals(change.changeEventId())).findFirst().orElseThrow();
+			if (event.kind() == com.altumlab.tabnit.link.ChangeKind.CHANGED) {
+				assertThat(change.processed()).isFalse();
+				assertThat(change.failedStage()).isEqualTo("RULES");
+				assertThat(change.failureCode()).isEqualTo("RULE_FAILED");
+				assertThat(actions.impactScope(change.changeEventId())).isEmpty();
+			}
+			else {
+				assertThat(change.processed()).isTrue();
+			}
+		}
+		assertThat(retried.stream().filter(change -> !change.processed())).isNotEmpty();
+		assertThat(retried.stream().filter(ProcessedChange::processed)).isNotEmpty();
+	}
+
+	@Test
 	void 받아들여지지_않은_투입은_변동을_만들지_않고_같은_파일을_다시_넣어도_조치가_늘지_않는다() throws Exception {
 		String packId = "c06-again";
 		Path pack = loadCopy(packId, text -> text);

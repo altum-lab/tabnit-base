@@ -44,6 +44,7 @@ jobs:
       # 시험용 서버와 PostgreSQL 컨테이너를 스스로 띄워 실제 API 에 붙는다 (web/playwright.config.ts).
       # 로그인부터 판 올리기, 확정까지를 화면으로 한다 (web/tests/flow.spec.ts 와 화면마다의 시험).
       - name: 화면 흐름 시험 (새 판 투입부터 확정까지)
+        id: screen
         if: hashFiles('web/playwright.config.ts') != ''
         working-directory: web
         run: |
@@ -71,11 +72,9 @@ jobs:
             echo "- 커밋: ${GITHUB_SHA::7}"
             n=$(find server -path '*/build/test-results/test/*.xml' 2>/dev/null | wc -l | xargs)
             echo "- 시험 결과 파일: ${n}개"
-            if [ -f web/playwright-report/index.html ]; then
-              echo "- 화면 흐름 시험: 돌았음 (실패했으면 이 실행의 첨부에 화면이 있습니다)"
-            else
-              echo "- 화면 흐름 시험: 돌지 않았음"
-            fi
+            # 그 단계의 결과 그대로: success 통과, failure 실패 (이 실행의 첨부에 화면이 있다),
+            # skipped 나 빈 값은 앞 단계가 실패해 돌지 않은 것이다.
+            echo "- 화면 흐름 시험: ${{ steps.screen.outcome || '돌지 않았음' }}"
             echo
             echo "아침 회의 전에 개발 보드의 '검증과 통합 숫자'에 적습니다."
           } >> "$GITHUB_STEP_SUMMARY"

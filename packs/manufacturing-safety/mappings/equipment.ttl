@@ -1,0 +1,24 @@
+# 제조 안전 Pack. 반도체 제조 현장의 안전·보건·환경 업무를 본뜬 예시 Pack 이다 (D2 AD-49, AD-284 ~ AD-288).
+# 모든 이름과 값은 지어낸 것이다. 실제 회사, 현장, 법령, 문서와 관계가 없다.
+# 입력 자료 equipment: 설비의 목록과 그 설비가 속한 공정.
+@prefix tabnit: <urn:tabnit:vocab:> .
+@prefix ex:     <urn:tabnit:pack:manufacturing-safety:> .
+
+ex:매핑-equipment a tabnit:Mapping ;
+    tabnit:inputSourceId "equipment" ;
+    tabnit:fileFormat tabnit:Csv ;
+    tabnit:requiredColumns ( "설비번호" "설비종류" "설비상태" "소속공정" ) ;
+    tabnit:itemKeyColumns ( "설비번호" ) ;
+    # 이 행이 나타내는 개체. 이 행에서 나온 변동의 근거가 된다 (D2 AD-120).
+    tabnit:primaryEntity [ tabnit:entityType ex:공정설비 ; tabnit:keyColumn "설비번호" ] ;
+    tabnit:entity [
+        tabnit:entityType ex:공정설비 ;
+        tabnit:keyColumn "설비번호" ;
+        tabnit:attribute [ tabnit:property ex:설비종류 ; tabnit:column "설비종류" ] ;
+        tabnit:attribute [ tabnit:property ex:설비상태 ; tabnit:column "설비상태" ]
+    ] ;
+    tabnit:relation [
+        tabnit:relationType ex:설비구성 ;
+        tabnit:sourceEntity [ tabnit:entityType ex:제조공정 ; tabnit:keyColumn "소속공정" ] ;
+        tabnit:targetEntity [ tabnit:entityType ex:공정설비 ; tabnit:keyColumn "설비번호" ]
+    ] .

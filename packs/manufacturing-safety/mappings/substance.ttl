@@ -1,0 +1,25 @@
+# 제조 안전 Pack. 반도체 제조 현장의 안전·보건·환경 업무를 본뜬 예시 Pack 이다 (D2 AD-49, AD-284 ~ AD-288).
+# 모든 이름과 값은 지어낸 것이다. 실제 회사, 현장, 법령, 문서와 관계가 없다.
+# 입력 자료 substance: 물질의 목록과, 그 물질의 안전자료. 물질과 자료를 잇는 관계는 이 자료가 넣는다.
+@prefix tabnit: <urn:tabnit:vocab:> .
+@prefix ex:     <urn:tabnit:pack:manufacturing-safety:> .
+
+ex:매핑-substance a tabnit:Mapping ;
+    tabnit:inputSourceId "substance" ;
+    tabnit:fileFormat tabnit:Csv ;
+    tabnit:requiredColumns ( "물질번호" "물질명칭" "특별관리여부" "자료번호" ) ;
+    tabnit:itemKeyColumns ( "물질번호" ) ;
+    # 이 행이 나타내는 개체. 이 행에서 나온 변동의 근거가 된다 (D2 AD-120).
+    tabnit:primaryEntity [ tabnit:entityType ex:화학물질 ; tabnit:keyColumn "물질번호" ] ;
+    tabnit:entity [
+        tabnit:entityType ex:화학물질 ;
+        tabnit:keyColumn "물질번호" ;
+        tabnit:attribute [ tabnit:property ex:물질명칭 ; tabnit:column "물질명칭" ] ;
+        tabnit:attribute [ tabnit:property ex:특별관리여부 ; tabnit:column "특별관리여부" ;
+                           tabnit:trueValue "예" ; tabnit:falseValue "아니오" ]
+    ] ;
+    tabnit:relation [
+        tabnit:relationType ex:자료기술 ;
+        tabnit:sourceEntity [ tabnit:entityType ex:화학물질 ; tabnit:keyColumn "물질번호" ] ;
+        tabnit:targetEntity [ tabnit:entityType ex:물질안전자료 ; tabnit:keyColumn "자료번호" ]
+    ] .

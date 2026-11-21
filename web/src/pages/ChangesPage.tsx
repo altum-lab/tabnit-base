@@ -1,4 +1,4 @@
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { api, type ChangeProcessing, type EditionSubmission, type PackSummary } from "../api/client";
 import { CONNECTION_FAILED, messageOf } from "../api/problem";
 
@@ -32,13 +32,19 @@ export function ChangesPage() {
   const [upload, setUpload] = useState<Upload>({ kind: "idle" });
   // 목록을 받지 못했을 때의 문구. 이미 받은 목록이 있으면 화면의 "지금의 판"이 옛 값일 수 있다고 알리는 데 쓴다.
   const [refreshFailed, setRefreshFailed] = useState<string | null>(null);
+  const latestRequest = useRef(0);
 
   // 목록을 받아 온다. 이미 받은 목록이 있을 때 다시 받다가 실패하면 그 목록을 그대로 두고 알리기만 한다:
   // 폼과 방금 올린 결과가 사라지지 않게 한다.
   const loadPacks = useCallback(async () => {
+    // 가장 나중에 보낸 요청의 답만 쓴다. 늦게 온 앞 요청의 답이 새 목록을 옛 목록으로 덮지 않게 한다.
+    const request = ++latestRequest.current;
     let failure: string;
     try {
       const { data, error, response } = await api.GET("/api/v1/packs");
+      if (request !== latestRequest.current) {
+        return;
+      }
       if (data) {
         setPacks({ kind: "loaded", packs: data.packs });
         setRefreshFailed(null);
@@ -46,6 +52,9 @@ export function ChangesPage() {
       }
       failure = messageOf(error, response.status);
     } catch {
+      if (request !== latestRequest.current) {
+        return;
+      }
       failure = CONNECTION_FAILED;
     }
     setPacks((current) => (current.kind === "loaded" ? current : { kind: "failed", message: failure }));
@@ -123,6 +132,8 @@ export function ChangesPage() {
                 // 앞에 고른 것의 결과가 새로 고른 것의 결과처럼 보이지 않게 지운다.
                 setUpload({ kind: "idle" });
               }}
+              // 올리는 동안에는 바꾸지 못한다. 답이 오면 그 결과가 새로 고른 것의 결과처럼 보이게 된다.
+              disabled={upload.kind === "uploading"}
               required
             >
               <option value="">고르세요</option>
@@ -142,7 +153,7 @@ export function ChangesPage() {
                 setInputSourceId(e.target.value);
                 setUpload({ kind: "idle" });
               }}
-              disabled={!pack}
+              disabled={!pack || upload.kind === "uploading"}
               required
             >
               <option value="">고르세요</option>
@@ -329,7 +340,7 @@ function processingLabel(processing: ChangeProcessing): string {
     // 단계와 이유는 서버가 준 것만 적는다. 없으면 적지 않는다.
     const stage =
       processing.failedStage === "IMPACT" ? "영향 범위 계산" : processing.failedStage === "RULES" ? "규칙 실행" : null;
-    const reason = [stage, processing.failureCode].filter((part) => part !== null).join(", ");
+    const reason = [stage, processing.failureCode].filter((part) => part != null).join(", ");
     return `실패${reason ? ` (${reason})` : ""}. 다음에 판을 올릴 때 다시 시도됩니다`;
   }
   return "대기 (아직 처리하지 못했습니다)";

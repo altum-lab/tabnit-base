@@ -4,6 +4,7 @@ package com.altumlab.tabnit.rules;
  * 지금의 상태에서는 그렇게 바꿀 수 없다 (D2 AD-47, AD-248). 아무것도 바뀌지 않았고 이력도 늘지 않았다.
  *
  * <p>확정된 조치는 다시 확정하거나 보류할 수 없고, 보류된 조치는 다시 보류할 수 없다.
+ * 지금의 상태로 바꾼 바로 그 사람이 같은 동작을 다시 보낸 것은 거부가 아니다: 이 예외가 나가지 않는다 (D2 AD-325).
  */
 public class ActionDecisionRejectedException extends RuntimeException {
 

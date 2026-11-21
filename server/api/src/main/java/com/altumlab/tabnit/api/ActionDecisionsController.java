@@ -87,8 +87,8 @@ class ActionDecisionsController {
 			throw notFound();
 		}
 		catch (ActionDecisionRejectedException e) {
-			// 지금의 상태와 마지막 이력은 rules 가 같은 때에 읽어 준 것이다. 다른 사람이 먼저 했는지, 자기가 한 것을
-			// 다시 보냈는지는 화면이 마지막 이력으로 가린다 (D2 AD-253).
+			// 지금의 상태와 마지막 이력은 rules 가 같은 때에 읽어 준 것이다. 누가 먼저 했는지는 화면이 마지막 이력으로
+			// 보여 준다 (D2 AD-253). 자기가 한 것을 다시 보낸 경우는 여기로 오지 않는다: rules 가 성공으로 답한다 (D2 AD-325).
 			throw new ActionDecisionConflictException(e.currentStatus(), e.lastDecision(),
 					"이 조치는 지금 " + label(e.currentStatus()) + " 상태라 " + label(e.requestedStatus())
 							+ "(으)로 바꿀 수 없습니다. 대기인 조치는 확정하거나 보류할 수 있고, 보류인 조치는 확정할 수 있습니다."

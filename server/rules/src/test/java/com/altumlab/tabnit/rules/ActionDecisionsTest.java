@@ -127,6 +127,91 @@ class ActionDecisionsTest {
     }
 
     @Test
+    void 같은_사람이_같은_동작을_다시_보내면_새_이력_없이_지금의_조치를_돌려준다() {
+        List<Action> all = actions("d-resend", 2);
+        String confirmed = all.get(0).id();
+        String held = all.get(1).id();
+        ActionWithHistory first = decisions.confirm(confirmed, "officer-1", "확인했다", WHEN);
+        ActionWithHistory firstHold = decisions.hold(held, "officer-1", "기다린다", WHEN);
+
+        // 응답을 받지 못해 다시 보낸 것이다 (D2 AD-325). 사유와 시각이 달라도 처음 것이 남는다.
+        ActionWithHistory again = decisions.confirm(confirmed, "officer-1", "다시 누름", WHEN.plusSeconds(5));
+        ActionWithHistory againHold = decisions.hold(held, "officer-1", "또 기다린다", WHEN.plusSeconds(5));
+
+        assertThat(again).isEqualTo(first);
+        assertThat(againHold).isEqualTo(firstHold);
+        assertThat(records.history(confirmed)).containsExactly(
+                new ActionDecision(1, ActionStatus.PENDING, ActionStatus.CONFIRMED, "officer-1", WHEN, "확인했다"));
+        assertThat(records.history(held)).containsExactly(
+                new ActionDecision(1, ActionStatus.PENDING, ActionStatus.ON_HOLD, "officer-1", WHEN, "기다린다"));
+        // 다시 보낸 것도 입력은 확인한다: 사유 없는 보류는 여전히 틀린 요청이다.
+        assertThatThrownBy(() -> decisions.hold(held, "officer-1", null, WHEN.plusSeconds(6)))
+            .isInstanceOf(ActionDecisionInputException.class);
+    }
+
+    @Test
+    void 같은_사람이_여러_번_다시_보내도_함께_보내도_이력은_하나이고_답은_같다() throws Exception {
+        Action action = actions("d-resend-many", 1).get(0);
+        ActionWithHistory first = decisions.confirm(action.id(), "officer-1", "확인했다", WHEN);
+        for (int i = 1; i <= 3; i++) {
+            assertThat(decisions.confirm(action.id(), "officer-1", "다시 " + i, WHEN.plusSeconds(i))).isEqualTo(first);
+        }
+        // 확정한 사람이라도 다른 동작(보류)은 다시 보낸 것이 아니다.
+        assertThatThrownBy(() -> decisions.hold(action.id(), "officer-1", "미룬다", WHEN.plusSeconds(9)))
+            .isInstanceOf(ActionDecisionRejectedException.class);
+
+        // 아직 대기인 조치에 같은 사람의 같은 확정이 함께 온다: 하나가 바꾸고 나머지는 그 결과를 받는다.
+        Action together = actions("d-resend-race", 1).get(0);
+        ExecutorService pool = Executors.newFixedThreadPool(6);
+        try {
+            CountDownLatch go = new CountDownLatch(1);
+            List<Future<ActionWithHistory>> futures = new ArrayList<>();
+            for (int i = 0; i < 6; i++) {
+                futures.add(pool.submit(() -> {
+                    go.await();
+                    return decisions.confirm(together.id(), "officer-1", null, WHEN);
+                }));
+            }
+            go.countDown();
+            for (Future<ActionWithHistory> future : futures) {
+                assertThat(future.get().history()).extracting(ActionDecision::seq, ActionDecision::decidedBy)
+                    .containsExactly(tuple(1, "officer-1"));
+            }
+        }
+        finally {
+            pool.shutdownNow();
+        }
+        assertThat(records.history(action.id())).hasSize(1);
+        assertThat(records.history(together.id())).hasSize(1);
+    }
+
+    @Test
+    void 다른_사람이_했거나_지금의_상태가_그_동작의_것이_아니면_다시_보낸_것으로_보지_않는다() {
+        List<Action> all = actions("d-resend-other", 2);
+        String first = all.get(0).id();
+        String second = all.get(1).id();
+        decisions.hold(first, "officer-1", "기다린다", WHEN);
+        decisions.confirm(first, "officer-2", null, WHEN.plusSeconds(1));
+        decisions.confirm(second, "officer-1", null, WHEN);
+
+        // officer-1 이 보류했지만 그 뒤에 officer-2 가 확정했다. 지금의 상태는 보류가 아니다.
+        assertThatThrownBy(() -> decisions.hold(first, "officer-1", "기다린다", WHEN.plusSeconds(2)))
+            .isInstanceOf(ActionDecisionRejectedException.class);
+        // 지금의 상태(확정)로 바꾼 사람은 officer-2 다. officer-1 이 확정을 보내면 거부한다.
+        assertThatThrownBy(() -> decisions.confirm(first, "officer-1", null, WHEN.plusSeconds(2)))
+            .isInstanceOf(ActionDecisionRejectedException.class)
+            .satisfies(e -> assertThat(((ActionDecisionRejectedException) e).lastDecision().decidedBy()).isEqualTo("officer-2"));
+        // 아이디는 글자 그대로 견준다. 대소문자가 다르면 다른 사람이다.
+        assertThatThrownBy(() -> decisions.confirm(second, "Officer-1", null, WHEN.plusSeconds(2)))
+            .isInstanceOf(ActionDecisionRejectedException.class);
+        // 그 사람이 지금의 상태로 바꿨으면, 앞의 이력에 다른 사람이 있어도 다시 보낸 것이다.
+        assertThat(decisions.confirm(first, "officer-2", null, WHEN.plusSeconds(3)).history()).hasSize(2);
+
+        assertThat(records.history(first)).hasSize(2);
+        assertThat(records.history(second)).hasSize(1);
+    }
+
+    @Test
     void 보류에는_사유가_반드시_있어야_하고_확정에는_없어도_된다() {
         Action action = actions("d-note", 1).get(0);
 

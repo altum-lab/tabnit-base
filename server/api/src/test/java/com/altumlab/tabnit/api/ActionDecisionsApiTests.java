@@ -49,6 +49,9 @@ class ActionDecisionsApiTests {
 	/** 로그인한 사람. 이력의 "누가"에 이 아이디가 적힌다. */
 	private static final String ACTOR = "dec-officer";
 
+	/** 다른 담당자. 다른 사람이 먼저 바꾼 조치를 바꾸려는 경우에 쓴다. */
+	private static final String OTHER = "dec-officer-2";
+
 	private static final String[][] EDITIONS = { { "program", "program-v1.csv", "2026-01-01" },
 			{ "guideline", "guideline-v1.csv", "2026-01-01" },
 			{ "guideline-program", "guideline-program-v1.csv", "2026-01-01" },
@@ -164,8 +167,8 @@ class ActionDecisionsApiTests {
 				""".formatted(json(action.id()));
 		decide(confirm).andExpect(status().isOk());
 
-		// 같은 요청을 다시 보낸 것도, 다른 사람이 뒤에 보낸 것도 같은 응답이다.
-		decide(confirm).andExpect(status().isConflict())
+		// 다른 사람이 뒤에 보낸 것은 거부다. 같은 사람이 다시 보낸 것은 아래의 시험이 본다 (D2 AD-325).
+		decideAs(OTHER, confirm).andExpect(status().isConflict())
 			.andExpect(content().contentTypeCompatibleWith("application/problem+json"))
 			.andExpect(jsonPath("$.status").value(409))
 			.andExpect(jsonPath("$.code").value("ACTION_DECISION_CONFLICT"))
@@ -189,7 +192,7 @@ class ActionDecisionsApiTests {
 				{ "actionId": %s, "decision": "HOLD", "note": "미룬다" }
 				""".formatted(json(other.id()));
 		decide(hold).andExpect(status().isOk());
-		decide(hold).andExpect(status().isConflict())
+		decideAs(OTHER, hold).andExpect(status().isConflict())
 			.andExpect(jsonPath("$.currentStatus").value("ON_HOLD"))
 			.andExpect(jsonPath("$.lastDecision.toStatus").value("ON_HOLD"))
 			// 문구에 조치의 식별자를 되돌려 담지 않는다.
@@ -258,6 +261,32 @@ class ActionDecisionsApiTests {
 	}
 
 	// ── 도우미 ──────────────────────────────────────────────────
+
+	@Test
+	void 같은_사람이_같은_요청을_다시_보내면_성공으로_답하고_이력은_늘지_않는다() throws Exception {
+		Action action = prepare("dec-again").get(0);
+		String confirm = """
+				{ "actionId": %s, "decision": "CONFIRM", "note": "확인했다" }
+				""".formatted(json(action.id()));
+		decide(confirm).andExpect(status().isOk());
+
+		// 응답을 받지 못해 다시 누른 것이다. 성공한 일이 실패로 보이지 않는다 (D2 AD-325).
+		decide("""
+				{ "actionId": %s, "decision": "CONFIRM", "note": "다시 누름" }
+				""".formatted(json(action.id()))).andExpect(status().isOk())
+			.andExpect(jsonPath("$.action.status").value("CONFIRMED"))
+			.andExpect(jsonPath("$.history", hasSize(1)))
+			.andExpect(jsonPath("$.history[0].decidedBy").value(ACTOR))
+			.andExpect(jsonPath("$.history[0].note").value("확인했다"));
+
+		assertThat(new ActionRecords(this.dataSource).history(action.id())).hasSize(1);
+	}
+
+	private ResultActions decideAs(String loginId, String body) throws Exception {
+		return this.mvc.perform(post("/api/v1/action-decisions").with(user(loginId).roles("OFFICER"))
+			.contentType(MediaType.APPLICATION_JSON)
+			.content(body));
+	}
 
 	private ResultActions decide(String body) throws Exception {
 		return this.mvc.perform(post("/api/v1/action-decisions").contentType(MediaType.APPLICATION_JSON).content(body));

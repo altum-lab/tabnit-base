@@ -73,6 +73,7 @@ class EditionProcessingTests {
 			EditionProcessingResult result = processing.submit(packId, (String) step.get("inputSource"), null,
 					Files.readAllBytes(pack.resolve((String) step.get("file"))), date(step.get("effectiveDate")));
 			assertThat(result.ingest().outcome()).as("단계 %s", step.get("step")).isEqualTo(IngestOutcome.ACCEPTED);
+			assertThat(result.processingNotStarted()).isFalse();
 			// 그 호출이 끝나면 그 판의 변동은 모두 처리되어 있다.
 			assertThat(result.changes()).as("단계 %s", step.get("step")).allSatisfy(change -> {
 				assertThat(change.processed()).isTrue();

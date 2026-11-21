@@ -86,6 +86,9 @@ class EditionProcessing {
 	 */
 	private final ReentrantLock[] localLocks = new ReentrantLock[64];
 
+	/** 이 스레드가 지금 처리하고 있는 Pack. 겹쳐 부른 것을 알아보는 데 쓴다. */
+	private final ThreadLocal<String> current = new ThreadLocal<>();
+
 	EditionProcessing(DataSource dataSource, Clock clock) {
 		this.dataSource = Objects.requireNonNull(dataSource, "데이터 원본은 반드시 있어야 합니다");
 		this.clock = Objects.requireNonNull(clock, "시계는 반드시 있어야 합니다");
@@ -102,6 +105,9 @@ class EditionProcessing {
 
 	/**
 	 * 파일 하나를 새 판으로 투입하고, 이어서 그 Pack 의 처리되지 않은 변동 이벤트를 모두 처리한다.
+	 *
+	 * <p>판을 받아들인 뒤 변동의 처리를 시작하지 못하면 (저장소 오류 등) 예외를 던지지 않고 투입의 결과와 함께
+	 * 그 사실을 돌려준다: 판은 이미 저장되어 있다.
 	 *
 	 * <p>투입이 받아들여지지 않으면 (내용이 같거나 거부) 변동을 처리하지 않는다. 앞서 실패해 남아 있던 변동은
 	 * 다음에 받아들여진 투입이나 {@link #processPending} 에서 다시 시도된다.
@@ -133,9 +139,17 @@ class EditionProcessing {
 			}
 			if (result.outcome() != IngestOutcome.ACCEPTED) {
 				// 판이 생기지 않았다 (내용이 같거나 거부). 새로 처리할 변동이 없다.
-				return new EditionProcessingResult(result, List.of());
+				return new EditionProcessingResult(result, List.of(), false);
 			}
-			return new EditionProcessingResult(result, process(pack));
+			try {
+				return new EditionProcessingResult(result, process(pack), false);
+			}
+			catch (RuntimeException e) {
+				// 판은 이미 받아들여졌다. 투입의 결과를 잃지 않게 돌려주고, 변동의 처리를 하지 못했다고 알린다.
+				// 변동은 대기로 남아 있다: 다음에 받아들여진 투입이나 남은 변동의 처리에서 처리된다.
+				log.error("판 {} 은 받아들였지만 변동의 처리를 시작하지 못했습니다.", result.editionId(), e);
+				return new EditionProcessingResult(result, List.of(), true);
+			}
 		});
 	}
 
@@ -180,9 +194,12 @@ class EditionProcessing {
 	}
 
 	private ProcessedChange processOne(PackDefinition pack, Map<String, ImpactDirection> directions, ChangeEvent event) {
-		Edition edition = this.editions.findEdition(event.editionId())
-			.orElseThrow(() -> new IllegalStateException(
+		Edition edition = this.editions.findEdition(event.editionId()).orElse(null);
+		if (edition == null) {
+			// 저장소가 어긋났다. 변동 이벤트는 판을 가리키므로 생기지 않아야 한다. 이 변동만 실패로 표시한다.
+			return failed(event, ChangeFailedStage.IMPACT, "EDITION_NOT_FOUND", new IllegalStateException(
 					"변동 이벤트 " + event.id() + " 의 판 " + event.editionId() + " 이 없습니다. 저장소의 상태를 확인하세요."));
+		}
 		LocalDate effective = edition.effectiveDate();
 		ImpactScope scope;
 		try {
@@ -202,7 +219,7 @@ class EditionProcessing {
 		}
 		ActionGeneration generation;
 		try {
-			// 저장하는 때는 변동마다 읽지 않고 엔진에 값으로 넘긴다.
+			// 저장하는 때는 변동마다 여기서 읽어 엔진에 값으로 넘긴다. 엔진은 시계를 읽지 않는다.
 			Instant now = this.clock.instant();
 			generation = this.actions.generate(pack,
 					new RuleChange(event.id(), RuleChangeKind.valueOf(event.kind().name()), event.primaryEntityId(),
@@ -245,11 +262,15 @@ class EditionProcessing {
 	 */
 	private <T> T oneAtATime(String packId, Supplier<T> work) {
 		ReentrantLock local = this.localLocks[Math.floorMod(packId.hashCode(), this.localLocks.length)];
-		if (local.isHeldByCurrentThread()) {
-			// 처리하는 도중에 같은 Pack 의 처리를 다시 부르면 자기 자신을 끝없이 기다리게 된다.
-			throw new IllegalStateException("Pack " + packId + " 을 처리하는 도중에 같은 Pack 의 처리를 다시 불렀습니다. 부르는 코드를 확인하세요.");
+		String running = this.current.get();
+		if (running != null) {
+			// 처리하는 도중에 처리를 다시 부르면 (같은 Pack 이면) 자기 자신을 끝없이 기다리거나, (다른 Pack 이면) 잠금을
+			// 잡는 차례가 엇갈려 서로 기다릴 수 있다. 겹쳐 부르지 않는다.
+			throw new IllegalStateException("Pack " + running + " 을 처리하는 도중에 Pack " + packId
+					+ " 의 처리를 다시 불렀습니다. 처리는 겹쳐 부를 수 없습니다. 부르는 코드를 확인하세요.");
 		}
 		local.lock();
+		this.current.set(packId);
 		try {
 			Connection connection;
 			try {
@@ -299,6 +320,7 @@ class EditionProcessing {
 			}
 		}
 		finally {
+			this.current.remove();
 			local.unlock();
 		}
 	}

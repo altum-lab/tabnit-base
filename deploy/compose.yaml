@@ -1,0 +1,46 @@
+# 개발 환경을 한 번에 띄운다: 앱(서버와 화면)과 PostgreSQL (SK-08, D2 AD-27).
+#
+# 직접 부르지 않고 저장소의 맨 위에서 bash tools/up.sh 를 쓴다. 그 명령이 처음 한 번 데이터베이스의 비밀번호를 만들어
+# deploy/.env 에 둔다 (git 에 올리지 않는다, D2 AD-278). 이 파일에는 비밀번호를 적지 않는다.
+#
+# 이 PC 에서만 쓴다: 앱은 이 PC 의 localhost 로만 열린다. 다른 PC 나 서버에 설치하는 것은 E-07, E-09 다.
+# 개발 중에 띄운 서버(8080)와 시험이 띄우는 컨테이너와 부딪히지 않도록 이름과 포트를 따로 쓴다.
+name: tabnit-dev
+
+services:
+  db:
+    # 버전은 서버 시험이 쓰는 것과 같다. 고정하지 않았다 (D2 4절 "결정 필요" 2번).
+    image: postgres:latest
+    environment:
+      POSTGRES_DB: tabnit
+      POSTGRES_USER: tabnit
+      POSTGRES_PASSWORD: ${TABNIT_DB_PASSWORD:?데이터베이스의 비밀번호가 없습니다. bash tools/up.sh 로 띄우세요}
+    volumes:
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tabnit -d tabnit"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: tabnit-base-app:dev
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/tabnit
+      SPRING_DATASOURCE_USERNAME: tabnit
+      SPRING_DATASOURCE_PASSWORD: ${TABNIT_DB_PASSWORD:?데이터베이스의 비밀번호가 없습니다. bash tools/up.sh 로 띄우세요}
+    ports:
+      # 이 PC 에서만 열린다.
+      - "127.0.0.1:${TABNIT_PORT:-8088}:8080"
+    volumes:
+      # 저장소의 Pack 들을 읽기 전용으로 붙인다. 관리자가 이름을 골라 적재한다 (D2 AD-272).
+      - ../packs:/app/packs:ro
+
+volumes:
+  db-data:

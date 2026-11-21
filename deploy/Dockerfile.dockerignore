@@ -1,0 +1,18 @@
+# 이미지를 만들 때 보내지 않는 것. 만든 결과물, 내려받은 것, 비밀, 저장소의 기록.
+.git
+**/build
+**/.gradle
+**/node_modules
+web/dist
+web/test-results
+web/playwright-report
+**/.env
+**/.env.*
+**/secrets
+**/*.pem
+**/*.key
+tools/forbidden-words.local.txt
+.claude
+docs
+packs
+verify

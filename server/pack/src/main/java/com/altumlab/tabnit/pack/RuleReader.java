@@ -276,6 +276,32 @@ final class RuleReader {
             problem(item, "대상이 변동 대상인 규칙(tabnit:appliesTo tabnit:ChangeTarget)의 조건이 영향 대상을 봅니다 "
                     + "(tabnit:subject tabnit:ImpactTarget). 그 조건을 빼거나 규칙의 대상을 영향 대상으로 바꾸세요.");
         }
+        // 규칙의 대상을 보는 조건의 속성은 그 대상에 값이 있을 수 있는 것이어야 한다: 대상 유형에도 해당하고 속성의
+        // 유형에도 해당하는 유형이 하나는 있어야 한다 (같은 유형, 위아래인 유형, 둘 모두의 하위인 유형이 있는 경우).
+        // 그런 유형이 없으면 그 대상에 값이 있을 수 없어, 규칙이 조용히 아무 데도 걸리지 않는다 (D2 AD-223).
+        // 조건이 다른 쪽을 보면 (영향 대상에 거는 규칙이 변동 대상을 보는 조건) 그 유형을 미리 알 수 없어 보지 않는다.
+        if (appliesTo != null && targetType != null && entityTypes.containsKey(targetType)) {
+            for (RuleCondition condition : conditions) {
+                AttributeDefinition attribute = condition.attributeName() == null ? null
+                        : attributes.get(condition.attributeName());
+                if (attribute == null || condition.subject() != appliesTo) {
+                    continue;
+                }
+                String owner = attribute.entityType();
+                boolean possible = false;
+                for (String type : entityTypes.keySet()) {
+                    if (PackReader.isSameOrAncestor(owner, type, entityTypes)
+                            && PackReader.isSameOrAncestor(targetType, type, entityTypes)) {
+                        possible = true;
+                        break;
+                    }
+                }
+                if (!possible) {
+                    problem(item, "조건의 속성 " + condition.attributeName() + " 은(는) 유형 " + owner + " 의 속성인데 이 규칙의 대상 유형은 "
+                            + targetType + " 입니다. 그 대상에는 이 속성의 값이 있을 수 없습니다. 대상 유형의 속성을 적거나 대상 유형을 고치세요.");
+                }
+            }
+        }
         top.rejectOthers(item);
         if (problems.size() > before) {
             return null;

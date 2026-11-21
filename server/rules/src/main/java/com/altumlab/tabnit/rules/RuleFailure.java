@@ -1,0 +1,17 @@
+package com.altumlab.tabnit.rules;
+
+/**
+ * 평가에 실패한 규칙 하나와 그 까닭 (D8 7절). 문구가 아니라 코드와 값이다.
+ * 실패한 규칙은 이 변동에서 해당하는 것을 하나도 내지 않는다 (D2 AD-221).
+ *
+ * @param ruleNo 규칙 번호
+ * @param code 까닭의 코드. `VALUE_FORMAT_MISMATCH` (저장된 값이 속성의 형식과 맞지 않는다),
+ *        `UNKNOWN_ATTRIBUTE` (규칙이 보는 속성이 Pack 의 정의에 없다), `RULE_VALUE_FORMAT_MISMATCH` (규칙에 적힌 값이
+ *        속성의 형식과 맞지 않는다), `INVALID_RULE` (규칙의 정의가 D8 의 모양이 아니다). 뒤의 셋은 Pack 을 읽을 때
+ *        걸러지므로 검증을 거친 정의에서는 생기지 않는다
+ * @param entityId 걸린 개체. 없으면 null
+ * @param attributeName 걸린 속성
+ * @param value 걸린 값. 없으면 null
+ */
+public record RuleFailure(String ruleNo, String code, String entityId, String attributeName, String value) {
+}

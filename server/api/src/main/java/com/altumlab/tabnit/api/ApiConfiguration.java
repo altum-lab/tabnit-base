@@ -32,4 +32,10 @@ class ApiConfiguration {
 		return new RelationQuery(dataSource);
 	}
 
+	/** 판을 투입하고 그 변동을 조치까지 잇는다 (D2 AD-233). 부르는 HTTP API 는 아직 없다. */
+	@Bean
+	EditionProcessing editionProcessing(DataSource dataSource, Clock clock) {
+		return new EditionProcessing(dataSource, clock);
+	}
+
 }

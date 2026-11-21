@@ -642,6 +642,28 @@ class RuleEvaluatorTest {
     }
 
     @Test
+    void 잘못_부른_것을_잡고_계속해도_부르는_쪽의_트랜잭션이_깨지지_않는다() {
+        String p = "e-outer";
+        EntityRef start = entity(p, "Base", "B-1");
+        PackDefinition pack = pack(p, rule("0001", 1, ALL, CHANGE, "Base"));
+        ImpactScope scope = scope(start);
+        org.springframework.transaction.support.TransactionTemplate outer = new org.springframework.transaction.support.TransactionTemplate(
+                new org.springframework.jdbc.datasource.DataSourceTransactionManager(RulesTestDatabase.dataSource()));
+
+        // 부르는 쪽이 자기 트랜잭션 안에서 규칙을 고르다가 잘못 부른 것을 알고, 그것을 적어 두고 끝낸다.
+        outer.executeWithoutResult(status -> {
+            assertThatThrownBy(() -> evaluator.select(pack,
+                    new RuleChange("ev-1", RuleChangeKind.CHANGED, start.id(), List.of(p + "|Base|없는 키"), D), scope))
+                .isInstanceOf(IllegalArgumentException.class);
+            relations.saveEntity(new EntityRef(p, "Base", "적어 둔 것"), AT);
+        });
+
+        // 부르는 쪽의 저장이 남아 있다.
+        assertThat(new com.altumlab.tabnit.core.EntityQuery(RulesTestDatabase.dataSource()).find(p + "|Base|적어 둔 것"))
+            .isPresent();
+    }
+
+    @Test
     void 같은_입력에는_같은_결과이고_변동_대상을_적은_차례와_무관하다() {
         String p = "e-twice";
         EntityRef one = entity(p, "Base", "B-1");

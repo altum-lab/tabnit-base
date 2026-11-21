@@ -98,7 +98,21 @@ public class RuleEvaluator {
             throw new IllegalArgumentException("변동 대상이 없습니다 (변동 이벤트 " + change.changeEventId()
                     + "). 변동 대상을 하나 이상 넣어 다시 보내세요.");
         }
-        return snapshot.execute(status -> new Run(pack, change, scope).select());
+        // 잘못 부른 것(IllegalArgumentException)은 읽기 트랜잭션 밖에서 던진다. 안에서 던지면, 부르는 쪽이 이미
+        // 트랜잭션 안일 때 그 트랜잭션까지 되돌려야 하는 것으로 표시되어, 예외를 잡고 계속하려던 부르는 쪽의 저장이
+        // 사라진다. 저장소에서 읽지 못한 것(core 의 예외)은 그대로 안에서 나간다.
+        Object result = snapshot.execute(status -> {
+            try {
+                return new Run(pack, change, scope).select();
+            }
+            catch (IllegalArgumentException e) {
+                return e;
+            }
+        });
+        if (result instanceof IllegalArgumentException wrongCall) {
+            throw wrongCall;
+        }
+        return (RuleSelection) result;
     }
 
     /** 평가에 실패했다. 그 규칙의 평가를 끊는 데만 쓰고 밖으로 나가지 않는다. */

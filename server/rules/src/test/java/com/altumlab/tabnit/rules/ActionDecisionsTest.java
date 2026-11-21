@@ -131,7 +131,7 @@ class ActionDecisionsTest {
         Action action = actions("d-note", 1).get(0);
 
         // 눈에 보이는 글자가 없으면 빈 것이다: 끊지 않는 공백(U+00A0), 폭 없는 공백(U+200B)도 같다.
-        for (String blank : java.util.Arrays.asList(null, "", "  \n", "\u00A0", "\u200B \u00A0")) {
+        for (String blank : java.util.Arrays.asList(null, "", "  \n", "\u00A0", "\u200B \u00A0", "\u0085", "\u0001\t")) {
             assertThatThrownBy(() -> decisions.hold(action.id(), "officer-1", blank, WHEN))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("사유");

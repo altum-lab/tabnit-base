@@ -163,12 +163,14 @@ public class ActionDecisions {
     }
 
     /**
-     * 빈 값인가. 눈에 보이는 글자가 하나도 없으면 빈 것으로 본다: 공백, 줄바꿈, 끊지 않는 공백, 폭 없는 글자뿐인 값.
+     * 빈 값인가. 눈에 보이는 글자가 하나도 없으면 빈 것으로 본다: 공백, 줄바꿈, 끊지 않는 공백, 제어 글자, 폭 없는 글자뿐인 값.
+     * 저장소의 제약(공백뿐인 값을 받지 않는다)보다 넓게 잡는다: 여기를 지난 값이 저장소에서 걸리지 않는다.
      * 눈에 보이지 않는 글자로 "반드시 적는다"를 지나가지 못하게 한다.
      */
     private static boolean blank(String text) {
         return text.codePoints()
-            .allMatch(c -> Character.isWhitespace(c) || Character.isSpaceChar(c) || Character.getType(c) == Character.FORMAT);
+            .allMatch(c -> Character.isWhitespace(c) || Character.isSpaceChar(c) || Character.isISOControl(c)
+                    || Character.getType(c) == Character.FORMAT);
     }
 
     private static void requireStorable(String text, ActionDecisionInputException.Field field, String name) {

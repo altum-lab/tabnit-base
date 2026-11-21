@@ -1,6 +1,7 @@
 name: nightly
 
 # 밤 통합: 매일 새벽 2시 (한국 시간) 에 전체 빌드와 시험을 돌린다.
+# 서버 시험을 처음부터 두 번, 그리고 화면 흐름 시험(새 판 투입부터 확정까지, E-08)을 돌린다.
 on:
   schedule:
     - cron: '0 17 * * *'   # UTC 17:00 = 한국 02:00
@@ -33,6 +34,34 @@ jobs:
         if: hashFiles('verify/run.sh') != ''
         run: bash verify/run.sh
 
+      - uses: actions/setup-node@v6
+        if: hashFiles('web/package-lock.json') != ''
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # 시험용 서버와 PostgreSQL 컨테이너를 스스로 띄워 실제 API 에 붙는다 (web/playwright.config.ts).
+      # 로그인부터 판 올리기, 확정까지를 화면으로 한다 (web/tests/flow.spec.ts 와 화면마다의 시험).
+      - name: 화면 흐름 시험 (새 판 투입부터 확정까지)
+        if: hashFiles('web/playwright.config.ts') != ''
+        working-directory: web
+        run: |
+          npm ci
+          npx playwright install chromium
+          npx playwright test
+
+      # 실패하면 그 화면과 기록을 남긴다.
+      - name: 화면 시험 결과 올리기
+        if: failure() && hashFiles('web/playwright.config.ts') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            web/playwright-report/
+            web/test-results/
+          retention-days: 7
+
       - name: 요약
         if: always()
         run: |
@@ -42,6 +71,11 @@ jobs:
             echo "- 커밋: ${GITHUB_SHA::7}"
             n=$(find server -path '*/build/test-results/test/*.xml' 2>/dev/null | wc -l | xargs)
             echo "- 시험 결과 파일: ${n}개"
+            if [ -f web/playwright-report/index.html ]; then
+              echo "- 화면 흐름 시험: 돌았음 (실패했으면 이 실행의 첨부에 화면이 있습니다)"
+            else
+              echo "- 화면 흐름 시험: 돌지 않았음"
+            fi
             echo
             echo "아침 회의 전에 개발 보드의 '검증과 통합 숫자'에 적습니다."
           } >> "$GITHUB_STEP_SUMMARY"

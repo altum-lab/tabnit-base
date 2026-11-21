@@ -7,7 +7,8 @@ package com.altumlab.tabnit.rules;
  * @param ruleNo 규칙 번호
  * @param code 까닭의 코드. `VALUE_FORMAT_MISMATCH` (저장된 값이 속성의 형식과 맞지 않는다),
  *        `UNKNOWN_ATTRIBUTE` (규칙이 보는 속성이 Pack 의 정의에 없다), `RULE_VALUE_FORMAT_MISMATCH` (규칙에 적힌 값이
- *        속성의 형식과 맞지 않는다), `INVALID_RULE` (규칙의 정의가 D8 의 모양이 아니다). 뒤의 셋은 Pack 을 읽을 때
+ *        속성의 형식과 맞지 않는다), `INVALID_RULE` (규칙의 정의가 D8 의 모양이 아니다), `DUE_DATE_OUT_OF_RANGE`
+ *        (조치의 기한을 날짜로 담을 수 없다. 조치를 만들 때 나온다). 뒤의 셋은 Pack 을 읽을 때
  *        걸러지므로 검증을 거친 정의에서는 생기지 않는다
  * @param entityId 걸린 개체. 없으면 null
  * @param attributeName 걸린 속성

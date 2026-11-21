@@ -18,7 +18,7 @@ import org.springframework.jdbc.core.RowMapper;
  *
  * <p>영향 범위와 조치는 트랜잭션 하나로 함께 저장되고 뒤에 고치지 않으므로 (D2 AD-209, AD-119), 영향 범위의 행이
  * 보이면 그 대상과 경로도 모두 보인다. 그래서 여러 문장을 한 시점으로 묶지 않는다.
- * 조치의 상태는 B-07 부터 바뀔 수 있다. 조치는 한 문장으로 읽는다.
+ * 조치의 상태는 확정과 보류로 바뀐다 ({@link ActionDecisions}). 조치는 한 문장으로 읽는다.
  */
 public class ActionRecords {
 
@@ -59,6 +59,55 @@ public class ActionRecords {
         }
         catch (DataAccessException e) {
             throw new ActionStorageException("변동 이벤트 " + changeEventId + " 의 조치를 읽지 못했습니다. 저장소의 상태를 확인한 뒤 다시 시도하세요.", e);
+        }
+    }
+
+    /**
+     * 조치 하나를 식별자로 읽는다.
+     *
+     * @return 그런 조치가 없으면 비어 있다
+     */
+    public Optional<Action> find(String actionId) {
+        Objects.requireNonNull(actionId, "조치의 식별자는 반드시 있어야 합니다");
+        ActionGenerator.requireStorable(actionId, "조치의 식별자");
+        try {
+            return jdbc.query("""
+                    select a.id, a.pack_id, s.change_event_id, a.rule_no, a.rule_label, a.action_text, a.priority,
+                           a.applies_to, a.target_entity_id, a.target_entity_type, a.basis_entity_id,
+                           a.basis_input_source_id, a.basis_edition_no, a.as_of, a.due_date, a.status, a.created_at
+                      from action a
+                      join impact_scope s on s.change_event_hash = a.change_event_hash
+                     where a.id_hash = ? and a.id = ?
+                    """, ACTION, RulesHash.sha256Hex(actionId), actionId).stream().findFirst();
+        }
+        catch (DataAccessException e) {
+            throw new ActionStorageException("조치 " + actionId + " 을(를) 읽지 못했습니다. 저장소의 상태를 확인한 뒤 다시 시도하세요.", e);
+        }
+    }
+
+    /**
+     * 조치 하나의 이력. 상태를 바꾼 차례다.
+     *
+     * @return 아직 아무도 바꾸지 않았거나 그런 조치가 없으면 빈 목록
+     */
+    public List<ActionDecision> history(String actionId) {
+        Objects.requireNonNull(actionId, "조치의 식별자는 반드시 있어야 합니다");
+        ActionGenerator.requireStorable(actionId, "조치의 식별자");
+        try {
+            return jdbc.query("""
+                    select h.seq, h.from_status, h.to_status, h.decided_by, h.decided_at, h.note
+                      from action_history h
+                      join action a on a.id_hash = h.action_id_hash
+                     where h.action_id_hash = ? and a.id = ?
+                     order by h.seq
+                    """,
+                    (rs, row) -> new ActionDecision(rs.getInt("seq"), ActionStatus.valueOf(rs.getString("from_status")),
+                            ActionStatus.valueOf(rs.getString("to_status")), rs.getString("decided_by"),
+                            rs.getObject("decided_at", OffsetDateTime.class).toInstant(), rs.getString("note")),
+                    RulesHash.sha256Hex(actionId), actionId);
+        }
+        catch (DataAccessException e) {
+            throw new ActionStorageException("조치 " + actionId + " 의 이력을 읽지 못했습니다. 저장소의 상태를 확인한 뒤 다시 시도하세요.", e);
         }
     }
 

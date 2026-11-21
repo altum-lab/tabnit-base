@@ -41,6 +41,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pack 의 조치 목록을 근거 조항과 그 판과 함께 돌려준다
+         * @description 담당자와 관리자가 부를 수 있다
+         */
+        get: operations["listActions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impact-scopes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 변동 이벤트 하나의 저장된 영향 범위를 근거 경로와 함께 돌려준다
+         * @description 판을 올린 직후에 그때의 자료로 한 번 계산해 저장한 것이다. 뒤에 자료가 바뀌어도 달라지지 않는다. 판의 적용일 전날과 적용일, 두 날짜의 관계로 따라간 결과를 합친 것이다. 조치의 근거 경로는 여기서 그 조치의 대상(entityId)으로 찾는다. 담당자와 관리자가 부를 수 있다
+         */
+        get: operations["getChangeImpactScope"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -82,6 +122,138 @@ export interface components {
         Provenance: {
             inputSourceId: string;
             editionNo: number;
+        };
+        /**
+         * @description 조치의 상태. PENDING 대기, CONFIRMED 확정, ON_HOLD 보류
+         * @enum {string}
+         */
+        ActionStatus: "PENDING" | "CONFIRMED" | "ON_HOLD";
+        /** @description 개체 하나. 표시 이름은 아직 없다 */
+        EntityRef: {
+            /** @description 개체의 id */
+            entityId: string;
+            /** @description 개체 유형 */
+            entityType: string;
+        };
+        ActionList: {
+            packId: string;
+            /** @description 거르는 데 쓴 상태. 가리지 않았으면 null */
+            status: components["schemas"]["ActionStatus"] | null;
+            /** @description 거르는 데 쓴 변동 이벤트의 id. 가리지 않았으면 null */
+            changeEventId: string | null;
+            /** @description actions 의 수. 화면은 다시 세지 않는다 */
+            total: number;
+            actions: components["schemas"]["Action"][];
+        };
+        /** @description 조치 하나. 해야 할 일 */
+        Action: {
+            /** @description 조치의 id */
+            id: string;
+            /** @description 이 조치를 낳은 변동 이벤트의 id. 영향 범위를 볼 때 쓴다 */
+            changeEventId: string;
+            /** @description 근거 규칙의 번호 */
+            ruleNo: string;
+            /** @description 조치를 만들 때의 그 규칙의 이름 */
+            ruleLabel: string;
+            /** @description 해야 할 일. 조치를 만들 때 규칙에 적혀 있던 문구 그대로다 */
+            actionText: string;
+            /** @description 우선순위. 수가 작을수록 먼저다 */
+            priority: number;
+            /**
+             * Format: date
+             * @description 기한. 근거가 된 판의 적용일에 규칙이 적은 일수를 더한 날짜
+             */
+            dueDate: string;
+            status: components["schemas"]["ActionStatus"];
+            /**
+             * @description 대상이 영향 대상인가(IMPACT_TARGET), 바뀐 개체 자신인가(CHANGE_TARGET). IMPACT_TARGET 이면 그 변동의 영향 범위에 대상의 근거 경로가 있다. CHANGE_TARGET 이면 근거 경로가 없다
+             * @enum {string}
+             */
+            appliesTo: "IMPACT_TARGET" | "CHANGE_TARGET";
+            target: components["schemas"]["EntityRef"];
+            basis: components["schemas"]["ActionBasis"];
+            /**
+             * Format: date-time
+             * @description 만든 때 (협정 세계시)
+             */
+            createdAt: string;
+        };
+        /** @description 조치의 근거. 변동이 생긴 행의 주 개체(근거 조항)와, 그 변동이 나온 입력 자료의 판 */
+        ActionBasis: {
+            entity: components["schemas"]["EntityRef"];
+            inputSourceId: string;
+            editionNo: number;
+            /**
+             * Format: date
+             * @description 그 판의 적용일
+             */
+            effectiveDate: string;
+        };
+        ChangeImpactScope: {
+            changeEventId: string;
+            packId: string;
+            /**
+             * Format: date
+             * @description 계산에 쓴 두 날짜 가운데 판의 적용일 전날
+             */
+            asOfPrevious: string;
+            /**
+             * Format: date
+             * @description 판의 적용일
+             */
+            asOfEffective: string;
+            /** @description 계산에 쓴 최대 깊이 */
+            maxDepth: number;
+            /** @description 최대 깊이에서 멈췄고 그 너머에 아직 찾지 못한 대상이 있는가 */
+            truncated: boolean;
+            /**
+             * Format: date-time
+             * @description 저장한 때 (협정 세계시)
+             */
+            storedAt: string;
+            /** @description 영향 대상의 수. 변동 대상 자신은 세지 않는다 */
+            total: number;
+            /** @description 개체 유형별 수. 합계는 total 과 같다 */
+            countsByType: {
+                entityType: string;
+                count: number;
+            }[];
+            /** @description 깊이별 수. 합계는 total 과 같다 */
+            countsByDepth: {
+                depth: number;
+                count: number;
+            }[];
+            targets: components["schemas"]["ImpactTarget"][];
+        };
+        /** @description 영향 대상 하나와 거기에 이른 근거 경로 */
+        ImpactTarget: {
+            entityId: string;
+            /** @description 개체 유형. 계산할 때의 값 */
+            entityType: string;
+            /** @description 깊이. 가장 가까운 변동 대상에서 건넌 관계의 수. 경로의 단계의 수와 같다 */
+            depth: number;
+            path: components["schemas"]["ImpactPath"];
+        };
+        ImpactPath: {
+            /** @description 경로가 시작한 변동 대상 개체의 id */
+            startEntityId: string;
+            /**
+             * Format: date
+             * @description 이 경로의 관계가 모두 유효한 날짜. asOfPrevious 와 asOfEffective 가운데 하나다
+             */
+            asOf: string;
+            steps: components["schemas"]["ImpactPathStep"][];
+        };
+        /** @description 따라간 관계 하나. 계산할 때의 내용이다 */
+        ImpactPathStep: {
+            /** @description 변동 대상 쪽부터의 차례 */
+            stepNo: number;
+            relationId: string;
+            relationType: string;
+            /** @description 그 관계의 출발 개체의 id. 관계에 적힌 방향이다 (따라간 방향이 아니다) */
+            sourceEntityId: string;
+            /** @description 그 관계의 도착 개체의 id */
+            targetEntityId: string;
         };
         EditionSubmission: {
             /**
@@ -185,7 +357,7 @@ export interface components {
              * @description 오류의 종류. 화면이 이것으로 가른다. 바뀌지 않는 값이다
              * @enum {string}
              */
-            code: "MISSING_ENTITY_ID" | "INVALID_AS_OF" | "ENTITY_NOT_FOUND" | "MISSING_PACK_ID" | "MISSING_INPUT_SOURCE_ID" | "MISSING_EFFECTIVE_DATE" | "INVALID_EFFECTIVE_DATE" | "MISSING_FILE" | "INVALID_EDITION" | "PACK_NOT_FOUND" | "INPUT_SOURCE_NOT_FOUND" | "FILE_TOO_LARGE" | "EDITION_REJECTED" | "UNAUTHENTICATED" | "FORBIDDEN" | "INTERNAL";
+            code: "MISSING_ENTITY_ID" | "INVALID_AS_OF" | "ENTITY_NOT_FOUND" | "MISSING_PACK_ID" | "MISSING_INPUT_SOURCE_ID" | "MISSING_EFFECTIVE_DATE" | "INVALID_EFFECTIVE_DATE" | "MISSING_FILE" | "INVALID_EDITION" | "PACK_NOT_FOUND" | "INPUT_SOURCE_NOT_FOUND" | "FILE_TOO_LARGE" | "EDITION_REJECTED" | "INVALID_STATUS" | "MISSING_CHANGE_EVENT_ID" | "INVALID_CHANGE_EVENT_ID" | "IMPACT_SCOPE_NOT_FOUND" | "UNAUTHENTICATED" | "FORBIDDEN" | "INTERNAL";
             /** @description 틀린 항목의 이름. 입력 오류일 때만 있다 */
             field?: string;
         };
@@ -289,6 +461,66 @@ export interface operations {
                     "application/problem+json": components["schemas"]["EditionRejectedProblem"];
                 };
             };
+            500: components["responses"]["Problem"];
+        };
+    };
+    listActions: {
+        parameters: {
+            query: {
+                /** @description Pack 의 식별자 */
+                packId: string;
+                /** @description 이 상태의 조치만. 없으면 가리지 않는다 */
+                status?: components["schemas"]["ActionStatus"];
+                /** @description 이 변동 이벤트에서 나온 조치만. 서버가 준 id 를 그대로 보낸다. 없으면 가리지 않는다 */
+                changeEventId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 거른 조치를 한 번에 모두 돌려준다. 순서는 기한이 이른 것부터이고, 같으면 우선순위(수가 작은 것부터), 규칙 번호, 대상 개체의 id, 조치의 id 차례다. 글자는 모두 글자 코드 순이다. 해당하는 것이 없으면 빈 목록이다. 그 Pack 의 것이 아닌 변동 이벤트로 거르면 빈 목록이다 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionList"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getChangeImpactScope: {
+        parameters: {
+            query: {
+                /** @description 변동 이벤트의 id. 서버가 준 값을 그대로 보낸다 */
+                changeEventId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 영향 대상의 순서는 깊이, 개체 유형, 개체의 id 차례다. countsByType 은 개체 유형의 글자 코드 순, countsByDepth 는 깊이 순이다. 경로의 단계는 변동 대상 쪽부터의 차례다. 영향 대상이 없으면 빈 목록이다 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeImpactScope"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
             500: components["responses"]["Problem"];
         };
     };

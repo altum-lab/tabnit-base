@@ -632,6 +632,77 @@ class ActionGeneratorTest {
         assertThat(records.actions("ev-twice-1")).isEqualTo(first.actions());
     }
 
+    // ── Pack 의 조치 목록과 영향 범위의 수 (D-06 의 서버 쪽) ──────────────────
+
+    @Test
+    void Pack_의_조치_목록은_기한_우선순위_규칙_번호_대상_순이고_상태와_변동으로_거른다() {
+        String p = "a-list";
+        EntityRef first = entity(p, "Base", "B-1");
+        EntityRef second = entity(p, "Base", "B-2");
+        EntityRef target = entity(p, "Other", "O-1");
+        link(first, target);
+        link(second, target);
+        // 규칙 0001 은 기한이 늦고 우선순위가 높다. 0002 는 기한이 이르고 우선순위가 낮다. 0003 은 0002 와 기한이 같다.
+        PackDefinition pack = pack(p, rule("0001", 1, IMPACT, "Other", 30), rule("0002", 5, IMPACT, "Other", 7),
+                rule("0003", 2, CHANGE, "Base", 7));
+        generator.generate(pack, change("ev-list-b", second), EDITION, scope(second), 3, NOW);
+        generator.generate(pack, change("ev-list-a", first), EDITION, scope(first), 3, NOW);
+        // 다른 Pack 의 조치는 섞이지 않는다.
+        EntityRef foreign = entity("a-list-other", "Base", "B-1");
+        generator.generate(pack("a-list-other", rule("0003", 1, CHANGE, "Base", 1)), change("ev-list-x", foreign), EDITION,
+                scope(foreign), 3, NOW);
+
+        List<Action> all = records.packActions(p, null, null);
+
+        // 기한이 이른 것부터 (D2 AD-243). 같으면 우선순위, 규칙 번호, 대상의 식별자, 조치의 식별자.
+        assertThat(all).extracting(Action::dueDate, Action::priority, Action::ruleNo, Action::targetEntityId,
+                Action::changeEventId)
+            .containsExactly(tuple(D.plusDays(7), 2, "0003", first.id(), "ev-list-a"),
+                    tuple(D.plusDays(7), 2, "0003", second.id(), "ev-list-b"),
+                    tuple(D.plusDays(7), 5, "0002", target.id(), "ev-list-a"),
+                    tuple(D.plusDays(7), 5, "0002", target.id(), "ev-list-b"),
+                    tuple(D.plusDays(30), 1, "0001", target.id(), "ev-list-a"),
+                    tuple(D.plusDays(30), 1, "0001", target.id(), "ev-list-b"));
+        // 변동 하나로 좁힌다. 차례의 기준은 같다.
+        assertThat(records.packActions(p, null, "ev-list-b")).extracting(Action::ruleNo, Action::changeEventId)
+            .containsExactly(tuple("0003", "ev-list-b"), tuple("0002", "ev-list-b"), tuple("0001", "ev-list-b"));
+        // 상태로 거른다. 지금은 모두 대기다.
+        assertThat(records.packActions(p, ActionStatus.PENDING, null)).isEqualTo(all);
+        assertThat(records.packActions(p, ActionStatus.CONFIRMED, null)).isEmpty();
+        assertThat(records.packActions(p, ActionStatus.ON_HOLD, "ev-list-a")).isEmpty();
+        // 없는 Pack, 다른 Pack 의 변동, 없는 변동은 빈 목록이다.
+        assertThat(records.packActions("a-list-없는-pack", null, null)).isEmpty();
+        assertThat(records.packActions(p, null, "ev-list-x")).isEmpty();
+        assertThat(records.packActions(p, null, "없는 변동")).isEmpty();
+        assertThatThrownBy(() -> records.packActions(null, null, null)).isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> records.packActions(p, null, "ev\uD800")).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void 저장된_영향_범위의_유형별_수와_깊이별_수는_영향_대상의_수와_맞는다() {
+        String p = "a-counts";
+        EntityRef start = entity(p, "Base", "B-1");
+        EntityRef near = entity(p, "Other", "O-1");
+        link(start, near);
+        link(start, entity(p, "SubOther", "S-1"));
+        link(near, entity(p, "Other", "O-2"));
+        link(near, entity(p, "Third", "T-1"));
+        generator.generate(pack(p), change("ev-counts", start), EDITION, scope(start), 3, NOW);
+        EntityRef alone = entity(p, "Base", "B-2");
+        generator.generate(pack(p), change("ev-counts-none", alone), EDITION, scope(alone), 3, NOW);
+
+        StoredImpactScope stored = records.impactScope("ev-counts").orElseThrow();
+
+        // 유형의 이름의 글자 코드 순, 깊이 순이다. 두 합계는 영향 대상의 수와 같다 (D2 AD-63).
+        assertThat(stored.countsByType()).containsExactly(Map.entry("Other", 2), Map.entry("SubOther", 1),
+                Map.entry("Third", 1));
+        assertThat(stored.countsByDepth()).containsExactly(Map.entry(1, 2), Map.entry(2, 2));
+        assertThat(stored.targets()).hasSize(4);
+        StoredImpactScope none = records.impactScope("ev-counts-none").orElseThrow();
+        assertThat(none.countsByType()).isEmpty();
+        assertThat(none.countsByDepth()).isEmpty();
+    }
+
     // ── 도우미 ──────────────────────────────────────────────────
 
     private int count(String table, String changeEventId) {

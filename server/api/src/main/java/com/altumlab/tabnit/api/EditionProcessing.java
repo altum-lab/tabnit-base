@@ -33,6 +33,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.TreeMap;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
@@ -199,7 +200,8 @@ class EditionProcessing {
 	}
 
 	private PackDefinition pack(String packId) {
-		return this.packs.find(packId)
+		// NUL 이 든 식별자의 Pack 은 있을 수 없다. 저장소에 묻지 않고 없는 것으로 답한다.
+		return (packId.indexOf('\u0000') >= 0 ? Optional.<PackDefinition>empty() : this.packs.find(packId))
 			.orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND, "PACK_NOT_FOUND", "packId",
 					"Pack " + packId + " 이 적재되어 있지 않습니다. Pack 의 식별자를 확인하거나 먼저 적재하세요."));
 	}

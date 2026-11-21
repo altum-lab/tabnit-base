@@ -144,7 +144,7 @@ public class ActionGenerator {
     }
 
     /** 저장소가 그대로 담지 못하는 글자(NUL, 짝 없는 대리 문자)가 없는가. */
-    private static boolean storable(String text) {
+    static boolean storable(String text) {
         for (int i = 0; i < text.length(); i++) {
             char c = text.charAt(i);
             if (c == 0) {

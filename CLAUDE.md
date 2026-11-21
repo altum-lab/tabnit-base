@@ -19,7 +19,7 @@ Tabnit Base v1.0. 문서나 규정이 바뀌면(변동) 그 영향이 닿는 대
 - 화면: React, TypeScript. 서버와는 API로만 통한다. API 계약은 OpenAPI 3.1.
 - 시험: JUnit, Testcontainers(실제 PostgreSQL), Playwright(화면).
 - 배포: 컨테이너 2개(앱, PostgreSQL). 온프레미스 설치.
-- 새 라이브러리나 새 저장소를 들이려면 설계 변경 절차(7절)를 거친다. 임의로 추가하지 않는다. 들이기로 정한 것은 `docs/D2` 에 적혀 있다 (화면의 호출 코드 도구 AD-82, RDF 를 읽는 Apache Jena AD-87, 엑셀을 읽는 Apache POI AD-93).
+- 새 라이브러리나 새 저장소를 들이려면 설계 변경 절차(7절)를 거친다. 임의로 추가하지 않는다. 들이기로 정한 것은 `docs/D2` 에 적혀 있다 (화면의 호출 코드 도구 AD-82, RDF 를 읽는 Apache Jena AD-87, 엑셀을 읽는 Apache POI AD-93, 화면의 주소 이동의 React Router AD-257, 로그인과 세션의 Spring Security AD-263).
 
 ## 3. 저장소 구조와 명령
 

@@ -220,6 +220,8 @@ class PackRuleTest {
                 // 값의 자리에 안쪽 정의.
                 subject + "tabnit:property ex:count ; tabnit:operator tabnit:Equals ; "
                         + "tabnit:value [ rdfs:label \"가\" ; rdfs:comment \"나\" ]",
+                // 비교를 적지 않았고 값의 자리에 안쪽 정의.
+                subject + "tabnit:property ex:count ; tabnit:value [ rdfs:label \"가\" ]",
                 // 조건의 안쪽에 또 조건.
                 subject + "tabnit:typeIs ex:Base ; tabnit:condition [ " + subject + "tabnit:typeIs ex:Other ; "
                         + "tabnit:condition [ " + subject + "tabnit:typeIs ex:Sub ] ]")) {
@@ -228,6 +230,18 @@ class PackRuleTest {
             assertThat(problemsOf(dir)).as(condition).singleElement()
                 .satisfies(p -> assertThat(p.item()).isEqualTo("r1"));
         }
+    }
+
+    @Test
+    void 조건이_다른_규칙을_가리켜도_그_규칙의_문제는_빠지지_않는다() throws IOException {
+        // r1 의 조건이 r2 를 가리킨다 (틀림). r2 의 조건 안에는 D8 에 없는 문장이 있다 (틀림). 둘 다 알린다.
+        String second = MINIMAL.replace("ex:r1", "ex:r2").replace("\"0001\"", "\"0002\"")
+            .replace("tabnit:actionText", "tabnit:condition [ tabnit:subject tabnit:ImpactTarget ; "
+                    + "tabnit:typeIs ex:Base ; tabnit:note \"메모\" ] ;\n    tabnit:actionText");
+        Path dir = pack("r-points", "rules.ttl",
+                MINIMAL.replace("tabnit:actionText", "tabnit:condition ex:r2 ;\n    tabnit:actionText") + second);
+
+        assertThat(problemsOf(dir)).extracting(PackProblem::item).containsExactly("r1", "r2");
     }
 
     // ── 거부 ───────────────────────────────────────────────────

@@ -308,7 +308,12 @@ final class RuleReader {
             condition = attributeCondition(subject, properties, operators, values, item);
         }
         block.rejectOthers(item);
-        return problems.size() > before ? null : condition;
+        if (problems.size() > before) {
+            // 이 조건은 이미 틀렸다고 알렸다. 값의 자리에 겹쳐 적은 안쪽 정의는 따로 알리지 않는다.
+            values.stream().filter(Node::isBlank).forEach(this::discard);
+            return null;
+        }
+        return condition;
     }
 
     private RuleCondition typeCondition(RuleSubject subject, List<Node> types, List<Node> properties,
@@ -582,7 +587,10 @@ final class RuleReader {
     private Block block(Node node, String shown, String item) {
         if (!node.isBlank() || !bySubject.containsKey(node)) {
             problem(item, shown + " 은(는) [ … ] 로 감싼 안쪽 정의로 적습니다 (지금 " + PackReader.show(node) + ").");
-            discard(node);
+            // 이름 붙은 것을 가리켰으면 그쪽의 문장은 건드리지 않는다. 그것은 따로 읽고 따로 알린다.
+            if (node.isBlank()) {
+                discard(node);
+            }
             return null;
         }
         if (!opened.add(node)) {

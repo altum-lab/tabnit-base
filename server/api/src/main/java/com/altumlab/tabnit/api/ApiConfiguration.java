@@ -1,6 +1,9 @@
 package com.altumlab.tabnit.api;
 
+import com.altumlab.tabnit.common.UserAccounts;
 import com.altumlab.tabnit.core.EntityQuery;
+import java.time.Duration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import com.altumlab.tabnit.pack.PackDefinitions;
 import com.altumlab.tabnit.rules.ActionDecisions;
 import com.altumlab.tabnit.rules.ActionRecords;
@@ -31,6 +34,25 @@ class ApiConfiguration {
 	@Bean
 	ZoneId installationZone(@Value("${tabnit.time-zone:Asia/Seoul}") String zoneId) {
 		return ZoneId.of(zoneId);
+	}
+
+	/**
+	 * 사용자 계정과 로그인의 판단 (D7 9절). 잇달아 몇 번 틀리면 얼마 동안 막는지는 설치 설정에서 받는다.
+	 * 적지 않으면 5번, 15분이다 (D2 AD-265).
+	 */
+	@Bean
+	UserAccounts userAccounts(DataSource dataSource, @Value("${tabnit.login.max-failures:5}") int maxFailures,
+			@Value("${tabnit.login.lock-duration:15m}") Duration lockDuration) {
+		return new UserAccounts(dataSource, maxFailures, lockDuration);
+	}
+
+	/** 사용자를 만드는 명령. 실행 인자로 아이디를 줬을 때만 있다 (D2 AD-268). */
+	@Bean
+	@ConditionalOnProperty(UserCreationCommand.LOGIN_ID_PROPERTY)
+	UserCreationCommand userCreationCommand(UserAccounts accounts, Clock clock,
+			@Value("${" + UserCreationCommand.LOGIN_ID_PROPERTY + "}") String loginId,
+			@Value("${tabnit.create-user.role:}") String role) {
+		return new UserCreationCommand(accounts, clock, loginId, role, System::getenv);
 	}
 
 	@Bean

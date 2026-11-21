@@ -3,9 +3,6 @@ package com.altumlab.tabnit.api;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.ByteArrayOutputStream;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -35,6 +32,9 @@ class EditionsHttpTests {
 
 	@Autowired
 	DataSource dataSource;
+
+	@Autowired
+	com.altumlab.tabnit.common.UserAccounts accounts;
 
 	@TempDir
 	Path temp;
@@ -81,10 +81,8 @@ class EditionsHttpTests {
 			.getBytes(StandardCharsets.UTF_8));
 		body.write(content);
 		body.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
-		HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:" + this.port + "/api/v1/editions"))
-			.header("Content-Type", "multipart/form-data; boundary=" + boundary)
-			.POST(HttpRequest.BodyPublishers.ofByteArray(body.toByteArray()))
-			.build();
-		return HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+		// 로그인한 사람의 요청으로 보낸다. 아이디는 Pack 마다 달리 둔다.
+		HttpTestSession session = HttpTestSession.loggedIn(this.port, this.accounts, "u-" + fields.get("packId"));
+		return session.send("POST", "/api/v1/editions", "multipart/form-data; boundary=" + boundary, body.toByteArray());
 	}
 }

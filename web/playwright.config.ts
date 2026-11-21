@@ -23,10 +23,11 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
     {
-      command: `./gradlew :api:bootTestRun --args=--server.port=${API_PORT}`,
+      command: `./gradlew :api:bootTestRun --args="--server.port=${API_PORT} --management.endpoint.health.probes.enabled=true"`,
       cwd: "../server",
-      // 지어낸 자료의 개체를 조회해 200 이 나오면 서버와 자료가 준비된 것이다.
-      url: `http://localhost:${API_PORT}/api/v1/relations?entityId=e2e%7CT%7Calone&asOf=2026-03-01`,
+      // 서버가 뜨고 지어낸 자료까지 다 넣어야 준비됨(200)으로 답한다. 그 전에는 503 이다.
+      // API 는 로그인해야 열리므로 준비됐는지는 이 주소로 본다.
+      url: `http://localhost:${API_PORT}/actuator/health/readiness`,
       timeout: 240_000,
       reuseExistingServer: !process.env.CI,
     },

@@ -10,7 +10,7 @@ import com.altumlab.tabnit.rules.ActionRecords;
 import java.time.Clock;
 import java.util.Map;
 import java.util.function.Supplier;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.Authentication;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -25,7 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>받고, 확인하고, 넘기고, 돌려준다. 어떤 바뀜이 되는지, 사유가 맞는지는 rules 가 정한다.
  *
  * <p>누가 했는지와 언제 했는지는 요청에서 받지 않는다 (D2 AD-251). 언제는 서버의 시계에서 읽는다. 누가는 로그인한
- * 사람이어야 하는데 로그인이 아직 없어, 설치 설정의 임시 아이디를 적는다. 로그인(E-02)이 붙으면 그 자리만 바꾼다.
+ * 사람의 아이디다.
  * 확정과 보류는 트랜잭션 밖에서 부른다: rules 가 자기 트랜잭션을 연다.
  */
 @RestController
@@ -39,20 +39,11 @@ class ActionDecisionsController {
 
 	private final Clock clock;
 
-	private final String interimActor;
-
-	ActionDecisionsController(ActionDecisions decisions, ActionRecords records, ActionViews views, Clock clock,
-			@Value("${tabnit.interim-actor:dev}") String interimActor) {
-		if (!ActionDecisions.isAcceptableDecidedBy(interimActor)) {
-			// 이력의 "누가"에 그대로 적히는 값이다. 받을 수 있는 값인지는 rules 가 정한다. 아니면 모든 확정이 실패하므로 뜰 때 알린다.
-			throw new IllegalStateException(
-					"tabnit.interim-actor 는 비어 있지 않은 200자 이하의 글자여야 합니다. 로그인이 붙기 전에 이력에 적을 임시 아이디를 정해 다시 실행하세요.");
-		}
+	ActionDecisionsController(ActionDecisions decisions, ActionRecords records, ActionViews views, Clock clock) {
 		this.decisions = decisions;
 		this.records = records;
 		this.views = views;
 		this.clock = clock;
-		this.interimActor = interimActor;
 	}
 
 	@GetMapping("/api/v1/action")
@@ -63,7 +54,12 @@ class ActionDecisionsController {
 	}
 
 	@PostMapping("/api/v1/action-decisions")
-	ActionDetailResponse decide(@RequestBody Map<String, Object> request) {
+	ActionDetailResponse decide(@RequestBody Map<String, Object> request, Authentication authentication) {
+		if (authentication == null) {
+			// 로그인하지 않은 요청은 여기까지 오지 않는다. 왔다면 서버 쪽의 문제다. 누가 했는지 없이 이력을 남기지 않는다.
+			throw new IllegalStateException("로그인한 사람 없이 확정이나 보류의 요청이 들어왔습니다");
+		}
+		String actor = authentication.getName();
 		// 항목의 형식은 여기서 본다. 글자가 아닌 값(수, 참거짓, 객체)을 글자로 바꿔 받지 않는다.
 		String actionId = text(request.get("actionId"), ActionDecisionsController::invalidActionId);
 		requireActionId(actionId);
@@ -79,8 +75,8 @@ class ActionDecisionsController {
 		String note = text(request.get("note"), () -> new ApiProblemException(HttpStatus.BAD_REQUEST, "INVALID_NOTE", "note",
 				"사유는 글자로 적어야 합니다. 사유를 글자로 적어 다시 보내세요."));
 		try {
-			return detail(confirm ? this.decisions.confirm(actionId, this.interimActor, note, this.clock.instant())
-					: this.decisions.hold(actionId, this.interimActor, note, this.clock.instant()));
+			return detail(confirm ? this.decisions.confirm(actionId, actor, note, this.clock.instant())
+					: this.decisions.hold(actionId, actor, note, this.clock.instant()));
 		}
 		catch (ActionNotFoundException e) {
 			throw notFound();

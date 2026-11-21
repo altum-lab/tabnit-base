@@ -1,6 +1,6 @@
 # Tabnit Base 의 API 규격. 기준 문서는 docs/D7-api-contract.md 다.
 # 이 파일을 먼저 고치고 구현한다. 화면의 호출 코드는 이 파일에서 만든다 (D2 AD-09, AD-77).
-# 상태: 초안. 지금은 시점 조회, 판 올리기, 조치 목록, 변동의 영향 범위, 조치 하나와 이력, 확정과 보류, Pack 과 입력 자료의 목록이 들어 있다.
+# 상태: 초안. 지금은 시점 조회, 판 올리기, 조치 목록, 변동의 영향 범위, 조치 하나와 이력, 확정과 보류, Pack 과 입력 자료의 목록, 로그인과 세션이 들어 있다.
 openapi: 3.1.0
 info:
   title: Tabnit Base API
@@ -8,6 +8,9 @@ info:
   description: >-
     관계를 읽는 모든 API 는 조회 시점(asOf)을 받고, 응답에 어느 날짜로 답했는지 담는다.
     목록의 순서는 서버가 정하며 화면은 바꾸지 않는다.
+    로그인(POST /api/v1/session) 말고는 모두 로그인해야 부를 수 있다. 로그인하면 서버가 세션 쿠키를 준다.
+    바꾸는 요청(POST, DELETE 등)에는 서버가 XSRF-TOKEN 쿠키로 준 값을 X-XSRF-TOKEN 헤더에 실어 보낸다.
+    로그인하지 않았으면 401 (UNAUTHENTICATED), 그 헤더가 없거나 틀리면 403 (FORBIDDEN)이다.
 paths:
   /api/v1/relations:
     get:
@@ -45,6 +48,60 @@ paths:
         '403':
           $ref: '#/components/responses/Problem'
         '404':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/Problem'
+  /api/v1/session:
+    get:
+      operationId: getSession
+      summary: 지금 로그인한 사람을 돌려준다
+      description: 화면이 처음 열릴 때 로그인했는지 알아보는 데 쓴다. 이 응답과 함께 XSRF-TOKEN 쿠키가 온다
+      responses:
+        '200':
+          description: 로그인한 사람
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: login
+      summary: 아이디와 비밀번호로 로그인한다
+      description: >-
+        성공하면 세션 쿠키를 준다. 아이디가 없는 것, 비밀번호가 틀린 것, 여러 번 틀려 잠시 막힌 것을
+        응답으로 가리지 않는다 (계정이 있는지를 알려 주지 않는다). X-XSRF-TOKEN 헤더가 있어야 한다
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: 로그인한 사람
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/Problem'
+    delete:
+      operationId: logout
+      summary: 로그아웃한다
+      description: 세션을 끝낸다. 로그인하지 않은 채로 불러도 204 다
+      responses:
+        '204':
+          description: 세션이 끝났다
+        '403':
           $ref: '#/components/responses/Problem'
         '500':
           $ref: '#/components/responses/Problem'
@@ -346,6 +403,29 @@ components:
         editionNo:
           type: integer
           minimum: 1
+    Session:
+      type: object
+      description: 로그인한 사람
+      required: [loginId, role]
+      properties:
+        loginId:
+          type: string
+          description: 아이디
+        role:
+          type: string
+          enum: [ADMIN, OFFICER]
+          description: 역할. ADMIN 관리자, OFFICER 담당자
+    LoginRequest:
+      type: object
+      required: [loginId, password]
+      properties:
+        loginId:
+          type: string
+          minLength: 1
+        password:
+          type: string
+          minLength: 1
+          description: 비밀번호. 서버는 이 값을 저장하거나 기록에 남기지 않는다
     PackList:
       type: object
       required: [packs]
@@ -828,7 +908,7 @@ components:
         code:
           type: string
           description: 오류의 종류. 화면이 이것으로 가른다. 바뀌지 않는 값이다
-          enum: [MISSING_ENTITY_ID, INVALID_AS_OF, ENTITY_NOT_FOUND, MISSING_PACK_ID, MISSING_INPUT_SOURCE_ID, MISSING_EFFECTIVE_DATE, INVALID_EFFECTIVE_DATE, MISSING_FILE, INVALID_EDITION, PACK_NOT_FOUND, INPUT_SOURCE_NOT_FOUND, FILE_TOO_LARGE, EDITION_REJECTED, INVALID_STATUS, MISSING_ACTION_ID, INVALID_ACTION_ID, ACTION_NOT_FOUND, INVALID_BODY, MISSING_DECISION, INVALID_DECISION, INVALID_NOTE, ACTION_DECISION_CONFLICT, MISSING_CHANGE_EVENT_ID, INVALID_CHANGE_EVENT_ID, IMPACT_SCOPE_NOT_FOUND, UNAUTHENTICATED, FORBIDDEN, INTERNAL]
+          enum: [MISSING_ENTITY_ID, INVALID_AS_OF, ENTITY_NOT_FOUND, MISSING_LOGIN_ID, MISSING_PASSWORD, LOGIN_FAILED, MISSING_PACK_ID, MISSING_INPUT_SOURCE_ID, MISSING_EFFECTIVE_DATE, INVALID_EFFECTIVE_DATE, MISSING_FILE, INVALID_EDITION, PACK_NOT_FOUND, INPUT_SOURCE_NOT_FOUND, FILE_TOO_LARGE, EDITION_REJECTED, INVALID_STATUS, MISSING_ACTION_ID, INVALID_ACTION_ID, ACTION_NOT_FOUND, INVALID_BODY, MISSING_DECISION, INVALID_DECISION, INVALID_NOTE, ACTION_DECISION_CONFLICT, MISSING_CHANGE_EVENT_ID, INVALID_CHANGE_EVENT_ID, IMPACT_SCOPE_NOT_FOUND, UNAUTHENTICATED, FORBIDDEN, INTERNAL]
         field:
           type: string
           description: 틀린 항목의 이름. 입력 오류일 때만 있다

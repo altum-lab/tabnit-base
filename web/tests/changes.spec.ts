@@ -1,4 +1,5 @@
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 // D-05 수용 기준: 새 판을 올리면 바뀐 항목이 화면에 나온다.
 //

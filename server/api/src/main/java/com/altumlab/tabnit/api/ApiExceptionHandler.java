@@ -111,6 +111,8 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 	private static String title(HttpStatus status) {
 		return switch (status) {
 			case BAD_REQUEST -> "잘못된 요청";
+			case UNAUTHORIZED -> "로그인 필요";
+			case FORBIDDEN -> "받을 수 없는 요청";
 			case NOT_FOUND -> "대상을 찾을 수 없음";
 			case CONFLICT -> "지금은 할 수 없는 요청";
 			case CONTENT_TOO_LARGE -> "너무 큰 파일";

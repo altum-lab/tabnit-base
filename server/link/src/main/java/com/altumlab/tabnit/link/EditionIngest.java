@@ -156,6 +156,11 @@ public class EditionIngest {
                 // 적용일은 바로 앞 판보다 하루 이상 뒤여야 한다 (D2 AD-149).
                 return reject(attempt, "EFFECTIVE_DATE_NOT_AFTER_PREVIOUS", previous.effectiveDate().toString());
             }
+            if (attempt.receivedAt().truncatedTo(java.time.temporal.ChronoUnit.MICROS).isBefore(previous.receivedAt())) {
+                // 받은 때가 앞 판보다 이르면 변동을 처리하는 차례가 뒤집힌다. 받은 때는 부르는 쪽이 넘기므로 생길 수 있다
+                // (D2 AD-208). 저장소가 담는 정밀도(마이크로초)로 견준다.
+                return reject(attempt, "RECEIVED_BEFORE_PREVIOUS", previous.receivedAt().toString());
+            }
             editionNo = previous.editionNo() + 1;
             previousItems = EditionRecords.previousItems(jdbc, previous.id());
         }

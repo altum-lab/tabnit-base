@@ -3,6 +3,9 @@ package com.altumlab.tabnit.api;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.nullValue;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -36,14 +39,15 @@ import org.springframework.web.context.WebApplicationContext;
  * getAction)대로 답한다.
  *
  * <p>D7 7절: 확정하거나 보류하면 상태와 이력이 바뀐다. 누가 했는지와 언제 했는지는 요청에서 받지 않고 서버가 채운다.
- * 로그인이 붙기 전에는 설치 설정의 임시 아이디를 적는다: 이 시험에서는 그 값을 따로 정해 설정에서 오는지 본다.
+ * 누가는 로그인한 사람의 아이디다.
  * 시험용 Pack 의 사본에 판을 올려 만든 조치를 쓴다. 모든 이름과 값은 지어낸 것이다.
  */
 @Import(TestcontainersConfiguration.class)
-@SpringBootTest(properties = "tabnit.interim-actor=임시 담당자")
+@SpringBootTest
 class ActionDecisionsApiTests {
 
-	private static final String ACTOR = "임시 담당자";
+	/** 로그인한 사람. 이력의 "누가"에 이 아이디가 적힌다. */
+	private static final String ACTOR = "dec-officer";
 
 	private static final String[][] EDITIONS = { { "program", "program-v1.csv", "2026-01-01" },
 			{ "guideline", "guideline-v1.csv", "2026-01-01" },
@@ -72,7 +76,11 @@ class ActionDecisionsApiTests {
 
 	@BeforeEach
 	void setUp() {
-		this.mvc = MockMvcBuilders.webAppContextSetup(this.context).build();
+		// 모든 요청을 로그인한 사람의 것으로 보낸다. 위조 요청 방어의 토큰도 함께 싣는다.
+		this.mvc = MockMvcBuilders.webAppContextSetup(this.context)
+			.apply(springSecurity())
+			.defaultRequest(get("/").with(user(ACTOR).roles("OFFICER")).with(csrf()))
+			.build();
 	}
 
 	// ── 수용 기준: 확정하면 상태와 이력이 바뀐다 ────────────────────────

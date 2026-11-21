@@ -1,4 +1,5 @@
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 // SK-07 수용 기준: 화면 한 곳이 시점 조회 API 의 값(조회 시점과 관계 목록)을 보여 준다.
 //

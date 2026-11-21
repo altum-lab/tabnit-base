@@ -44,8 +44,13 @@ class E2eSeedData {
 	private static final Provenance SRC_1 = new Provenance("src", 1);
 
 	@Bean
-	ApplicationRunner e2eSeed(DataSource dataSource, EditionProcessing processing) {
+	ApplicationRunner e2eSeed(DataSource dataSource, EditionProcessing processing,
+			com.altumlab.tabnit.common.UserAccounts accounts) {
 		return args -> {
+			// 화면 시험이 로그인하는 사용자 (web/tests/fixtures.ts). 아이디와 비밀번호는 지어낸 시험용 값이다.
+			accounts.create("e2e-officer", "지어낸-화면-시험-비밀번호-1", com.altumlab.tabnit.common.Role.OFFICER, RECORDED_AT);
+			accounts.create("e2e-admin", "지어낸-화면-시험-비밀번호-2", com.altumlab.tabnit.common.Role.ADMIN, RECORDED_AT);
+
 			RelationStore store = new RelationStore(dataSource);
 
 			// D3 5절의 예시와 같은 모양: 기준 날짜에 따라 유효한 관계가 달라진다.

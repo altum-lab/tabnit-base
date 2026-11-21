@@ -21,6 +21,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 지금 로그인한 사람을 돌려준다
+         * @description 화면이 처음 열릴 때 로그인했는지 알아보는 데 쓴다. 이 응답과 함께 XSRF-TOKEN 쿠키가 온다
+         */
+        get: operations["getSession"];
+        put?: never;
+        /**
+         * 아이디와 비밀번호로 로그인한다
+         * @description 성공하면 세션 쿠키를 준다. 아이디가 없는 것, 비밀번호가 틀린 것, 여러 번 틀려 잠시 막힌 것을 응답으로 가리지 않는다 (계정이 있는지를 알려 주지 않는다). X-XSRF-TOKEN 헤더가 있어야 한다
+         */
+        post: operations["login"];
+        /**
+         * 로그아웃한다
+         * @description 세션을 끝낸다. 로그인하지 않은 채로 불러도 204 다
+         */
+        delete: operations["logout"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/packs": {
         parameters: {
             query?: never;
@@ -182,6 +210,21 @@ export interface components {
         Provenance: {
             inputSourceId: string;
             editionNo: number;
+        };
+        /** @description 로그인한 사람 */
+        Session: {
+            /** @description 아이디 */
+            loginId: string;
+            /**
+             * @description 역할. ADMIN 관리자, OFFICER 담당자
+             * @enum {string}
+             */
+            role: "ADMIN" | "OFFICER";
+        };
+        LoginRequest: {
+            loginId: string;
+            /** @description 비밀번호. 서버는 이 값을 저장하거나 기록에 남기지 않는다 */
+            password: string;
         };
         PackList: {
             packs: components["schemas"]["PackSummary"][];
@@ -487,7 +530,7 @@ export interface components {
              * @description 오류의 종류. 화면이 이것으로 가른다. 바뀌지 않는 값이다
              * @enum {string}
              */
-            code: "MISSING_ENTITY_ID" | "INVALID_AS_OF" | "ENTITY_NOT_FOUND" | "MISSING_PACK_ID" | "MISSING_INPUT_SOURCE_ID" | "MISSING_EFFECTIVE_DATE" | "INVALID_EFFECTIVE_DATE" | "MISSING_FILE" | "INVALID_EDITION" | "PACK_NOT_FOUND" | "INPUT_SOURCE_NOT_FOUND" | "FILE_TOO_LARGE" | "EDITION_REJECTED" | "INVALID_STATUS" | "MISSING_ACTION_ID" | "INVALID_ACTION_ID" | "ACTION_NOT_FOUND" | "INVALID_BODY" | "MISSING_DECISION" | "INVALID_DECISION" | "INVALID_NOTE" | "ACTION_DECISION_CONFLICT" | "MISSING_CHANGE_EVENT_ID" | "INVALID_CHANGE_EVENT_ID" | "IMPACT_SCOPE_NOT_FOUND" | "UNAUTHENTICATED" | "FORBIDDEN" | "INTERNAL";
+            code: "MISSING_ENTITY_ID" | "INVALID_AS_OF" | "ENTITY_NOT_FOUND" | "MISSING_LOGIN_ID" | "MISSING_PASSWORD" | "LOGIN_FAILED" | "MISSING_PACK_ID" | "MISSING_INPUT_SOURCE_ID" | "MISSING_EFFECTIVE_DATE" | "INVALID_EFFECTIVE_DATE" | "MISSING_FILE" | "INVALID_EDITION" | "PACK_NOT_FOUND" | "INPUT_SOURCE_NOT_FOUND" | "FILE_TOO_LARGE" | "EDITION_REJECTED" | "INVALID_STATUS" | "MISSING_ACTION_ID" | "INVALID_ACTION_ID" | "ACTION_NOT_FOUND" | "INVALID_BODY" | "MISSING_DECISION" | "INVALID_DECISION" | "INVALID_NOTE" | "ACTION_DECISION_CONFLICT" | "MISSING_CHANGE_EVENT_ID" | "INVALID_CHANGE_EVENT_ID" | "IMPACT_SCOPE_NOT_FOUND" | "UNAUTHENTICATED" | "FORBIDDEN" | "INTERNAL";
             /** @description 틀린 항목의 이름. 입력 오류일 때만 있다 */
             field?: string;
         };
@@ -537,6 +580,76 @@ export interface operations {
             401: components["responses"]["Problem"];
             403: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 로그인한 사람 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    login: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description 로그인한 사람 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 세션이 끝났다 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Problem"];
             500: components["responses"]["Problem"];
         };
     };

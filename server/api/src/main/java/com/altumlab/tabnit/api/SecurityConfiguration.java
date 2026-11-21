@@ -1,0 +1,134 @@
+package com.altumlab.tabnit.api;
+
+import com.altumlab.tabnit.common.LoginAttempt;
+import com.altumlab.tabnit.common.UserAccounts;
+import jakarta.servlet.DispatcherType;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.time.Clock;
+import java.util.List;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.logout.HttpStatusReturningLogoutSuccessHandler;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.security.web.context.SecurityContextRepository;
+import org.springframework.security.web.csrf.CsrfFilter;
+import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.servlet.HandlerExceptionResolver;
+
+/**
+ * 로그인하지 않으면 API 를 쓸 수 없게 한다 (E-02, D7 9절).
+ *
+ * <p>서버 세션과 쿠키로 로그인한 상태를 유지한다 (D2 AD-262). 세션, 쿠키, 위조 요청 방어는 Spring Security 의 것을 쓰고
+ * 직접 짜지 않는다 (D2 AD-263). 아이디와 비밀번호가 맞는지, 막혀 있는지는 common 의 {@link UserAccounts} 가 정한다.
+ *
+ * <p>역할마다 할 수 있는 일을 나누는 것은 여기 없다 (E-06): 로그인한 사람이면 모든 API 를 부를 수 있다.
+ */
+@Configuration(proxyBeanMethods = false)
+class SecurityConfiguration {
+
+	static final String SESSION_PATH = "/api/v1/session";
+
+	/** 로그인한 사람을 세션에 담고 읽는 곳. 로그인 API 와 필터가 같은 것을 쓴다. */
+	@Bean
+	SecurityContextRepository securityContextRepository() {
+		return new HttpSessionSecurityContextRepository();
+	}
+
+	/**
+	 * 아이디와 비밀번호를 확인한다. 판단은 common 이 하고, 지금이 언제인지는 서버의 시계에서 읽어 넘긴다.
+	 *
+	 * <p>없는 아이디, 틀린 비밀번호, 막힌 계정을 가리지 않고 같은 실패로 낸다 (D7 9절).
+	 */
+	@Bean
+	AuthenticationManager authenticationManager(UserAccounts accounts, Clock clock) {
+		return authentication -> {
+			LoginAttempt attempt = accounts.authenticate(authentication.getName(), (String) authentication.getCredentials(),
+					clock.instant());
+			if (attempt.outcome() != LoginAttempt.Outcome.SUCCEEDED) {
+				throw new BadCredentialsException("로그인하지 못했습니다");
+			}
+			// 비밀번호는 담지 않는다.
+			return UsernamePasswordAuthenticationToken.authenticated(attempt.account().loginId(), null,
+					List.of(new SimpleGrantedAuthority(SessionController.ROLE_PREFIX + attempt.account().role().name())));
+		};
+	}
+
+	/** HTTP 서버로 뜰 때만 있다. 사용자를 만드는 실행은 HTTP 없이 뜬다 (D7 9절). */
+	@Bean
+	@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+	SecurityFilterChain securityFilterChain(HttpSecurity http, SecurityContextRepository contexts,
+			@Qualifier("handlerExceptionResolver") HandlerExceptionResolver problems) throws Exception {
+		http.authorizeHttpRequests(requests -> requests
+			// 오류를 그리는 내부 전달.
+			.dispatcherTypeMatchers(DispatcherType.ERROR)
+			.permitAll()
+			.requestMatchers(HttpMethod.POST, SESSION_PATH)
+			.permitAll()
+			// 서버가 떠 있는지는 로그인 없이 볼 수 있다. 그 밖의 운영 주소는 로그인해야 한다.
+			.requestMatchers("/actuator/health", "/actuator/health/**")
+			.permitAll()
+			.requestMatchers("/api/**", "/actuator/**")
+			.authenticated()
+			// 화면의 파일. 화면이 떠야 로그인할 수 있다.
+			.requestMatchers(HttpMethod.GET, "/**")
+			.permitAll()
+			.requestMatchers(HttpMethod.HEAD, "/**")
+			.permitAll()
+			.anyRequest()
+			.denyAll());
+		http.securityContext(context -> context.securityContextRepository(contexts));
+		// 위조 요청 방어: 서버가 XSRF-TOKEN 쿠키로 준 값을 화면이 X-XSRF-TOKEN 헤더에 실어 보낸다 (D2 AD-267).
+		http.csrf(csrf -> csrf.spa());
+		http.addFilterAfter(new CsrfCookieFilter(), CsrfFilter.class);
+		http.logout(logout -> logout
+			.logoutRequestMatcher(PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.DELETE, SESSION_PATH))
+			.logoutSuccessHandler(new HttpStatusReturningLogoutSuccessHandler(HttpStatus.NO_CONTENT)));
+		// 로그인 화면으로 보내지 않는다. 공통 오류 형식으로 답한다 (D7 2절).
+		http.exceptionHandling(handling -> handling
+			.authenticationEntryPoint((request, response, e) -> problems.resolveException(request, response, null,
+					new ApiProblemException(HttpStatus.UNAUTHORIZED, "UNAUTHENTICATED", null,
+							"로그인이 필요합니다. 로그인한 뒤 다시 시도하세요.")))
+			.accessDeniedHandler((request, response, e) -> problems.resolveException(request, response, null,
+					new ApiProblemException(HttpStatus.FORBIDDEN, "FORBIDDEN", null,
+							"요청을 받을 수 없습니다. 화면을 새로 고친 뒤 다시 시도하세요."))));
+		// 로그인하지 않은 요청 때문에 세션을 만들지 않는다.
+		http.requestCache(cache -> cache.disable());
+		return http.build();
+	}
+
+	/**
+	 * 화면이 내 정보를 물을 때 위조 요청 방어의 토큰을 쿠키로 내보낸다.
+	 *
+	 * <p>토큰은 누가 읽을 때에야 만들어진다. 화면은 처음 열릴 때 내 정보를 묻고, 그 응답의 쿠키로 토큰을 받는다 (D7 9절).
+	 */
+	private static final class CsrfCookieFilter extends OncePerRequestFilter {
+
+		@Override
+		protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+				throws ServletException, IOException {
+			if (HttpMethod.GET.matches(request.getMethod()) && SESSION_PATH.equals(request.getRequestURI())
+					&& request.getAttribute(CsrfToken.class.getName()) instanceof CsrfToken token) {
+				token.getToken();
+			}
+			chain.doFilter(request, response);
+		}
+
+	}
+
+}

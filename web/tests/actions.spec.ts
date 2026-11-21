@@ -1,4 +1,5 @@
-import { type APIRequestContext, expect, type Locator, type Page, test } from "@playwright/test";
+import type { APIRequestContext, Locator, Page } from "@playwright/test";
+import { E2E_USER, expect, test } from "./fixtures";
 
 // D-06 수용 기준: 조치 목록과 근거가 실제 API 에서 온다.
 // D-07 수용 기준: 화면에서 확정하면 상태와 이력이 바뀐다.
@@ -195,7 +196,7 @@ test("보류하고 확정하면 상태와 이력이 바뀐다", async ({ page, r
   await expect(history.locator("tbody tr").first()).toContainText("대기 → 보류");
   await expect(history.locator("tbody tr").first()).toContainText("담당 부서의 답을 기다린다");
   // 누가 했는지는 서버가 채운 값이다 (로그인 전에는 임시 아이디).
-  await expect(history.locator("tbody tr").first()).toContainText("dev");
+  await expect(history.locator("tbody tr").first()).toContainText(E2E_USER.loginId);
 
   await panel.getByRole("button", { name: "확정" }).click();
 

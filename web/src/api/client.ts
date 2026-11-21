@@ -5,6 +5,38 @@ import type { components, paths } from "./schema";
 // schema.d.ts 는 `npm run gen:api` 가 만든다. 손으로 고치지 않는다.
 export const api = createClient<paths>({ baseUrl: "/" });
 
+// 세션이 끝났다고 서버가 답했을 때 화면의 뼈대(App)에 알리는 신호.
+export const SESSION_ENDED = "tabnit:session-ended";
+
+const SESSION_PATH = "/api/v1/session";
+
+function cookie(name: string) {
+  const found = document.cookie.split("; ").find((pair) => pair.startsWith(`${name}=`));
+  return found ? decodeURIComponent(found.slice(name.length + 1)) : null;
+}
+
+api.use({
+  // 위조 요청 방어: 바꾸는 요청에는 서버가 쿠키로 준 토큰을 헤더에 싣는다 (D7 9절).
+  onRequest({ request }) {
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      const token = cookie("XSRF-TOKEN");
+      if (token) {
+        request.headers.set("X-XSRF-TOKEN", token);
+      }
+    }
+    return request;
+  },
+  // 로그인과 내 정보 말고 다른 요청이 401 이면 쓰는 도중에 세션이 끝난 것이다.
+  onResponse({ request, response }) {
+    if (response.status === 401 && new URL(request.url).pathname !== SESSION_PATH) {
+      window.dispatchEvent(new Event(SESSION_ENDED));
+    }
+    return response;
+  },
+});
+
+export type Session = components["schemas"]["Session"];
+
 export type RelationsAsOf = components["schemas"]["RelationsAsOf"];
 export type Relation = components["schemas"]["Relation"];
 export type Problem = components["schemas"]["Problem"];

@@ -77,4 +77,11 @@ jobs:
             echo "- 화면 흐름 시험: ${{ steps.screen.outcome || '돌지 않았음' }}"
             echo
             echo "아침 회의 전에 개발 보드의 '검증과 통합 숫자'에 적습니다."
+            if [ -f verify/build/verify-report.txt ]; then
+              echo
+              echo "### 검증 질문"
+              echo '```'
+              cat verify/build/verify-report.txt
+              echo '```'
+            fi
           } >> "$GITHUB_STEP_SUMMARY"

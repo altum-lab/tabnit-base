@@ -38,6 +38,21 @@ jobs:
         working-directory: server
         run: ./gradlew build --no-daemon
 
+      # 빈 저장소로 제품을 띄워 모든 Pack 의 검증 질문을 HTTP 로 묻고, 한 번 더 돌려 결과가 같은지 본다 (E-04).
+      - name: 검증 질문 실행
+        if: hashFiles('verify/run.sh') != ''
+        run: bash verify/run.sh
+
+      - name: 검증 질문 보고
+        if: always() && hashFiles('verify/build/verify-report.txt') != ''
+        run: |
+          {
+            echo "## 검증 질문"
+            echo '```'
+            cat verify/build/verify-report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - uses: actions/setup-node@v6
         if: hashFiles('web/package-lock.json') != ''
         with:

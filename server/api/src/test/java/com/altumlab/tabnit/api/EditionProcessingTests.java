@@ -113,7 +113,11 @@ class EditionProcessingTests {
 						action.dueDate().toString(), action.basisEntityId(), action.basisInputSourceId(),
 						String.valueOf(action.basisEditionNo())));
 			}
-			// 내용과 차례가 모두 같아야 한다.
+			// 정답 파일은 제품이 내놓는 순서(기한이 먼저, D2 AD-243)로 적혀 있다 (D2 AD-282). 여기서 읽는 것은 엔진이 저장한
+			// 순서(우선순위, 규칙 번호, 대상 식별자, D2 AD-222)이므로, 정답을 그 순서로 놓은 뒤 견준다. 내용과 차례가 모두 같아야 한다.
+			expected.sort(java.util.Comparator.<String, Integer>comparing(line -> Integer.parseInt(line.split(" / ")[1]))
+				.thenComparing(line -> line.split(" / ")[0])
+				.thenComparing(line -> line.split(" / ")[2]));
 			assertThat(stored).as("질문 %s", question.get("id")).containsExactlyElementsOf(expected);
 			assertThat(actions.impactScope(event.id())).as("질문 %s 의 영향 범위", question.get("id")).isPresent();
 			compared++;

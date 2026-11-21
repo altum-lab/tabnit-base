@@ -2,6 +2,7 @@ package com.altumlab.tabnit.api;
 
 import com.altumlab.tabnit.core.EntityQuery;
 import com.altumlab.tabnit.pack.PackDefinitions;
+import com.altumlab.tabnit.rules.ActionDecisions;
 import com.altumlab.tabnit.rules.ActionRecords;
 import com.altumlab.tabnit.link.EditionRecords;
 import org.springframework.util.unit.DataSize;
@@ -58,6 +59,16 @@ class ApiConfiguration {
 	@Bean
 	ActionRecords actionRecords(DataSource dataSource) {
 		return new ActionRecords(dataSource);
+	}
+
+	@Bean
+	ActionDecisions actionDecisions(DataSource dataSource) {
+		return new ActionDecisions(dataSource);
+	}
+
+	@Bean
+	ActionViews actionViews(EntityQuery entityQuery) {
+		return new ActionViews(entityQuery);
 	}
 
 	@Bean

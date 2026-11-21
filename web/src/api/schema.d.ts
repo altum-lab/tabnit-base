@@ -61,6 +61,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/action": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 조치 하나를 그 이력과 함께 돌려준다
+         * @description 담당자와 관리자가 부를 수 있다
+         */
+        get: operations["getAction"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/action-decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 조치를 확정하거나 보류한다
+         * @description 대기인 조치는 확정하거나 보류할 수 있고, 보류인 조치는 확정할 수 있다. 확정은 되돌릴 수 없다. 누가 했는지와 언제 했는지는 요청에서 받지 않는다. 서버가 로그인한 사람과 서버의 시각으로 채워 이력에 남긴다. 담당자가 부른다
+         */
+        post: operations["decideAction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/impact-scopes": {
         parameters: {
             query?: never;
@@ -177,6 +217,44 @@ export interface components {
              * @description 만든 때 (협정 세계시)
              */
             createdAt: string;
+        };
+        ActionDetail: {
+            action: components["schemas"]["Action"];
+            /** @description 그 조치의 이력. 상태를 바꾼 차례다 */
+            history: components["schemas"]["ActionDecision"][];
+        };
+        /** @description 조치의 이력 한 줄. 상태를 한 번 바꾼 것 */
+        ActionDecision: {
+            /** @description 그 조치 안에서의 차례 */
+            seq: number;
+            fromStatus: components["schemas"]["ActionStatus"];
+            toStatus: components["schemas"]["ActionStatus"];
+            /** @description 누가 했는가. 사용자의 아이디 */
+            decidedBy: string;
+            /**
+             * Format: date-time
+             * @description 언제 했는가 (협정 세계시)
+             */
+            decidedAt: string;
+            /** @description 사유. 없으면 null. 보류에는 반드시 있다 */
+            note: string | null;
+        };
+        ActionDecisionRequest: {
+            /** @description 조치의 id. 서버가 준 값을 그대로 보낸다 */
+            actionId: string;
+            /**
+             * @description CONFIRM 확정, HOLD 보류
+             * @enum {string}
+             */
+            decision: "CONFIRM" | "HOLD";
+            /** @description 사유. 보류에는 반드시 적는다. 확정에는 없어도 된다. 1,000자까지 (공백뿐이어도 한도는 같다). 눈에 보이는 글자가 없으면 없는 것으로 본다 */
+            note?: string | null;
+        };
+        /** @description 공통 오류 형식에 조치의 지금 상태와 마지막 이력을 더했다 */
+        ActionDecisionConflictProblem: components["schemas"]["Problem"] & {
+            currentStatus: components["schemas"]["ActionStatus"];
+            /** @description 그 조치의 마지막 이력. 누가 언제 지금의 상태로 바꿨는가. currentStatus 와 같은 때에 읽은 것이다 */
+            lastDecision: components["schemas"]["ActionDecision"] | null;
         };
         /** @description 조치의 근거. 변동이 생긴 행의 주 개체(근거 조항)와, 그 변동이 나온 입력 자료의 판 */
         ActionBasis: {
@@ -357,7 +435,7 @@ export interface components {
              * @description 오류의 종류. 화면이 이것으로 가른다. 바뀌지 않는 값이다
              * @enum {string}
              */
-            code: "MISSING_ENTITY_ID" | "INVALID_AS_OF" | "ENTITY_NOT_FOUND" | "MISSING_PACK_ID" | "MISSING_INPUT_SOURCE_ID" | "MISSING_EFFECTIVE_DATE" | "INVALID_EFFECTIVE_DATE" | "MISSING_FILE" | "INVALID_EDITION" | "PACK_NOT_FOUND" | "INPUT_SOURCE_NOT_FOUND" | "FILE_TOO_LARGE" | "EDITION_REJECTED" | "INVALID_STATUS" | "MISSING_CHANGE_EVENT_ID" | "INVALID_CHANGE_EVENT_ID" | "IMPACT_SCOPE_NOT_FOUND" | "UNAUTHENTICATED" | "FORBIDDEN" | "INTERNAL";
+            code: "MISSING_ENTITY_ID" | "INVALID_AS_OF" | "ENTITY_NOT_FOUND" | "MISSING_PACK_ID" | "MISSING_INPUT_SOURCE_ID" | "MISSING_EFFECTIVE_DATE" | "INVALID_EFFECTIVE_DATE" | "MISSING_FILE" | "INVALID_EDITION" | "PACK_NOT_FOUND" | "INPUT_SOURCE_NOT_FOUND" | "FILE_TOO_LARGE" | "EDITION_REJECTED" | "INVALID_STATUS" | "MISSING_ACTION_ID" | "INVALID_ACTION_ID" | "ACTION_NOT_FOUND" | "INVALID_BODY" | "MISSING_DECISION" | "INVALID_DECISION" | "INVALID_NOTE" | "ACTION_DECISION_CONFLICT" | "MISSING_CHANGE_EVENT_ID" | "INVALID_CHANGE_EVENT_ID" | "IMPACT_SCOPE_NOT_FOUND" | "UNAUTHENTICATED" | "FORBIDDEN" | "INTERNAL";
             /** @description 틀린 항목의 이름. 입력 오류일 때만 있다 */
             field?: string;
         };
@@ -493,6 +571,72 @@ export interface operations {
             401: components["responses"]["Problem"];
             403: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getAction: {
+        parameters: {
+            query: {
+                /** @description 조치의 id. 서버가 준 값을 그대로 보낸다 */
+                actionId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 조치와 그 이력. 이력의 순서는 상태를 바꾼 차례다. 아직 아무도 바꾸지 않았으면 빈 목록이다 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionDetail"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    decideAction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActionDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description 바뀐 조치와 그 이력. 이력의 마지막 줄이 방금 한 것이다 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionDetail"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            /** @description 지금의 상태에서는 그렇게 바꿀 수 없다 (이미 확정된 조치, 이미 보류된 조치를 다시 보류). 아무것도 바뀌지 않았다. 공통 오류 형식에 조치의 지금 상태와 마지막 이력을 더해 담는다. 다른 사람이 먼저 바꿨을 때와, 자기가 바꾼 뒤 응답을 받지 못해 다시 보냈을 때 모두 이 응답이다 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ActionDecisionConflictProblem"];
+                };
+            };
             500: components["responses"]["Problem"];
         };
     };

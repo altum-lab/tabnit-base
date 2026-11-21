@@ -13,10 +13,22 @@ public class ActionDecisionRejectedException extends RuntimeException {
 
     private final ActionStatus requestedStatus;
 
-    public ActionDecisionRejectedException(ActionStatus currentStatus, ActionStatus requestedStatus, String message) {
+    private final transient ActionDecision lastDecision;
+
+    public ActionDecisionRejectedException(ActionStatus currentStatus, ActionStatus requestedStatus,
+            ActionDecision lastDecision, String message) {
         super(message);
         this.currentStatus = currentStatus;
         this.requestedStatus = requestedStatus;
+        this.lastDecision = lastDecision;
+    }
+
+    /**
+     * 그 조치의 마지막 이력: 누가 언제 지금의 상태로 바꿨는가. 지금의 상태와 같은 때에 읽은 것이다.
+     * 이력이 없으면 null 이다.
+     */
+    public ActionDecision lastDecision() {
+        return lastDecision;
     }
 
     /** 조치의 지금 상태. */

@@ -62,8 +62,12 @@ class ActionDecisionsTest {
     void 확정하면_상태가_바뀌고_누가_언제_했는지_이력에_남는다() {
         Action action = actions("d-confirm", 2).get(0);
 
-        Action confirmed = decisions.confirm(action.id(), "officer-1", null, WHEN);
+        ActionWithHistory done = decisions.confirm(action.id(), "officer-1", null, WHEN);
+        Action confirmed = done.action();
 
+        // 돌려주는 이력은 저장된 것과 같고 마지막 줄이 방금 한 것이다.
+        assertThat(done.history()).isEqualTo(records.history(action.id())).hasSize(1);
+        assertThat(records.detail(action.id())).contains(done);
         assertThat(confirmed.status()).isEqualTo(ActionStatus.CONFIRMED);
         assertThat(confirmed.id()).isEqualTo(action.id());
         // 상태 말고는 바뀌지 않는다.
@@ -77,8 +81,8 @@ class ActionDecisionsTest {
     void 보류한_뒤_확정하면_이력이_차례로_둘_남는다() {
         Action action = actions("d-hold", 1).get(0);
 
-        Action held = decisions.hold(action.id(), "officer-1", "담당 부서의 답을 기다린다", WHEN);
-        Action confirmed = decisions.confirm(action.id(), "officer-2", "답을 받았다", WHEN.plusSeconds(3600));
+        Action held = decisions.hold(action.id(), "officer-1", "담당 부서의 답을 기다린다", WHEN).action();
+        Action confirmed = decisions.confirm(action.id(), "officer-2", "답을 받았다", WHEN.plusSeconds(3600)).action();
 
         assertThat(held.status()).isEqualTo(ActionStatus.ON_HOLD);
         assertThat(confirmed.status()).isEqualTo(ActionStatus.CONFIRMED);
@@ -108,7 +112,13 @@ class ActionDecisionsTest {
         // 보류된 것을 다시 보류할 수 없다.
         assertThatThrownBy(() -> decisions.hold(held, "officer-2", "또 미룬다", WHEN.plusSeconds(1)))
             .isInstanceOf(ActionDecisionRejectedException.class)
-            .satisfies(e -> assertThat(((ActionDecisionRejectedException) e).currentStatus()).isEqualTo(ActionStatus.ON_HOLD));
+            .satisfies(e -> {
+                ActionDecisionRejectedException rejected = (ActionDecisionRejectedException) e;
+                assertThat(rejected.currentStatus()).isEqualTo(ActionStatus.ON_HOLD);
+                // 누가 언제 지금의 상태로 바꿨는지를 함께 알린다.
+                assertThat(rejected.lastDecision()).isEqualTo(new ActionDecision(1, ActionStatus.PENDING, ActionStatus.ON_HOLD,
+                        "officer-1", WHEN, "기다린다"));
+            });
 
         assertThat(records.history(confirmed)).hasSize(1);
         assertThat(records.history(held)).hasSize(1);
@@ -253,7 +263,7 @@ class ActionDecisionsTest {
         try {
             for (Action action : all) {
                 CountDownLatch go = new CountDownLatch(1);
-                Future<Action> held = pool.submit(() -> {
+                Future<ActionWithHistory> held = pool.submit(() -> {
                     go.await();
                     try {
                         return decisions.hold(action.id(), "officer-hold", "미룬다", WHEN);
@@ -262,16 +272,20 @@ class ActionDecisionsTest {
                         return null;
                     }
                 });
-                Future<Action> confirmed = pool.submit(() -> {
+                Future<ActionWithHistory> confirmed = pool.submit(() -> {
                     go.await();
                     return decisions.confirm(action.id(), "officer-confirm", null, WHEN);
                 });
                 go.countDown();
                 // 확정은 언제나 된다 (대기에서든 보류에서든). 보류는 먼저 왔을 때만 된다.
-                assertThat(confirmed.get().status()).isEqualTo(ActionStatus.CONFIRMED);
+                assertThat(confirmed.get().action().status()).isEqualTo(ActionStatus.CONFIRMED);
+                // 함께 돌려주는 이력의 마지막 줄이 자기가 한 것이다.
+                assertThat(confirmed.get().history().get(confirmed.get().history().size() - 1).decidedBy())
+                    .isEqualTo("officer-confirm");
                 if (held.get() != null) {
                     // 보류한 사람이 그 뒤에 확정된 상태를 돌려받지 않는다.
-                    assertThat(held.get().status()).isEqualTo(ActionStatus.ON_HOLD);
+                    assertThat(held.get().action().status()).isEqualTo(ActionStatus.ON_HOLD);
+                    assertThat(held.get().history()).extracting(ActionDecision::decidedBy).containsExactly("officer-hold");
                 }
                 List<ActionDecision> history = records.history(action.id());
                 assertThat(history).hasSize(held.get() == null ? 1 : 2);
@@ -357,6 +371,50 @@ class ActionDecisionsTest {
                 .isInstanceOf(org.springframework.dao.DataAccessException.class);
         }
         assertThat(records.history(action.id())).hasSize(1);
+    }
+
+    @Test
+    void 틀린_입력은_어느_항목이_틀렸는지를_함께_알린다() {
+        Action action = actions("d-fields", 1).get(0);
+
+        // 부르는 쪽(api)이 이것으로 오류의 항목을 가린다.
+        assertField(() -> decisions.hold(action.id(), "officer-1", null, WHEN), ActionDecisionInputException.Field.NOTE);
+        assertField(() -> decisions.confirm(action.id(), "officer-1", "가".repeat(1001), WHEN),
+                ActionDecisionInputException.Field.NOTE);
+        assertField(() -> decisions.confirm(action.id(), "officer-1", "사유\u0000", WHEN),
+                ActionDecisionInputException.Field.NOTE);
+        assertField(() -> decisions.confirm(action.id(), " ", null, WHEN), ActionDecisionInputException.Field.DECIDED_BY);
+        assertField(() -> decisions.confirm(action.id(), "가".repeat(201), null, WHEN),
+                ActionDecisionInputException.Field.DECIDED_BY);
+        assertField(() -> decisions.confirm(action.id(), "officer-1", null, Instant.MAX),
+                ActionDecisionInputException.Field.DECIDED_AT);
+        assertField(() -> decisions.confirm("조치\uD800", "officer-1", null, WHEN),
+                ActionDecisionInputException.Field.ACTION_ID);
+        // 조치의 식별자로 읽을 수 있는 글자인지는 부르기 전에 물어볼 수 있다.
+        assertThat(ActionRecords.isReadableActionId(action.id())).isTrue();
+        assertThat(ActionRecords.isReadableActionId("조치\uD800")).isFalse();
+        assertThat(ActionRecords.isReadableActionId("a\u0000")).isFalse();
+        assertThat(ActionRecords.isReadableActionId("")).isFalse();
+        assertThat(ActionRecords.isReadableActionId(null)).isFalse();
+        // 누가로 받을 수 있는 값인지도 미리 물어볼 수 있다.
+        assertThat(ActionDecisions.isAcceptableDecidedBy("officer-1")).isTrue();
+        assertThat(ActionDecisions.isAcceptableDecidedBy("가".repeat(200))).isTrue();
+        for (String bad : java.util.Arrays.asList(null, "", " ", "\u200B", "\u00A0", "가".repeat(201), "a\u0000", "a\uD800")) {
+            assertThat(ActionDecisions.isAcceptableDecidedBy(bad)).isFalse();
+        }
+        // 공백뿐인 사유도 한도를 넘으면 받지 않는다.
+        assertField(() -> decisions.confirm(action.id(), "officer-1", " ".repeat(1001), WHEN),
+                ActionDecisionInputException.Field.NOTE);
+        assertThat(records.detail("없는 조치")).isEmpty();
+        assertThat(records.history(action.id())).isEmpty();
+    }
+
+    private static void assertField(org.assertj.core.api.ThrowableAssert.ThrowingCallable call,
+            ActionDecisionInputException.Field field) {
+        assertThatThrownBy(call).isInstanceOf(ActionDecisionInputException.class)
+            // 지금까지처럼 IllegalArgumentException 으로도 잡힌다.
+            .isInstanceOf(IllegalArgumentException.class)
+            .satisfies(e -> assertThat(((ActionDecisionInputException) e).field()).isEqualTo(field));
     }
 
     // ── 도우미 ──────────────────────────────────────────────────

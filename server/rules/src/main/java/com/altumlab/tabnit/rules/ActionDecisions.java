@@ -57,12 +57,12 @@ public class ActionDecisions {
      * @param decidedBy 누가 했는가. 사용자의 아이디. 비어 있을 수 없다
      * @param note 사유. 없어도 된다. 비어 있으면 없는 것으로 남긴다
      * @param decidedAt 언제 했는가. 밖에서 받는다. 마이크로초까지 남긴다
-     * @return 바뀐 뒤의 조치
+     * @return 바뀐 뒤의 조치와 그 이력. 같은 트랜잭션에서 읽은 것이다: 이력의 마지막 줄이 방금 한 것이다
      * @throws ActionNotFoundException 그런 조치가 없을 때
      * @throws ActionDecisionRejectedException 이미 확정된 조치일 때. 아무것도 바뀌지 않는다
-     * @throws IllegalArgumentException 아이디나 사유가 틀렸을 때
+     * @throws ActionDecisionInputException 넘긴 값이 틀렸을 때. 어느 항목인지를 담는다. {@link IllegalArgumentException} 이기도 하다
      */
-    public Action confirm(String actionId, String decidedBy, String note, Instant decidedAt) {
+    public ActionWithHistory confirm(String actionId, String decidedBy, String note, Instant decidedAt) {
         return decide(actionId, ActionStatus.CONFIRMED, decidedBy, note, decidedAt);
     }
 
@@ -72,35 +72,41 @@ public class ActionDecisions {
      * @param note 사유. 반드시 있어야 한다 (D2 AD-247)
      * @throws ActionDecisionRejectedException 이미 확정되었거나 보류된 조치일 때. 아무것도 바뀌지 않는다
      */
-    public Action hold(String actionId, String decidedBy, String note, Instant decidedAt) {
+    public ActionWithHistory hold(String actionId, String decidedBy, String note, Instant decidedAt) {
         return decide(actionId, ActionStatus.ON_HOLD, decidedBy, note, decidedAt);
     }
 
-    private Action decide(String actionId, ActionStatus to, String decidedBy, String rawNote, Instant decidedAt) {
+    private ActionWithHistory decide(String actionId, ActionStatus to, String decidedBy, String rawNote, Instant decidedAt) {
         Objects.requireNonNull(actionId, "조치의 식별자는 반드시 있어야 합니다");
         Objects.requireNonNull(decidedBy, "누가 했는지는 반드시 있어야 합니다");
         Objects.requireNonNull(decidedAt, "언제 했는지는 반드시 있어야 합니다");
-        ActionGenerator.requireStorable(actionId, "조치의 식별자");
+        requireStorable(actionId, ActionDecisionInputException.Field.ACTION_ID, "조치의 식별자");
         if (blank(decidedBy)) {
-            throw new IllegalArgumentException("누가 했는지가 비어 있습니다. 사용자의 아이디를 넣어 다시 보내세요.");
+            throw new ActionDecisionInputException(ActionDecisionInputException.Field.DECIDED_BY,
+                    "누가 했는지가 비어 있습니다. 사용자의 아이디를 넣어 다시 보내세요.");
         }
-        ActionGenerator.requireStorable(decidedBy, "사용자의 아이디");
+        requireStorable(decidedBy, ActionDecisionInputException.Field.DECIDED_BY, "사용자의 아이디");
         if (decidedBy.codePointCount(0, decidedBy.length()) > MAX_DECIDED_BY_LENGTH) {
-            throw new IllegalArgumentException("사용자의 아이디가 너무 깁니다. " + MAX_DECIDED_BY_LENGTH + "자까지 받습니다.");
+            throw new ActionDecisionInputException(ActionDecisionInputException.Field.DECIDED_BY,
+                    "사용자의 아이디가 너무 깁니다. " + MAX_DECIDED_BY_LENGTH + "자까지 받습니다.");
+        }
+        if (rawNote != null && rawNote.codePointCount(0, rawNote.length()) > MAX_NOTE_LENGTH) {
+            // 길이는 빈 값인지를 보기 전에 잰다. 공백뿐인 긴 값도 한도를 넘으면 받지 않는다.
+            throw new ActionDecisionInputException(ActionDecisionInputException.Field.NOTE,
+                    "사유가 너무 깁니다. " + MAX_NOTE_LENGTH + "자까지 받습니다. 줄여 다시 보내세요.");
         }
         String note = rawNote == null || blank(rawNote) ? null : rawNote;
         if (note == null && to == ActionStatus.ON_HOLD) {
-            throw new IllegalArgumentException("보류에는 사유가 반드시 있어야 합니다. 왜 보류하는지 적어 다시 보내세요.");
+            throw new ActionDecisionInputException(ActionDecisionInputException.Field.NOTE,
+                    "보류에는 사유가 반드시 있어야 합니다. 왜 보류하는지 적어 다시 보내세요.");
         }
         if (note != null) {
-            ActionGenerator.requireStorable(note, "사유");
-            if (note.codePointCount(0, note.length()) > MAX_NOTE_LENGTH) {
-                throw new IllegalArgumentException("사유가 너무 깁니다. " + MAX_NOTE_LENGTH + "자까지 받습니다. 줄여 다시 보내세요.");
-            }
+            requireStorable(note, ActionDecisionInputException.Field.NOTE, "사유");
         }
         if (decidedAt.isBefore(EARLIEST) || !decidedAt.isBefore(LATEST)) {
             // 저장소가 담는 범위 밖이다. 저장하다가 실패하지 않도록 여기서 막는다.
-            throw new IllegalArgumentException("언제 했는지는 0001 년부터 9999 년까지만 받습니다: " + decidedAt + ". 시각을 확인하세요.");
+            throw new ActionDecisionInputException(ActionDecisionInputException.Field.DECIDED_AT,
+                    "언제 했는지는 0001 년부터 9999 년까지만 받습니다: " + decidedAt + ". 시각을 확인하세요.");
         }
         OffsetDateTime when = OffsetDateTime.ofInstant(decidedAt.truncatedTo(ChronoUnit.MICROS), ZoneOffset.UTC);
         String hash = RulesHash.sha256Hex(actionId);
@@ -117,7 +123,10 @@ public class ActionDecisions {
                 }
                 ActionStatus from = ActionStatus.valueOf(current.get(0));
                 if (!allowed(from, to)) {
-                    return new ActionDecisionRejectedException(from, to, "조치 " + actionId + " 은(는) 지금 " + label(from)
+                    // 마지막 이력을 같은 잠금 아래에서 읽는다. 알리는 지금의 상태와 어긋나지 않는다.
+                    List<ActionDecision> history = records.history(actionId);
+                    return new ActionDecisionRejectedException(from, to,
+                            history.isEmpty() ? null : history.get(history.size() - 1), "조치 " + actionId + " 은(는) 지금 " + label(from)
                             + " 상태라 " + label(to) + "(으)로 바꿀 수 없습니다. 대기인 조치는 확정하거나 보류할 수 있고, 보류인 조치는 확정할 수 있습니다."
                             + " 확정된 조치는 바꿀 수 없습니다.");
                 }
@@ -130,7 +139,7 @@ public class ActionDecisions {
                         """, hash, from.name(), to.name(), decidedBy, when, note, hash);
                 // 바뀐 조치는 같은 트랜잭션에서 읽어 돌려준다. 끝난 뒤에 읽으면 그 사이에 다른 사람이 바꾼 상태가
                 // 돌아올 수 있다 (보류한 사람이 확정된 조치를 돌려받는다).
-                return records.find(actionId)
+                return records.detail(actionId)
                     .orElseThrow(() -> new IllegalStateException("방금 바꾼 조치 " + actionId + " 을(를) 읽지 못했습니다."));
             });
         }
@@ -141,7 +150,16 @@ public class ActionDecisions {
         if (outcome instanceof RuntimeException refused) {
             throw refused;
         }
-        return (Action) outcome;
+        return (ActionWithHistory) outcome;
+    }
+
+    /**
+     * "누가 했는가"로 받을 수 있는 값인가: 빈 값이 아니고, 200자 이하이고, 저장할 수 있는 글자다.
+     * 부르는 쪽이 그 값을 미리 정해 둘 때 (설정 등) 확인하는 데 쓴다.
+     */
+    public static boolean isAcceptableDecidedBy(String decidedBy) {
+        return decidedBy != null && !blank(decidedBy) && ActionGenerator.storable(decidedBy)
+                && decidedBy.codePointCount(0, decidedBy.length()) <= MAX_DECIDED_BY_LENGTH;
     }
 
     /**
@@ -151,6 +169,13 @@ public class ActionDecisions {
     private static boolean blank(String text) {
         return text.codePoints()
             .allMatch(c -> Character.isWhitespace(c) || Character.isSpaceChar(c) || Character.getType(c) == Character.FORMAT);
+    }
+
+    private static void requireStorable(String text, ActionDecisionInputException.Field field, String name) {
+        if (!ActionGenerator.storable(text)) {
+            throw new ActionDecisionInputException(field,
+                    name + "에 저장할 수 없는 글자(NUL 이나 짝 없는 대리 문자)가 들어 있습니다. 그 글자를 빼고 다시 보내세요.");
+        }
     }
 
     /** 대기에서 확정이나 보류로, 보류에서 확정으로만 간다 (D2 AD-47). */

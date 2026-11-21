@@ -1,5 +1,6 @@
 package com.altumlab.tabnit.api;
 
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.util.unit.DataSize;
 import org.springframework.http.HttpHeaders;
@@ -53,6 +54,26 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 		return problem;
 	}
 
+	/** 지금의 상태에서는 할 수 없는 확정이나 보류. 조치의 지금 상태와 마지막 이력을 함께 담는다 (D7 7절). */
+	@ExceptionHandler(ActionDecisionConflictException.class)
+	ProblemDetail handle(ActionDecisionConflictException e) {
+		ProblemDetail problem = problem(HttpStatus.CONFLICT, title(HttpStatus.CONFLICT), "ACTION_DECISION_CONFLICT", null,
+				e.getMessage());
+		problem.setProperty("currentStatus", e.currentStatus().name());
+		problem.setProperty("lastDecision",
+				e.lastDecision() == null ? null : ActionDetailResponse.Decision.of(e.lastDecision()));
+		return problem;
+	}
+
+	/** 본문을 읽지 못한 요청 (JSON 이 아니다, 비었다). 프레임워크의 형식에 code 를 더한다. 내부의 까닭은 담지 않는다. */
+	@Override
+	protected ResponseEntity<Object> handleHttpMessageNotReadable(HttpMessageNotReadableException ex, HttpHeaders headers,
+			HttpStatusCode status, WebRequest request) {
+		ProblemDetail problem = problem(HttpStatus.BAD_REQUEST, title(HttpStatus.BAD_REQUEST), "INVALID_BODY", null,
+				"요청의 본문을 읽지 못했습니다. 항목을 담은 JSON 객체로 적어 다시 보내세요.");
+		return handleExceptionInternal(ex, problem, headers, HttpStatus.BAD_REQUEST, request);
+	}
+
 	/** 서버가 본문을 읽기 전에 크기 한도에 걸린 요청. 프레임워크의 형식에 code 를 더한다. */
 	@Override
 	protected ResponseEntity<Object> handleMaxUploadSizeExceededException(MaxUploadSizeExceededException ex,
@@ -91,6 +112,7 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 		return switch (status) {
 			case BAD_REQUEST -> "잘못된 요청";
 			case NOT_FOUND -> "대상을 찾을 수 없음";
+			case CONFLICT -> "지금은 할 수 없는 요청";
 			case CONTENT_TOO_LARGE -> "너무 큰 파일";
 			case UNPROCESSABLE_CONTENT -> "받아들일 수 없는 파일";
 			default -> "서버 오류";

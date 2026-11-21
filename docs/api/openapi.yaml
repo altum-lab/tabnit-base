@@ -1,6 +1,6 @@
 # Tabnit Base 의 API 규격. 기준 문서는 docs/D7-api-contract.md 다.
 # 이 파일을 먼저 고치고 구현한다. 화면의 호출 코드는 이 파일에서 만든다 (D2 AD-09, AD-77).
-# 상태: 초안. 지금은 시점 조회, 판 올리기, 조치 목록, 변동의 영향 범위, 조치 하나와 이력, 확정과 보류, Pack 과 입력 자료의 목록, 로그인과 세션이 들어 있다.
+# 상태: 초안. 지금은 시점 조회, 판 올리기, 조치 목록, 변동의 영향 범위, 조치 하나와 이력, 확정과 보류, Pack 과 입력 자료의 목록, 로그인과 세션, Pack 적재가 들어 있다.
 openapi: 3.1.0
 info:
   title: Tabnit Base API
@@ -11,6 +11,8 @@ info:
     로그인(POST /api/v1/session) 말고는 모두 로그인해야 부를 수 있다. 로그인하면 서버가 세션 쿠키를 준다.
     바꾸는 요청(POST, DELETE 등)에는 서버가 XSRF-TOKEN 쿠키로 준 값을 X-XSRF-TOKEN 헤더에 실어 보낸다.
     로그인하지 않았으면 401 (UNAUTHENTICATED), 그 헤더가 없거나 틀리면 403 (FORBIDDEN)이다.
+    역할은 관리자(ADMIN)와 담당자(OFFICER) 둘이다. 관리자는 담당자의 일을 모두 한다. Pack 적재는 관리자만 한다.
+    할 수 없는 일을 부르면 403 (FORBIDDEN)이다.
 paths:
   /api/v1/relations:
     get:
@@ -124,6 +126,41 @@ paths:
         '401':
           $ref: '#/components/responses/Problem'
         '403':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/Problem'
+  /api/v1/pack-loads:
+    post:
+      operationId: loadPack
+      summary: 서버의 Pack 폴더에 있는 Pack 하나를 적재한다
+      description: >-
+        관리자만 부를 수 있다. 설치할 때 정한 Pack 폴더(설치 설정 tabnit.packs-dir) 바로 아래의 폴더를 이름으로 고른다.
+        폴더의 이름이 Pack 의 id 다. 서버가 그 폴더를 읽어 검증하고 정의를 적재한다. 문제가 하나라도 있으면 아무것도
+        적재하지 않는다. 같은 Pack 을 다시 적재하면 바뀐 것만 고친다
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PackLoadRequest'
+      responses:
+        '200':
+          description: 적재한 결과
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackLoad'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
           $ref: '#/components/responses/Problem'
         '500':
           $ref: '#/components/responses/Problem'
@@ -426,6 +463,40 @@ components:
           type: string
           minLength: 1
           description: 비밀번호. 서버는 이 값을 저장하거나 기록에 남기지 않는다
+    PackLoadRequest:
+      type: object
+      required: [packId]
+      properties:
+        packId:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: '^[a-z0-9-]+$'
+          description: 적재할 Pack 의 id. 서버의 Pack 폴더 바로 아래에 있는 폴더의 이름이다
+    PackLoad:
+      type: object
+      required: [packId, outcome]
+      properties:
+        packId:
+          type: string
+        outcome:
+          type: string
+          enum: [LOADED, UPDATED, UNCHANGED]
+          description: LOADED 처음 적재했다. UPDATED 이미 있던 정의를 고친 것으로 바꿨다. UNCHANGED 이미 있는 것과 같아 바꾸지 않았다
+    PackProblem:
+      type: object
+      description: Pack 에서 찾은 문제 하나
+      required: [file, item, message]
+      properties:
+        file:
+          type: string
+          description: Pack 폴더 안에서의 파일 이름. 폴더 자체의 문제면 빈 글자
+        item:
+          type: string
+          description: 틀린 항목. 정의의 이름이다
+        message:
+          type: string
+          description: 무엇이 틀렸고 어떻게 고치면 되는지
     PackList:
       type: object
       required: [packs]
@@ -908,7 +979,17 @@ components:
         code:
           type: string
           description: 오류의 종류. 화면이 이것으로 가른다. 바뀌지 않는 값이다
-          enum: [MISSING_ENTITY_ID, INVALID_AS_OF, ENTITY_NOT_FOUND, MISSING_LOGIN_ID, MISSING_PASSWORD, LOGIN_FAILED, MISSING_PACK_ID, MISSING_INPUT_SOURCE_ID, MISSING_EFFECTIVE_DATE, INVALID_EFFECTIVE_DATE, MISSING_FILE, INVALID_EDITION, PACK_NOT_FOUND, INPUT_SOURCE_NOT_FOUND, FILE_TOO_LARGE, EDITION_REJECTED, INVALID_STATUS, MISSING_ACTION_ID, INVALID_ACTION_ID, ACTION_NOT_FOUND, INVALID_BODY, MISSING_DECISION, INVALID_DECISION, INVALID_NOTE, ACTION_DECISION_CONFLICT, MISSING_CHANGE_EVENT_ID, INVALID_CHANGE_EVENT_ID, IMPACT_SCOPE_NOT_FOUND, UNAUTHENTICATED, FORBIDDEN, INTERNAL]
+          enum: [MISSING_ENTITY_ID, INVALID_AS_OF, ENTITY_NOT_FOUND, MISSING_LOGIN_ID, MISSING_PASSWORD, LOGIN_FAILED, MISSING_PACK_ID, MISSING_INPUT_SOURCE_ID, MISSING_EFFECTIVE_DATE, INVALID_EFFECTIVE_DATE, MISSING_FILE, INVALID_EDITION, PACK_NOT_FOUND, INPUT_SOURCE_NOT_FOUND, FILE_TOO_LARGE, EDITION_REJECTED, INVALID_STATUS, MISSING_ACTION_ID, INVALID_ACTION_ID, ACTION_NOT_FOUND, INVALID_BODY, MISSING_DECISION, INVALID_DECISION, INVALID_NOTE, ACTION_DECISION_CONFLICT, MISSING_CHANGE_EVENT_ID, INVALID_CHANGE_EVENT_ID, IMPACT_SCOPE_NOT_FOUND, UNAUTHENTICATED, FORBIDDEN, INTERNAL, INVALID_PACK_ID, PACK_FOLDER_NOT_FOUND, PACK_INVALID, PACK_CHANGE_REJECTED]
         field:
           type: string
           description: 틀린 항목의 이름. 입력 오류일 때만 있다
+        problems:
+          type: array
+          description: code 가 PACK_INVALID 일 때만 있다. Pack 에서 찾은 문제 전부. pack 이 준 순서 그대로다
+          items:
+            $ref: '#/components/schemas/PackProblem'
+        reasons:
+          type: array
+          description: code 가 PACK_CHANGE_REJECTED 일 때만 있다. 이미 적재된 정의와 맞지 않는 곳. pack 이 준 순서 그대로다
+          items:
+            type: string

@@ -130,8 +130,8 @@ final class PackReader {
                 : List.of();
 
         // 규칙도 온톨로지를 읽었을 때만 본다 (D8 2절).
-        List<RuleDefinition> rules = ontologyRead ? RuleReader.read(directory, prefix, entityTypes, attributes, problems)
-                : List.of();
+        List<RuleDefinition> rules = ontologyRead ? RuleReader.read(directory, prefix, entityTypes, attributes,
+                new TreeSet<>(relationTypes.keySet()), inputSourceIds(mappings), problems) : List.of();
 
         if (!problems.isEmpty()) {
             // 같은 문제를 두 번 알리지 않고, 차례를 정해 둔다.
@@ -186,6 +186,13 @@ final class PackReader {
     }
 
     // ── ontology.ttl ────────────────────────────────────────────
+
+    /** 매핑이 받는 입력 자료의 식별자. */
+    private static TreeSet<String> inputSourceIds(List<MappingDefinition> mappings) {
+        TreeSet<String> ids = new TreeSet<>(PackOrder.STRINGS);
+        mappings.forEach(m -> ids.add(m.inputSourceId()));
+        return ids;
+    }
 
     private void readOntology(Map<String, EntityTypeDefinition> entityTypes,
             Map<String, RelationTypeDefinition> relationTypes, Map<String, AttributeDefinition> attributes) {

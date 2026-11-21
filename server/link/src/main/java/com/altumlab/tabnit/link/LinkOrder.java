@@ -47,4 +47,22 @@ final class LinkOrder {
         }
         return joined.toString();
     }
+
+    /** 세로 막대로 이은 글자의 마지막 값. 이을 때 붙인 역빗금을 떼어 원래 값으로 돌려준다. */
+    static String lastPart(String joined) {
+        StringBuilder last = new StringBuilder();
+        for (int i = 0; i < joined.length(); i++) {
+            char c = joined.charAt(i);
+            if (c == '\\' && i + 1 < joined.length()) {
+                last.append(joined.charAt(++i));
+            }
+            else if (c == '|') {
+                last.setLength(0);
+            }
+            else {
+                last.append(c);
+            }
+        }
+        return last.toString();
+    }
 }

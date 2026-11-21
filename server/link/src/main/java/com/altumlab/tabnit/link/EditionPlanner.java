@@ -475,17 +475,23 @@ final class EditionPlanner {
             PlannedItem after = items.get(itemKey);
             if (before == null) {
                 changes.add(new ItemChange(itemKey, ChangeKind.ADDED, after.item().primaryEntityId(),
-                        List.copyOf(entities(after.outputs()))));
+                        List.copyOf(entities(after.outputs())),
+                        names(after.outputs(), null, ItemOutput.Kind.ATTRIBUTE_VALUE),
+                        names(after.outputs(), null, ItemOutput.Kind.RELATION)));
             }
             else if (after == null) {
                 changes.add(new ItemChange(itemKey, ChangeKind.REMOVED, before.primaryEntityId(),
-                        List.copyOf(entities(before.outputs()))));
+                        List.copyOf(entities(before.outputs())),
+                        names(before.outputs(), null, ItemOutput.Kind.ATTRIBUTE_VALUE),
+                        names(before.outputs(), null, ItemOutput.Kind.RELATION)));
             }
             else if (!made(before.outputs()).equals(made(after.outputs()))) {
                 TreeSet<String> targets = entities(before.outputs());
                 targets.addAll(entities(after.outputs()));
                 changes.add(new ItemChange(itemKey, ChangeKind.CHANGED, after.item().primaryEntityId(),
-                        List.copyOf(targets)));
+                        List.copyOf(targets),
+                        changedNames(before.outputs(), after.outputs(), ItemOutput.Kind.ATTRIBUTE_VALUE),
+                        changedNames(before.outputs(), after.outputs(), ItemOutput.Kind.RELATION)));
             }
         }
         return changes;
@@ -495,6 +501,28 @@ final class EditionPlanner {
         TreeSet<String> ids = new TreeSet<>(LinkOrder.STRINGS);
         outputs.stream().filter(d -> d.kind() == ItemOutput.Kind.ENTITY).forEach(d -> ids.add(d.objectId()));
         return ids;
+    }
+
+    /**
+     * 두 판에서 그 행이 만든 것이 다른 속성(또는 관계 유형)의 이름 (D2 AD-291). 한쪽에만 있는 것의 이름이다:
+     * 값이 바뀌면 앞 판의 것이 끝나고 새것이 생기므로 두 쪽 모두에서 나온다. 이어 받은 것은 두 쪽에 같이 있어 빠진다.
+     */
+    private static List<String> changedNames(List<OutputDetail> before, List<OutputDetail> after, ItemOutput.Kind kind) {
+        TreeSet<String> names = new TreeSet<>(LinkOrder.STRINGS);
+        names.addAll(names(before, made(after), kind));
+        names.addAll(names(after, made(before), kind));
+        return List.copyOf(names);
+    }
+
+    /** 그 종류의 것 가운데 except 에 없는 것의 이름. 글자 코드 순. 이름은 "무엇에 대한 것인가"의 마지막 값이다. */
+    private static List<String> names(List<OutputDetail> outputs, TreeSet<String> except, ItemOutput.Kind kind) {
+        TreeSet<String> names = new TreeSet<>(LinkOrder.STRINGS);
+        for (OutputDetail detail : outputs) {
+            if (detail.kind() == kind && (except == null || !except.contains(detail.kind().name() + "|" + detail.objectId()))) {
+                names.add(LinkOrder.lastPart(detail.subject()));
+            }
+        }
+        return List.copyOf(names);
     }
 
     private static TreeSet<String> made(List<OutputDetail> outputs) {

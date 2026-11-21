@@ -9,6 +9,7 @@ import com.altumlab.tabnit.core.ImpactTarget;
 import com.altumlab.tabnit.pack.AttributeDefinition;
 import com.altumlab.tabnit.pack.EntityTypeDefinition;
 import com.altumlab.tabnit.pack.PackDefinition;
+import com.altumlab.tabnit.pack.RuleCompareTo;
 import com.altumlab.tabnit.pack.RuleCondition;
 import com.altumlab.tabnit.pack.RuleDefinition;
 import com.altumlab.tabnit.pack.RuleOperator;
@@ -177,6 +178,9 @@ public class RuleEvaluator {
                     continue;
                 }
                 try {
+                    if (!appliesToChange(rule)) {
+                        continue;
+                    }
                     // 규칙 하나의 결과는 따로 모았다가 끝까지 평가된 뒤에만 더한다. 도중에 실패하면 하나도 내지 않는다
                     // (D2 AD-221).
                     matches.addAll(apply(rule));
@@ -189,6 +193,29 @@ public class RuleEvaluator {
             matches.sort(MATCHES);
             failures.sort(Comparator.comparing(RuleFailure::ruleNo, RulesOrder.STRINGS));
             return new RuleSelection(matches, failures);
+        }
+
+        /**
+         * 이 변동이 규칙이 적은 입력 자료에서 나왔고, 규칙이 적은 것 가운데 하나가 그 행에서 바뀌었는가 (D2 AD-290, AD-291).
+         * 적지 않은 규칙은 가리지 않는다. 규칙이 가리는데 변동이 그것을 모르면, 조용히 건너뛰지 않고 실패로 알린다.
+         */
+        private boolean appliesToChange(RuleDefinition rule) {
+            if (!rule.inputSources().isEmpty()) {
+                if (change.inputSourceId() == null) {
+                    throw new RuleFailed(new RuleFailure(rule.ruleNo(), "INPUT_SOURCE_UNKNOWN", null, null, null));
+                }
+                if (!rule.inputSources().contains(change.inputSourceId())) {
+                    return false;
+                }
+            }
+            if (rule.limitsChangedItems()) {
+                if (!change.changedItemsKnown()) {
+                    throw new RuleFailed(new RuleFailure(rule.ruleNo(), "CHANGED_ITEMS_UNKNOWN", null, null, null));
+                }
+                return rule.changedAttributes().stream().anyMatch(change.changedAttributes()::contains)
+                        || rule.changedRelationTypes().stream().anyMatch(change.changedRelationTypes()::contains);
+            }
+            return true;
         }
 
         /** 변동 대상을 저장소에서 읽어 유형을 안다. 변동 이벤트는 변동 대상을 식별자로만 담는다 (D2 AD-218). */
@@ -266,7 +293,20 @@ public class RuleEvaluator {
             for (RuleCondition condition : rule.conditions()) {
                 if (condition.typeIs() == null) {
                     boolean impactSide = condition.subject() == RuleSubject.IMPACT_TARGET;
-                    all &= compare(rule, condition, impactSide ? targetId : changeTarget.id());
+                    String entityId = impactSide ? targetId : changeTarget.id();
+                    if (condition.compareTo() == RuleCompareTo.VALUE) {
+                        all &= compare(rule, condition, entityId);
+                    }
+                    else {
+                        // 대상이 변동 대상인 규칙에는 영향 대상이 없다. 그 속성과 견주는 조건은 Pack 을 읽을 때 거부된다.
+                        if (condition.compareSubject() == RuleSubject.IMPACT_TARGET
+                                && rule.appliesTo() != RuleSubject.IMPACT_TARGET) {
+                            throw invalid(rule, condition.attributeName());
+                        }
+                        String otherId = condition.compareSubject() == RuleSubject.IMPACT_TARGET ? targetId
+                                : changeTarget.id();
+                        all &= compareOther(rule, condition, entityId, otherId);
+                    }
                 }
             }
             return all;
@@ -324,6 +364,80 @@ public class RuleEvaluator {
                 case IN -> expected.stream().anyMatch(candidate -> order(value, candidate) == 0);
                 case HAS_VALUE, HAS_NO_VALUE -> throw new IllegalStateException("위에서 처리했다");
             };
+        }
+
+        /**
+         * 속성 값을 판의 적용일이나 다른 대상의 속성 값과 견주는 조건 하나 (D2 AD-292).
+         *
+         * <p>두 쪽의 값을 모두 읽고 형식을 확인한 뒤에 견준다: 한쪽에 값이 없어도 다른 쪽의 틀린 값은 실패로 알린다.
+         * 어느 한쪽에 값이 없으면 만족하지 않는다. "다르다"도 그렇다 (D2 AD-104).
+         */
+        private boolean compareOther(RuleDefinition rule, RuleCondition condition, String entityId, String otherId) {
+            String name = condition.attributeName();
+            AttributeDefinition attribute = attributes.get(name);
+            if (attribute == null) {
+                throw new RuleFailed(new RuleFailure(rule.ruleNo(), "UNKNOWN_ATTRIBUTE", null, name, null));
+            }
+            RuleOperator operator = condition.operator();
+            ValueFormat format = attribute.valueFormat();
+            boolean ordering = operator == RuleOperator.GREATER_THAN || operator == RuleOperator.GREATER_THAN_OR_EQUAL
+                    || operator == RuleOperator.LESS_THAN || operator == RuleOperator.LESS_THAN_OR_EQUAL;
+            boolean ordered = format == ValueFormat.INTEGER || format == ValueFormat.DECIMAL || format == ValueFormat.DATE;
+            if (format == null || !condition.values().isEmpty()
+                    || !(ordering ? ordered : operator == RuleOperator.EQUALS || operator == RuleOperator.NOT_EQUALS)) {
+                // Pack 을 읽을 때 걸러진다. 여기 오면 넘겨받은 정의가 검증을 거치지 않은 것이다.
+                throw invalid(rule, name);
+            }
+            Object other;
+            if (condition.compareTo() == RuleCompareTo.EFFECTIVE_DATE) {
+                if (format != ValueFormat.DATE || condition.compareSubject() != null
+                        || condition.compareAttributeName() != null) {
+                    throw invalid(rule, name);
+                }
+                other = change.effectiveDate();
+            }
+            else {
+                String otherName = condition.compareAttributeName();
+                if (condition.compareSubject() == null || otherName == null) {
+                    throw invalid(rule, name);
+                }
+                AttributeDefinition otherAttribute = attributes.get(otherName);
+                if (otherAttribute == null) {
+                    throw new RuleFailed(new RuleFailure(rule.ruleNo(), "UNKNOWN_ATTRIBUTE", null, otherName, null));
+                }
+                if (otherAttribute.valueFormat() != format) {
+                    throw invalid(rule, name);
+                }
+                other = stored(rule, format, otherId, otherName);
+            }
+            Object value = stored(rule, format, entityId, name);
+            if (value == null || other == null) {
+                return false;
+            }
+            int order = order(value, other);
+            return switch (operator) {
+                case EQUALS -> order == 0;
+                case NOT_EQUALS -> order != 0;
+                case GREATER_THAN -> order > 0;
+                case GREATER_THAN_OR_EQUAL -> order >= 0;
+                case LESS_THAN -> order < 0;
+                case LESS_THAN_OR_EQUAL -> order <= 0;
+                case IN, HAS_VALUE, HAS_NO_VALUE -> throw new IllegalStateException("위에서 걸렀다");
+            };
+        }
+
+        /** 저장된 속성 값을 그 형식의 값으로 읽는다. 값이 없으면 null. 형식과 맞지 않으면 그 규칙은 실패다 (D8 7절). */
+        private Object stored(RuleDefinition rule, ValueFormat format, String entityId, String attributeName) {
+            Optional<String> stored = valueOf(entityId, attributeName);
+            if (stored.isEmpty()) {
+                return null;
+            }
+            Object value = parse(format, stored.get());
+            if (value == null) {
+                throw new RuleFailed(new RuleFailure(rule.ruleNo(), "VALUE_FORMAT_MISMATCH", entityId, attributeName,
+                        stored.get()));
+            }
+            return value;
         }
 
         /** 규칙의 정의가 D8 의 모양이 아니다. 검증을 거친 정의에서는 생기지 않는다. 예외로 죽지 않고 실패로 알린다. */

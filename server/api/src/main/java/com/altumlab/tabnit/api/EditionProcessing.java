@@ -257,8 +257,11 @@ class EditionProcessing {
 			// 저장하는 때는 변동마다 여기서 읽어 엔진에 값으로 넘긴다. 엔진은 시계를 읽지 않는다.
 			Instant now = this.clock.instant();
 			generation = this.actions.generate(pack,
+					// 규칙이 입력 자료와 그 행에서 바뀐 것을 가릴 수 있게 함께 넘긴다 (D2 AD-290, AD-291).
+					// 바뀐 것을 남기기 전에 만들어진 변동 이벤트는 그것을 모른다 (null): 그것을 가리는 규칙은 실패로 알려진다.
 					new RuleChange(event.id(), RuleChangeKind.valueOf(event.kind().name()), event.primaryEntityId(),
-							event.targetEntityIds(), effective),
+							event.targetEntityIds(), effective, edition.inputSourceId(), event.changedAttributes(),
+							event.changedRelationTypes()),
 					new BasisEdition(edition.inputSourceId(), edition.editionNo()), scope, pack.defaultMaxDepth(), now);
 		}
 		catch (ActionStorageException e) {

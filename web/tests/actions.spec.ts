@@ -101,6 +101,9 @@ function cssEscape(value: string) {
 async function open(page: Page, actionId: string) {
   await row(page, actionId).getByRole("button", { name: "근거와 이력 보기" }).click();
   await expect(detail(page, actionId)).toBeVisible();
+  // 이력이 다 올 때까지 기다린다. 기다리지 않고 다음 일을 하면, 늦게 온 이력의 답이 그 뒤의 상태를 담아 와
+  // 화면이 시험의 기대보다 먼저 바뀐다 (예: 다른 곳에서 확정한 뒤에 온 답이 확정 단추를 없앤다).
+  await expect(detail(page, actionId).getByRole("region", { name: "이력" })).not.toContainText("불러오는 중");
 }
 
 test("Pack 을 고르면 대기인 조치를 서버가 준 순서로 근거 조항과 그 판과 함께 보여 준다", async ({ page, request }) => {

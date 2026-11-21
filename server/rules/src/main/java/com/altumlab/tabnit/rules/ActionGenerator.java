@@ -106,7 +106,14 @@ public class ActionGenerator {
             checkPrimary(pack, change);
             // 잘못 부른 것은 여기까지에서, 저장하는 트랜잭션 밖에서 던진다. 부르는 쪽의 트랜잭션을 깨지 않는다.
             RuleSelection selection = evaluator.select(pack, change, scope);
-            List<RuleFailure> failures = new ArrayList<>(selection.failures());
+            // 실패는 규칙 번호마다 하나만 알린다. 같은 번호의 규칙이 둘이면 평가가 둘을 따로 알릴 수 있다.
+            List<RuleFailure> failures = new ArrayList<>();
+            TreeSet<String> reported = new TreeSet<>(RulesOrder.STRINGS);
+            for (RuleFailure failure : selection.failures()) {
+                if (reported.add(failure.ruleNo())) {
+                    failures.add(failure);
+                }
+            }
             Instant at = recordedAt.truncatedTo(ChronoUnit.MICROS);
             List<Action> actions = build(pack, change, edition, selection, at, failures);
             if (!failures.isEmpty()) {
@@ -153,7 +160,7 @@ public class ActionGenerator {
         return true;
     }
 
-    private static void requireStorable(String text, String name) {
+    static void requireStorable(String text, String name) {
         if (!storable(text)) {
             throw new IllegalArgumentException(name + "에 저장할 수 없는 글자(NUL 이나 짝 없는 대리 문자)가 들어 있습니다. 그 글자를 빼고 다시 보내세요.");
         }
@@ -185,6 +192,11 @@ public class ActionGenerator {
                 throw new IllegalArgumentException(where + " 의 깊이 " + target.depth() + " 이 넘겨받은 최대 깊이 " + maxDepth
                         + " 보다 큽니다. 영향 범위를 계산할 때 쓴 최대 깊이를 넣어 다시 보내세요.");
             }
+            String start = target.path().startEntityId();
+            if (start == null || !changeTargets.contains(start)) {
+                throw new IllegalArgumentException(where + " 의 근거 경로가 이 변동의 변동 대상이 아닌 개체 " + start
+                        + " 에서 시작합니다. 이 변동의 변동 대상에서 출발해 계산한 영향 범위를 넘기세요.");
+            }
             LocalDate asOf = target.path().asOf();
             if (!effective.equals(asOf) && !previous.equals(asOf)) {
                 throw new IllegalArgumentException(where + " 의 근거 경로의 기준 날짜 " + asOf + " 가 판의 적용일 " + effective
@@ -213,14 +225,15 @@ public class ActionGenerator {
         // 규칙 번호로 찾는 데만 쓴다.
         TreeMap<String, RuleDefinition> rules = new TreeMap<>(RulesOrder.STRINGS);
         TreeSet<String> failed = new TreeSet<>(RulesOrder.STRINGS);
+        // 평가에서 이미 실패한 규칙은 다시 알리지 않는다. 실패는 규칙마다 하나다.
+        for (RuleFailure failure : selection.failures()) {
+            failed.add(failure.ruleNo());
+        }
         for (RuleDefinition rule : pack.rules()) {
             if (rules.put(rule.ruleNo(), rule) != null && failed.add(rule.ruleNo())) {
                 // 같은 번호의 규칙이 둘이다. Pack 을 읽을 때 걸러진다. 검증을 거치지 않은 정의다.
                 failures.add(new RuleFailure(rule.ruleNo(), "INVALID_RULE", null, null, null));
             }
-        }
-        for (RuleFailure failure : selection.failures()) {
-            failed.add(failure.ruleNo());
         }
         List<Action> actions = new ArrayList<>();
         for (RuleMatch match : selection.matches()) {

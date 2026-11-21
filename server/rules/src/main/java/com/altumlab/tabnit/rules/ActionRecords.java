@@ -34,6 +34,7 @@ public class ActionRecords {
      */
     public List<Action> actions(String changeEventId) {
         Objects.requireNonNull(changeEventId, "변동 이벤트의 식별자는 반드시 있어야 합니다");
+        ActionGenerator.requireStorable(changeEventId, "변동 이벤트의 식별자");
         try {
             return jdbc.query("""
                     select a.id, a.pack_id, s.change_event_id, a.rule_no, a.rule_label, a.action_text, a.priority,
@@ -74,6 +75,7 @@ public class ActionRecords {
      */
     public Optional<StoredImpactScope> impactScope(String changeEventId) {
         Objects.requireNonNull(changeEventId, "변동 이벤트의 식별자는 반드시 있어야 합니다");
+        ActionGenerator.requireStorable(changeEventId, "변동 이벤트의 식별자");
         String hash = RulesHash.sha256Hex(changeEventId);
         try {
             List<StoredImpactScope> heads = jdbc.query("""

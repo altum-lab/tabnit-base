@@ -344,6 +344,9 @@ class ActionGeneratorTest {
                 new RuleDefinition("0004", "", 1, ALL, IMPACT, "Other", List.of(), "할 일", 7),
                 new RuleDefinition("0005", "규칙", 1, ALL, IMPACT, "Other", List.of(), "", 7),
                 rule("0006", 1, IMPACT, "Other", 7), rule("0006", 2, IMPACT, "Other", 9),
+                // 평가에서 이미 실패한 규칙이 번호까지 겹쳐도 실패는 하나만 알린다.
+                rule("0008", 1, IMPACT, "Other", 7, new RuleCondition(IMPACT, null, "nowhere", RuleOperator.HAS_VALUE, List.of())),
+                rule("0008", 1, IMPACT, "Other", 7, new RuleCondition(IMPACT, null, "nowhere", RuleOperator.HAS_VALUE, List.of())),
                 // 걸린 것이 없는 규칙은 문구를 보지 않는다.
                 new RuleDefinition("0007", "", 1, ALL, IMPACT, "Third", List.of(), "", 7));
 
@@ -352,7 +355,7 @@ class ActionGeneratorTest {
         assertThat(result.outcome()).isEqualTo(ActionGeneration.Outcome.RULE_FAILED);
         assertThat(result.failures()).extracting(RuleFailure::ruleNo, RuleFailure::code)
             .containsExactly(tuple("0002", "INVALID_RULE"), tuple("0003", "INVALID_RULE"), tuple("0004", "INVALID_RULE"),
-                    tuple("0005", "INVALID_RULE"), tuple("0006", "INVALID_RULE"));
+                    tuple("0005", "INVALID_RULE"), tuple("0006", "INVALID_RULE"), tuple("0008", "UNKNOWN_ATTRIBUTE"));
         assertThat(records.impactScope("ev-invalid")).isEmpty();
         // 이모지와 제어 글자는 그대로 저장되고 그대로 읽힌다.
         String odd = "할 일 \uD83D\uDE00 \t\n\u0001 | \\";
@@ -542,6 +545,14 @@ class ActionGeneratorTest {
         assertThatThrownBy(() -> generator.generate(pack, change, EDITION, doubled, 3, NOW))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("두 번");
+        // 근거 경로가 변동 대상이 아닌 개체에서 시작하거나, 시작이 없다.
+        for (String wrongStart : java.util.Arrays.asList(target.id(), null)) {
+            ImpactScope elsewhere = new ImpactScope(List.of(new ImpactTarget(one.entityId(), one.entityType(), 1,
+                    new ImpactPath(wrongStart, D, one.path().relations()))), Map.of("Other", 1), Map.of(1, 1), false);
+            assertThatThrownBy(() -> generator.generate(pack, change, EDITION, elsewhere, 3, NOW))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("시작합니다");
+        }
         // 깊이와 근거 경로의 길이가 다르다.
         ImpactScope lying = new ImpactScope(List.of(new ImpactTarget(one.entityId(), one.entityType(), 2, one.path())),
                 Map.of("Other", 1), Map.of(2, 1), false);
@@ -550,6 +561,9 @@ class ActionGeneratorTest {
             .hasMessageContaining("근거 경로");
         assertThatThrownBy(() -> records.impactScope(null)).isInstanceOf(NullPointerException.class);
         assertThatThrownBy(() -> records.actions(null)).isInstanceOf(NullPointerException.class);
+        // 깨진 글자가 든 식별자로 읽으면 다른 식별자의 것이 읽히지 않고 오류다.
+        assertThatThrownBy(() -> records.actions("ev\uD800")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> records.impactScope("ev\uD800")).isInstanceOf(IllegalArgumentException.class);
 
         assertThat(records.impactScope("ev-wrong")).isEmpty();
         assertThat(count("action", "ev-wrong")).isZero();

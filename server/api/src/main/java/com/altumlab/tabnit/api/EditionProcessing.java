@@ -159,10 +159,9 @@ class EditionProcessing {
 				// 판이 생기지 않았다 (내용이 같거나 거부). 새로 처리할 변동이 없다.
 				return new EditionProcessingResult(result, List.of(), false, List.of());
 			}
+			List<ProcessedChange> done;
 			try {
-				List<ProcessedChange> done = process(pack);
-				// 그 판의 변동 이벤트는 잠금을 놓기 전에 읽는다. 뒤에 온 요청이 상태를 바꾸기 전의 것이다.
-				return new EditionProcessingResult(result, done, false, this.editions.changeEvents(result.editionId()));
+				done = process(pack);
 			}
 			catch (RuntimeException e) {
 				// 판은 이미 받아들여졌다. 투입의 결과를 잃지 않게 돌려주고, 변동의 처리를 하지 못했다고 알린다.
@@ -170,10 +169,13 @@ class EditionProcessing {
 				log.error("판 {} 은 받아들였지만 변동의 처리를 시작하지 못했습니다.", result.editionId(), e);
 				return new EditionProcessingResult(result, List.of(), true, pendingEvents(result.editionId()));
 			}
+			// 그 판의 변동 이벤트는 잠금을 놓기 전에 읽는다. 뒤에 온 요청이 상태를 바꾸기 전의 것이다.
+			// 읽지 못해도 처리한 결과는 그대로 돌려준다.
+			return new EditionProcessingResult(result, done, false, pendingEvents(result.editionId()));
 		});
 	}
 
-	/** 처리를 시작하지 못한 판의 변동 이벤트. 읽지 못하면 빈 목록이다 (같은 저장소 오류일 것이다). */
+	/** 판의 변동 이벤트. 읽지 못하면 까닭을 기록에 남기고 빈 목록을 돌려준다: 판은 이미 받아들여졌다. */
 	private List<ChangeEvent> pendingEvents(String editionId) {
 		try {
 			return this.editions.changeEvents(editionId);

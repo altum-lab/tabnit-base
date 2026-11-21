@@ -45,7 +45,7 @@ record EditionSubmissionResponse(String outcome, String editionId, String packId
 		Map<String, ProcessedChange> processed = new TreeMap<>();
 		List<Retried> retried = new ArrayList<>();
 		for (ProcessedChange change : result.changes()) {
-			if (change.editionId().equals(edition.id())) {
+			if (edition.id().equals(change.editionId())) {
 				processed.put(change.changeEventId(), change);
 			}
 			else if (change.processed() || change.failedStage() != null) {

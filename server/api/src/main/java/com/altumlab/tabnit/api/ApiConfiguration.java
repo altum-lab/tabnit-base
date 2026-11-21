@@ -39,6 +39,11 @@ class ApiConfiguration {
 	EditionProcessing editionProcessing(DataSource dataSource, Clock clock,
 			@Value("${spring.servlet.multipart.max-file-size:20MB}") DataSize maxFileSize) {
 		// 파일 크기의 한도는 설정 하나로 정한다. 서버가 요청을 받을 때와 link 가 투입할 때 같은 값을 쓴다 (D7 5절).
+		if (maxFileSize.toBytes() <= 0) {
+			// "한도 없음"(-1)은 받지 않는다. 판의 원본을 저장소에 담으므로 한도가 반드시 있어야 한다.
+			throw new IllegalStateException("spring.servlet.multipart.max-file-size 는 0 보다 커야 합니다: " + maxFileSize
+					+ ". 올리는 파일 크기의 한도를 정해 다시 실행하세요 (예: 20MB).");
+		}
 		return new EditionProcessing(dataSource, clock, maxFileSize.toBytes());
 	}
 

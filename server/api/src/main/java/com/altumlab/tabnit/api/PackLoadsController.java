@@ -25,6 +25,7 @@ class PackLoadsController {
 	}
 
 	@PostMapping(PATH)
+	@Audited(action = "loadPack")
 	PackLoadResponse load(@RequestBody Map<String, Object> request) {
 		Object packId = request.get("packId");
 		if (packId == null || "".equals(packId)) {
@@ -32,7 +33,10 @@ class PackLoadsController {
 					"적재할 Pack 의 이름이 없습니다. packId 에 서버의 Pack 폴더에 있는 폴더의 이름을 넣어 다시 보내세요.");
 		}
 		// 글자가 아닌 값(수, 목록)은 글자로 바꿔 받지 않는다. 이름으로 받을 수 없는 값이다.
-		PackLoadResult result = this.loading.load(packId instanceof String text ? text : null);
+		String name = packId instanceof String text ? text : null;
+		AuditTrail.target("packId", name);
+		PackLoadResult result = this.loading.load(name);
+		AuditTrail.detail("outcome", result.outcome().name());
 		return new PackLoadResponse(result.packId(), result.outcome().name());
 	}
 

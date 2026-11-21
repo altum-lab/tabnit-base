@@ -1,5 +1,6 @@
 package com.altumlab.tabnit.api;
 
+import com.altumlab.tabnit.common.AuditLogException;
 import com.altumlab.tabnit.common.LoginAttempt;
 import com.altumlab.tabnit.common.Role;
 import com.altumlab.tabnit.common.UserAccounts;
@@ -26,6 +27,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.logout.HttpStatusReturningLogoutSuccessHandler;
+import org.springframework.security.web.authentication.logout.LogoutFilter;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CsrfException;
@@ -85,7 +87,7 @@ class SecurityConfiguration {
 	@Bean
 	@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 	SecurityFilterChain securityFilterChain(HttpSecurity http, SecurityContextRepository contexts,
-			@Qualifier("handlerExceptionResolver") HandlerExceptionResolver problems) throws Exception {
+			@Qualifier("handlerExceptionResolver") HandlerExceptionResolver problems, AuditTrail audit) throws Exception {
 		http.authorizeHttpRequests(requests -> requests
 			// 오류를 그리는 내부 전달.
 			.dispatcherTypeMatchers(DispatcherType.ERROR)
@@ -117,7 +119,30 @@ class SecurityConfiguration {
 		http.addFilterAfter(new CsrfCookieFilter(), CsrfFilter.class);
 		http.logout(logout -> logout
 			.logoutRequestMatcher(PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.DELETE, SESSION_PATH))
+			// 로그아웃을 감사 기록에 남긴다. 세션을 끝내기 전에 남기고, 남기지 못하면 로그아웃하지 않는다.
+			// 로그인하지 않은 채로 부른 로그아웃은 남기지 않는다 (누구인지 모른다).
+			.addLogoutHandler((request, response, authentication) -> {
+				if (authentication != null) {
+					audit.logout(authentication.getName());
+				}
+			})
 			.logoutSuccessHandler(new HttpStatusReturningLogoutSuccessHandler(HttpStatus.NO_CONTENT)));
+		// 로그아웃을 남기지 못했을 때 공통 오류 형식으로 답한다. 로그아웃 필터는 오류를 처리하는 곳보다 앞에 있다.
+		http.addFilterBefore(new OncePerRequestFilter() {
+			@Override
+			protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+					throws ServletException, IOException {
+				try {
+					chain.doFilter(request, response);
+				}
+				catch (AuditLogException e) {
+					if (response.isCommitted()) {
+						throw e;
+					}
+					problems.resolveException(request, response, null, e);
+				}
+			}
+		}, LogoutFilter.class);
 		// 로그인 화면으로 보내지 않는다. 공통 오류 형식으로 답한다 (D7 2절).
 		http.exceptionHandling(handling -> handling
 			.authenticationEntryPoint((request, response, e) -> problems.resolveException(request, response, null,
@@ -126,19 +151,32 @@ class SecurityConfiguration {
 			.accessDeniedHandler((request, response, e) -> {
 				if (e instanceof CsrfException) {
 					// 위조 요청 방어의 토큰이 없거나 틀렸다.
+					denied(audit, request, true);
 					problems.resolveException(request, response, null, new ApiProblemException(HttpStatus.FORBIDDEN,
 							"FORBIDDEN", null, "요청을 받을 수 없습니다. 화면을 새로 고친 뒤 다시 시도하세요."));
 					return;
 				}
-				// 역할이 할 수 없는 일이다. 감사 기록이 생기기 전까지는 서버의 로그에 남긴다 (E-03).
-				log.warn("권한이 없는 요청을 거부했습니다: {} {} (아이디 {})", request.getMethod(), request.getRequestURI(),
-						request.getUserPrincipal() == null ? "-" : request.getUserPrincipal().getName());
+				denied(audit, request, false);
 				problems.resolveException(request, response, null, new ApiProblemException(HttpStatus.FORBIDDEN,
 						"FORBIDDEN", null, "이 일을 할 권한이 없습니다. 필요하면 관리자에게 요청하세요."));
 			}));
 		// 로그인하지 않은 요청 때문에 세션을 만들지 않는다.
 		http.requestCache(cache -> cache.disable());
 		return http.build();
+	}
+
+	/**
+	 * 거부한 요청을 감사 기록에 남긴다 (common 지침: 권한이 없는 요청은 거부하고 그 사실도 남긴다).
+	 * 남기지 못해도 거부는 한다: 그 사실은 서버의 로그에 적는다.
+	 */
+	private static void denied(AuditTrail audit, HttpServletRequest request, boolean csrf) {
+		try {
+			audit.denied(request, csrf);
+		}
+		catch (AuditLogException e) {
+			log.error("거부한 요청을 감사 기록에 남기지 못했습니다: {} {} (아이디 {})", request.getMethod(),
+					request.getRequestURI(), request.getUserPrincipal() == null ? "-" : request.getUserPrincipal().getName(), e);
+		}
 	}
 
 	/**

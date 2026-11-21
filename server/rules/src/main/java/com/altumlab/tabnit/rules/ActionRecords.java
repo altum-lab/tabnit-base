@@ -12,6 +12,10 @@ import javax.sql.DataSource;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.TransactionException;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * 저장된 영향 범위와 조치를 읽는다 (D5 6절). 읽기만 한다.
@@ -32,8 +36,17 @@ public class ActionRecords {
 
     private final JdbcTemplate jdbc;
 
+    /**
+     * 조치와 이력을 함께 읽을 때의 한 시점. 부르는 쪽이 이미 트랜잭션 안이면 그 트랜잭션에 든다: 상태를 바꾼 직후에
+     * 같은 트랜잭션에서 읽으면 방금 바꾼 것이 보인다.
+     */
+    private final TransactionTemplate snapshot;
+
     public ActionRecords(DataSource dataSource) {
         this.jdbc = new JdbcTemplate(Objects.requireNonNull(dataSource, "데이터 원본은 반드시 있어야 합니다"));
+        this.snapshot = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
+        this.snapshot.setReadOnly(true);
+        this.snapshot.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
     }
 
     /**
@@ -86,6 +99,23 @@ public class ActionRecords {
     }
 
     /**
+     * 조치 하나와 그 이력을 한 시점의 것으로 함께 읽는다. 따로 읽으면 그 사이에 다른 사람이 상태를 바꿔 둘이
+     * 어긋날 수 있다.
+     *
+     * @return 그런 조치가 없으면 비어 있다
+     */
+    public Optional<ActionWithHistory> detail(String actionId) {
+        Objects.requireNonNull(actionId, "조치의 식별자는 반드시 있어야 합니다");
+        ActionGenerator.requireStorable(actionId, "조치의 식별자");
+        try {
+            return snapshot.execute(status -> find(actionId).map(action -> new ActionWithHistory(action, history(actionId))));
+        }
+        catch (TransactionException e) {
+            throw new ActionStorageException("조치 " + actionId + " 을(를) 읽지 못했습니다. 저장소의 상태를 확인한 뒤 다시 시도하세요.", e);
+        }
+    }
+
+    /**
      * 조치 하나의 이력. 상태를 바꾼 차례다.
      *
      * @return 아직 아무도 바꾸지 않았거나 그런 조치가 없으면 빈 목록
@@ -118,6 +148,11 @@ public class ActionRecords {
      */
     public static boolean isReadableChangeEventId(String changeEventId) {
         return changeEventId != null && !changeEventId.isEmpty() && ActionGenerator.storable(changeEventId);
+    }
+
+    /** 조치의 식별자로 읽을 수 있는 글자인가. {@link #isReadableChangeEventId} 와 같은 기준이다. */
+    public static boolean isReadableActionId(String actionId) {
+        return actionId != null && !actionId.isEmpty() && ActionGenerator.storable(actionId);
     }
 
     /**

@@ -1,16 +1,11 @@
 package com.altumlab.tabnit.api;
 
-import com.altumlab.tabnit.core.EntityQuery;
-import com.altumlab.tabnit.core.EntityRef;
 import com.altumlab.tabnit.pack.PackDefinitions;
 import com.altumlab.tabnit.rules.Action;
 import com.altumlab.tabnit.rules.ActionRecords;
 import com.altumlab.tabnit.rules.ActionStatus;
 import com.altumlab.tabnit.rules.StoredImpactScope;
 import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
-import java.util.TreeSet;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -29,12 +24,12 @@ class ActionsController {
 
 	private final PackDefinitions packs;
 
-	private final EntityQuery entities;
+	private final ActionViews views;
 
-	ActionsController(ActionRecords actions, PackDefinitions packs, EntityQuery entities) {
+	ActionsController(ActionRecords actions, PackDefinitions packs, ActionViews views) {
 		this.actions = actions;
 		this.packs = packs;
-		this.entities = entities;
+		this.views = views;
 	}
 
 	@GetMapping("/api/v1/actions")
@@ -55,16 +50,7 @@ class ActionsController {
 					"Pack " + packId + " 이 적재되어 있지 않습니다. Pack 의 식별자를 확인하세요.");
 		}
 		List<Action> found = this.actions.packActions(packId, wanted, changeEventId);
-		// 근거가 되는 개체의 유형은 조치에 저장되어 있지 않다. core 에서 한 번에 읽는다. 찾는 데만 쓴다.
-		TreeSet<String> basisIds = new TreeSet<>();
-		for (Action action : found) {
-			basisIds.add(action.basisEntityId());
-		}
-		Map<String, String> basisTypes = new TreeMap<>();
-		for (EntityRef entity : this.entities.findAll(basisIds)) {
-			basisTypes.put(entity.id(), entity.entityType());
-		}
-		return ActionListResponse.of(packId, wanted == null ? null : wanted.name(), changeEventId, found, basisTypes);
+		return ActionListResponse.of(packId, wanted == null ? null : wanted.name(), changeEventId, this.views.items(found));
 	}
 
 	@GetMapping("/api/v1/impact-scopes")

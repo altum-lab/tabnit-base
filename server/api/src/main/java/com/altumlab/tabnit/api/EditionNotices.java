@@ -20,7 +20,8 @@ final class EditionNotices {
 		String row = notice.rowNo() + "번째 행";
 		String subject = notice.subject() == null || notice.subject().isEmpty() ? null : notice.subject();
 		String detail = notice.detail() == null || notice.detail().isEmpty() ? null : notice.detail();
-		String column = subject == null ? "" : " " + subject + " 열";
+		// 열 이름이 없는 알림도 말이 되게 적는다.
+		String column = subject == null ? " 열" : " " + subject + " 열";
 		String value = detail == null ? "" : " (" + detail + ")";
 		return switch (notice.code()) {
 			// 건너뛴 행: 그 행은 넣지 않았다.
@@ -50,13 +51,18 @@ final class EditionNotices {
 			case "OVERLAPS_STORED_VALUE" -> row + "의" + target(subject) + " 값을 넣지 않았습니다. 이미 있는 값과 기간이 겹칩니다"
 					+ value + ". 기간을 고치거나, 이미 있는 값을 넣은 입력 자료의 새 판으로 그 값을 끝낸 뒤 다시 올리세요.";
 			// 다르게 넣은 기간.
-			case "STARTS_AT_EFFECTIVE_DATE" -> row + "의" + target(subject) + " 을(를) 적힌 시작일이 아니라 이 판의 적용일부터 넣었습니다"
+			case "STARTS_AT_EFFECTIVE_DATE" -> row + "의" + named(subject) + "을(를) 적힌 시작일이 아니라 이 판의 적용일부터 넣었습니다"
 					+ value + ". 지난 날짜로는 고쳐 넣지 않습니다. 뜻한 것이 맞는지 확인하세요.";
-			case "ALREADY_PAST" -> row + "의" + target(subject) + " 을(를) 넣지 않았습니다. 적힌 기간이 이 판의 적용일보다 앞에서 끝납니다"
+			case "ALREADY_PAST" -> row + "의" + named(subject) + "을(를) 넣지 않았습니다. 적힌 기간이 이 판의 적용일보다 앞에서 끝납니다"
 					+ value + ". 지난 기간은 고쳐 넣지 않습니다. 그 행이 더 필요 없으면 파일에서 빼세요.";
 			default -> row + "에 알림이 있습니다. 이유의 코드: " + notice.code() + (subject == null ? "" : ", 대상: " + subject)
 					+ (detail == null ? "" : ", 값: " + detail) + ". 그 행을 확인하세요.";
 		};
+	}
+
+	/** 어느 개체의 무엇인지를 그것만으로 가리킬 때. 없으면 "값"이라고 적는다. */
+	private static String named(String subject) {
+		return subject == null ? " 값" : " " + subject;
 	}
 
 	/** 어느 개체의 무엇인지. 없으면 적지 않는다. */

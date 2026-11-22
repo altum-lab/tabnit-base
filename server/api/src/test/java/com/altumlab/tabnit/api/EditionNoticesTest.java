@@ -62,6 +62,25 @@ class EditionNoticesTest {
 			.contains("지어낸_새_코드")
 			.doesNotContain("null");
 		assertThat(message("SKIPPED_ROW", 3, "BLANK_KEY", null, null)).doesNotContain("null");
+		// 대상이 없어도 말이 끊기지 않는다: 조사만 남거나 빈칸이 겹치지 않는다.
+		String[][] codes = { { "SKIPPED_ROW", "BLANK_KEY" }, { "SKIPPED_ROW", "KEY_TOO_LONG" },
+				{ "SKIPPED_ROW", "VALUE_WITHOUT_KEY" }, { "SKIPPED_ROW", "INVALID_VALUE" }, { "SKIPPED_ROW", "INVALID_PERIOD" },
+				{ "SKIPPED_ROW", "SELF_RELATION" }, { "ATTRIBUTE_CONFLICT", "CONFLICTING_VALUES" },
+				{ "RELATION_CONFLICT", "CONFLICTING_PERIODS" }, { "ATTRIBUTE_CONFLICT", "OVERLAPS_STORED_VALUE" },
+				{ "PERIOD_ADJUSTED", "STARTS_AT_EFFECTIVE_DATE" }, { "PERIOD_ADJUSTED", "ALREADY_PAST" } };
+		for (String[] code : codes) {
+			for (String subject : new String[] { null, "", "대상" }) {
+				String text = message(code[0], 3, code[1], subject, null);
+				assertThat(text).as(code[1] + " / " + subject)
+					.doesNotContain("null")
+					.doesNotContain("  ")
+					.doesNotContain("는이(가)")
+					.doesNotContain(".이(가)")
+					.doesNotContain("의 을(를)")
+					.doesNotContain(" 을(를)")
+					.doesNotContain("의을(를)");
+			}
+		}
 	}
 
 	private static String message(String kind, int rowNo, String code, String subject, String detail) {

@@ -113,6 +113,33 @@ test("받아들이지 않은 파일은 이유와 고칠 것을 알리고 화면�
   await expect(page.getByRole("button", { name: "올리기" })).toBeEnabled();
 });
 
+test("건너뛴 행의 알림은 몇 번째 행의 무엇이 왜 걸렸는지와 할 일을 한국어로 보여 준다", async ({ page }) => {
+  await choose(page);
+  const date = await laterDate(page);
+  const run = Date.now();
+
+  // 둘째 행은 받고, 셋째 행은 지침번호가 비었고, 넷째 행은 점검주기일이 수가 아니다.
+  await upload(
+    page,
+    date,
+    "알림이 있는 지침.csv",
+    csv(`G-01,방문 건강 관리 기준 ${run},30`, `,번호가 없는 지침 ${run},30`, `G-77,주기가 틀린 지침 ${run},서른 날`),
+  );
+
+  await expect(page.getByTestId("outcome")).toContainText("새 판을 받아들였습니다");
+  const notices = page.getByRole("table", { name: "투입의 알림" }).locator("tbody tr");
+  await expect(notices).toHaveCount(2);
+  // 서버가 준 차례다: 행 번호 순.
+  await expect(notices.nth(0)).toContainText("3번째 행을 건너뛰었습니다");
+  await expect(notices.nth(0)).toContainText("지침번호");
+  await expect(notices.nth(0)).toContainText("다시 올리세요");
+  await expect(notices.nth(1)).toContainText("4번째 행을 건너뛰었습니다");
+  await expect(notices.nth(1)).toContainText("점검주기일");
+  await expect(notices.nth(1)).toContainText("서른 날");
+  // 가르는 데 쓰는 종류와 코드도 함께 보인다.
+  await expect(notices.nth(0)).toContainText("SKIPPED_ROW, BLANK_KEY");
+});
+
 test("고른 Pack 이나 입력 자료를 바꾸면 앞의 결과를 지운다", async ({ page }) => {
   const run = Date.now();
   await choose(page);

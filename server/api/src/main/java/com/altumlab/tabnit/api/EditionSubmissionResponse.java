@@ -49,7 +49,8 @@ record EditionSubmissionResponse(String outcome, String editionId, String packId
 	record Retried(String changeEventId, String editionId, String itemKey, Processing processing) {
 	}
 
-	record Notice(String kind, int rowNo, String code, String subject, String detail) {
+	/** 규격의 EditionNotice. 문구는 종류와 코드와 값을 풀어 쓴 것이다 (D2 AD-348). */
+	record Notice(String kind, int rowNo, String code, String subject, String detail, String message) {
 	}
 
 	/**
@@ -89,7 +90,8 @@ record EditionSubmissionResponse(String outcome, String editionId, String packId
 		List<Notice> notices = new ArrayList<>();
 		if (mapping != null) {
 			for (IngestNotice notice : mapping.notices()) {
-				notices.add(new Notice(notice.kind(), notice.rowNo(), notice.code(), notice.subject(), notice.detail()));
+				notices.add(new Notice(notice.kind(), notice.rowNo(), notice.code(), notice.subject(), notice.detail(),
+						EditionNotices.message(notice)));
 			}
 		}
 		return new EditionSubmissionResponse(result.ingest().outcome().name(), edition.id(), edition.packId(),

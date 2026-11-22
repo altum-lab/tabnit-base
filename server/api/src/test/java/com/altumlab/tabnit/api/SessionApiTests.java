@@ -98,6 +98,8 @@ class SessionApiTests {
 			.andExpect(content().contentTypeCompatibleWith("application/json"))
 			.andExpect(jsonPath("$.loginId").value("ses-officer"))
 			.andExpect(jsonPath("$.role").value("OFFICER"))
+			// 화면이 시각을 바꿔 보여 줄 시간대: 설치 설정의 것이다 (기본 Asia/Seoul, D2 AD-348).
+			.andExpect(jsonPath("$.timeZone").value("Asia/Seoul"))
 			.andExpect(jsonPath("$.password").doesNotExist())
 			.andReturn();
 		MockHttpSession session = (MockHttpSession) result.getRequest().getSession(false);

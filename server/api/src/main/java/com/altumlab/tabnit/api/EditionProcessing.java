@@ -235,6 +235,18 @@ class EditionProcessing {
 	record UnprocessedChange(ChangeEvent event, Edition edition, List<ChangeFailureDetail> failures) {
 	}
 
+	/**
+	 * 그 Pack 의 처리 차례에서 일을 한다. 판 처리와 같은 차례를 쓴다: 판을 처리하는 동안에는 기다리고, 이 일을 하는
+	 * 동안에는 그 Pack 의 판 처리가 기다린다. Pack 의 재적재가 쓴다 (D2 AD-331).
+	 *
+	 * @param packId Pack 의 식별자. 아직 적재되지 않은 것이어도 된다
+	 */
+	<T> T inTurn(String packId, Supplier<T> work) {
+		Objects.requireNonNull(packId, "Pack 의 식별자는 반드시 있어야 합니다");
+		Objects.requireNonNull(work, "할 일은 반드시 있어야 합니다");
+		return oneAtATime(packId, work);
+	}
+
 	private PackDefinition pack(String packId) {
 		// NUL 이 든 식별자의 Pack 은 있을 수 없다. 저장소에 묻지 않고 없는 것으로 답한다.
 		return (packId.indexOf('\u0000') >= 0 ? Optional.<PackDefinition>empty() : this.packs.find(packId))

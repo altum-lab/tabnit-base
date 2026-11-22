@@ -17,7 +17,7 @@ import org.springframework.boot.ApplicationRunner;
  * 막힘도 함께 푼다. 이미 로그인된 세션은 끝내지 않는다 (세션은 떠 있는 서버에 있다). 비밀번호를 로그와 감사 기록에
  * 적지 않는다.
  */
-class PasswordChangeCommand implements ApplicationRunner {
+class PasswordChangeCommand implements ApplicationRunner, AccountCommands.Command {
 
 	private static final Logger log = LoggerFactory.getLogger(PasswordChangeCommand.class);
 

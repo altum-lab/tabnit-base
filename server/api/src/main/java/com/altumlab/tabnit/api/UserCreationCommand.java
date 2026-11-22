@@ -18,7 +18,7 @@ import org.springframework.boot.ApplicationRunner;
  * 비밀번호는 환경 변수 {@value #PASSWORD_VARIABLE} 로만 받는다: 실행 인자와 설정 파일은 기록에 남는다.
  * 비밀번호를 로그에 적지 않는다.
  */
-class UserCreationCommand implements ApplicationRunner {
+class UserCreationCommand implements ApplicationRunner, AccountCommands.Command {
 
 	static final String LOGIN_ID_PROPERTY = AccountCommands.CREATE_USER_PROPERTY;
 

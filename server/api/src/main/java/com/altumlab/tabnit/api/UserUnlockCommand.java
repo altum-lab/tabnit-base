@@ -14,7 +14,7 @@ import org.springframework.boot.ApplicationRunner;
  * <p>서버를 {@code --tabnit.unlock-user.login-id=아이디} 로 띄우면 그 계정의 막힘을 풀고 끝난다. 틀린 횟수도 처음으로
  * 돌린다. 비밀번호는 바꾸지 않는다. 감사 기록에 남는다.
  */
-class UserUnlockCommand implements ApplicationRunner {
+class UserUnlockCommand implements ApplicationRunner, AccountCommands.Command {
 
 	private static final Logger log = LoggerFactory.getLogger(UserUnlockCommand.class);
 

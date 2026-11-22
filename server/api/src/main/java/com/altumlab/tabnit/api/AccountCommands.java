@@ -46,6 +46,23 @@ final class AccountCommands {
 		return false;
 	}
 
+	/** 계정 관리 명령의 표시. 명령으로 띄웠을 때 실제로 일을 한 것이 있는지 가리는 데 쓴다. */
+	interface Command {
+	}
+
+	/**
+	 * 명령으로 띄웠는데 일을 할 것이 하나도 없으면 알린다. 아무 일도 하지 않고 성공으로 끝나지 않게 한다.
+	 * 아이디로 설정이 "끔"으로 읽는 값(false)을 주면 그 명령이 만들어지지 않는다.
+	 *
+	 * @throws IllegalStateException 일을 한 명령이 없을 때
+	 */
+	static void requireRan(org.springframework.beans.factory.ListableBeanFactory beans) {
+		if (beans.getBeansOfType(Command.class).isEmpty()) {
+			throw new IllegalStateException("명령을 실행하지 못했습니다. 아무것도 바뀌지 않았습니다. 아이디를 읽지 못했습니다:"
+					+ " 아이디가 비었거나 false 입니다. 아이디를 확인해 다시 실행하세요.");
+		}
+	}
+
 	/**
 	 * 일을 감사 기록과 함께 한다. 실패하면 실패의 줄을 남기고 그 까닭을 그대로 던진다.
 	 *

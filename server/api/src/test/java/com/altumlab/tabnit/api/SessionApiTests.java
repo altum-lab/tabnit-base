@@ -432,4 +432,19 @@ class SessionApiTests {
 		assertThat(AccountCommands.requested(new String[] { "--server.port=8080" })).isFalse();
 		assertThat(AccountCommands.requested(new String[] {})).isFalse();
 	}
+
+	@Test
+	void 명령으로_띄웠는데_일을_한_명령이_없으면_성공으로_끝내지_않는다() {
+		// 아이디로 false 를 주면 설정이 그 명령을 끈 것으로 읽어 명령이 만들어지지 않는다.
+		org.springframework.context.support.StaticApplicationContext none =
+				new org.springframework.context.support.StaticApplicationContext();
+		assertThatThrownBy(() -> AccountCommands.requireRan(none)).isInstanceOf(IllegalStateException.class)
+			.hasMessageContaining("false");
+
+		org.springframework.context.support.StaticApplicationContext ran =
+				new org.springframework.context.support.StaticApplicationContext();
+		ran.getBeanFactory()
+			.registerSingleton("unlock", new UserUnlockCommand(this.accounts, this.audit, this.clock, "ses-any"));
+		AccountCommands.requireRan(ran);
+	}
 }

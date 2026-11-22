@@ -1,54 +1,144 @@
-import { type FormEvent, useState } from "react";
-import { api, type RelationsAsOf } from "../api/client";
+import { type FormEvent, useEffect, useRef, useState } from "react";
+import { api, type RelationMap, type RelationsAsOf } from "../api/client";
 import { CONNECTION_FAILED, messageOf } from "../api/problem";
+import { addDays } from "../time";
 import { EntityName } from "./EntityName";
 import { Pager } from "./Pager";
+import { RelationMapView } from "./RelationMapView";
 
-// 관계 조회 화면. 시점 조회 API (docs/api/openapi.yaml 의 getRelationsAsOf) 의 값을 그대로 보여 준다.
+// 관계 지도 화면 (D-08). 개체 하나를 가운데 둔 지도와, 그 개체의 관계 목록을 조회 시점으로 보여 준다.
+// 지도는 관계 지도 API (docs/api/openapi.yaml 의 getRelationMap), 목록은 시점 조회 API (getRelationsAsOf) 의 값이다.
 //
 // 이 화면은 계산하지 않는다.
 // - 오늘을 정하지 않는다. 조회 시점을 비우면 서버가 정하고, 화면은 서버가 답한 날짜를 보여 준다.
-// - 목록을 다시 정렬하거나 세지 않는다. 서버가 준 순서 그대로 그린다.
+// - 목록과 노드를 다시 정렬하거나 세지 않는다. 서버가 준 순서 그대로 그린다.
+//
+// 시점 막대: 하루 단위로 미는 막대다. 범위는 조회 단추로 받은 답의 조회 시점의 앞뒤 1년이다 (D2 AD-353).
+// 막대를 옮기면 그 날짜로 지도와 목록을 다시 받는다. 범위 밖의 날짜는 조회 시점에 적어 조회한다:
+// 그러면 막대의 범위도 그 날짜를 가운데로 다시 잡힌다.
+
+const BAR_DAYS = 365;
+const DEPTHS = [1, 2, 3] as const;
 
 type View =
   | { kind: "idle" }
   | { kind: "loading" }
-  | { kind: "loaded"; result: RelationsAsOf }
+  | { kind: "loaded"; map: RelationMap; relations: RelationsAsOf }
   | { kind: "failed"; message: string };
+
+type Query = { entityId: string; asOf?: string; depth: number };
 
 export function RelationsPage() {
   const [entityId, setEntityId] = useState("");
   const [asOf, setAsOf] = useState("");
+  const [depth, setDepth] = useState<number>(1);
   const [view, setView] = useState<View>({ kind: "idle" });
+  // 마지막으로 청한 것 (가운데 개체, 조회 시점, 깊이). 막대, 깊이, 노드로 다시 받을 때 여기서 하나만 바꿔 청한다.
+  // 받은 것이 아니라 청한 것을 둔다: 청한 것이 실패했어도 화면의 입력란과 막대는 청한 값을 보이고 있으므로,
+  // 그 뒤에 깊이나 막대를 바꾸면 화면에 적힌 개체와 날짜로 다시 청해야 한다 (앞서 받은 것으로 돌아가지 않는다).
+  const wanted = useRef<Query | null>(null);
+  // 막대의 가운데 날짜와, 막대가 가리키는 날수 (가운데에서 며칠 앞뒤인가).
+  const [barBase, setBarBase] = useState<string | null>(null);
+  const [barOffset, setBarOffset] = useState(0);
+  // 늦게 온 답이 새 답을 덮지 않게 한다: 막대를 잇달아 옮기면 요청이 겹친다.
+  const latest = useRef(0);
 
-  // 조회한 개체와 조회 시점으로 한 쪽을 받는다. 다른 쪽으로 넘길 때는 서버가 답한 조회 시점을 그대로 보낸다:
-  // 조회 시점을 비워 서버가 정했더라도 쪽마다 같은 날짜로 본다.
-  async function load(query: { entityId: string; asOf?: string; offset?: number }) {
+  // 지도를 먼저 받고, 서버가 답한 조회 시점으로 목록을 받는다. 조회 시점을 비워 서버가 정했더라도
+  // 지도와 목록이 같은 날짜를 본다.
+  async function load(query: Query, rebase: boolean) {
+    const turn = ++latest.current;
+    wanted.current = query;
+    setView({ kind: "loading" });
+    try {
+      const mapAnswer = await api.GET("/api/v1/relation-map", {
+        // 조회 시점을 비웠으면 항목을 보내지 않는다. 그러면 서버가 날짜를 정한다.
+        params: { query: query.asOf ? query : { entityId: query.entityId, depth: query.depth } },
+      });
+      if (turn !== latest.current) {
+        return;
+      }
+      if (!mapAnswer.data) {
+        setView({ kind: "failed", message: messageOf(mapAnswer.error, mapAnswer.response.status) });
+        return;
+      }
+      const map = mapAnswer.data;
+      const listAnswer = await api.GET("/api/v1/relations", {
+        params: { query: { entityId: map.centerEntityId, asOf: map.asOf } },
+      });
+      if (turn !== latest.current) {
+        return;
+      }
+      if (!listAnswer.data) {
+        setView({ kind: "failed", message: messageOf(listAnswer.error, listAnswer.response.status) });
+        return;
+      }
+      // 조회 시점을 비워 서버가 정했으면, 그 뒤로는 서버가 답한 날짜로 청한다.
+      wanted.current = { entityId: map.centerEntityId, asOf: map.asOf, depth: query.depth };
+      if (rebase) {
+        setBarBase(map.asOf);
+        setBarOffset(0);
+      }
+      setView({ kind: "loaded", map, relations: listAnswer.data });
+    } catch {
+      if (turn === latest.current) {
+        // 응답을 받지 못했다 (연결 실패 등).
+        setView({ kind: "failed", message: CONNECTION_FAILED });
+      }
+    }
+  }
+
+  // 목록의 다른 쪽만 받는다. 지도는 그대로 둔다.
+  async function movePage(map: RelationMap, offset: number) {
+    const turn = ++latest.current;
     setView({ kind: "loading" });
     try {
       const { data, error, response } = await api.GET("/api/v1/relations", {
-        // 조회 시점을 비웠으면 항목을 보내지 않는다. 그러면 서버가 날짜를 정한다.
-        params: { query },
+        params: { query: { entityId: map.centerEntityId, asOf: map.asOf, offset } },
       });
-      if (data) {
-        setView({ kind: "loaded", result: data });
-      } else {
-        setView({ kind: "failed", message: messageOf(error, response.status) });
+      if (turn !== latest.current) {
+        return;
       }
+      setView(data ? { kind: "loaded", map, relations: data } : { kind: "failed", message: messageOf(error, response.status) });
     } catch {
-      // 응답을 받지 못했다 (연결 실패 등).
-      setView({ kind: "failed", message: CONNECTION_FAILED });
+      if (turn === latest.current) {
+        setView({ kind: "failed", message: CONNECTION_FAILED });
+      }
     }
   }
 
   function search(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    void load(asOf ? { entityId, asOf } : { entityId });
+    // 조회 단추로 받으면 막대의 범위를 답한 날짜의 앞뒤로 다시 잡는다.
+    void load(asOf ? { entityId, asOf, depth } : { entityId, depth }, true);
+  }
+
+  function center(nodeId: string) {
+    if (!wanted.current) {
+      return;
+    }
+    setEntityId(nodeId);
+    void load({ ...wanted.current, entityId: nodeId }, false);
+  }
+
+  function changeDepth(next: number) {
+    setDepth(next);
+    if (wanted.current) {
+      void load({ ...wanted.current, depth: next }, false);
+    }
+  }
+
+  function moveBar(offset: number) {
+    if (!wanted.current || barBase === null) {
+      return;
+    }
+    const date = addDays(barBase, offset);
+    setAsOf(date);
+    void load({ ...wanted.current, asOf: date }, false);
   }
 
   return (
     <section aria-labelledby="relations-title">
-      <h1 id="relations-title">관계 조회</h1>
+      <h1 id="relations-title">관계 지도</h1>
 
       <form onSubmit={search}>
         <p>
@@ -67,22 +157,103 @@ export function RelationsPage() {
           <input id="as-of" name="asOf" type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)} />{" "}
           <small>비우면 서버가 오늘로 정합니다.</small>
         </p>
+        <p>
+          <label htmlFor="map-depth">깊이</label>{" "}
+          <select
+            id="map-depth"
+            value={depth}
+            disabled={view.kind === "loading"}
+            onChange={(e) => changeDepth(Number(e.target.value))}
+          >
+            {DEPTHS.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>{" "}
+          <small>가운데 개체에서 관계를 몇 번 건너까지 지도에 그릴지입니다.</small>
+        </p>
         <button type="submit" disabled={view.kind === "loading"}>
           조회
         </button>
       </form>
+
+      {barBase !== null && (
+        <TimeBar
+          base={barBase}
+          offset={barOffset}
+          disabled={view.kind === "loading"}
+          onSlide={setBarOffset}
+          onCommit={(offset) => {
+            setBarOffset(offset);
+            moveBar(offset);
+          }}
+        />
+      )}
 
       {view.kind === "loading" && <p role="status">불러오는 중입니다…</p>}
 
       {view.kind === "failed" && <p role="alert">{view.message}</p>}
 
       {view.kind === "loaded" && (
-        <Result
-          result={view.result}
-          onMove={(offset) => void load({ entityId: view.result.entityId, asOf: view.result.asOf, offset })}
-        />
+        <>
+          <RelationMapView map={view.map} onCenter={center} />
+          <Result result={view.relations} onMove={(offset) => void movePage(view.map, offset)} />
+        </>
       )}
     </section>
+  );
+}
+
+// 시점 막대. 미는 동안에는 가리키는 날짜만 바꿔 보여 주고, 놓으면 (또는 글쇠로 옮기면) 그 날짜로 다시 받는다.
+function TimeBar({
+  base,
+  offset,
+  disabled,
+  onSlide,
+  onCommit,
+}: {
+  base: string;
+  offset: number;
+  // 받아 오는 동안에는 옮기지 못한다: 청한 것이 끝나기 전에 다른 것을 청하지 않는다.
+  disabled: boolean;
+  onSlide: (offset: number) => void;
+  onCommit: (offset: number) => void;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  const commit = useRef(onCommit);
+  commit.current = onCommit;
+
+  // 놓았을 때를 알려 주는 것은 브라우저의 change 이벤트다. React 의 onChange 는 미는 동안 계속 온다.
+  useEffect(() => {
+    const element = input.current;
+    if (!element) {
+      return;
+    }
+    const listener = () => commit.current(Number(element.value));
+    element.addEventListener("change", listener);
+    return () => element.removeEventListener("change", listener);
+  }, []);
+
+  return (
+    <p>
+      <label htmlFor="time-bar">시점 막대</label>{" "}
+      <small data-testid="time-bar-from">{addDays(base, -BAR_DAYS)}</small>{" "}
+      <input
+        id="time-bar"
+        ref={input}
+        type="range"
+        min={-BAR_DAYS}
+        max={BAR_DAYS}
+        step={1}
+        value={offset}
+        disabled={disabled}
+        onChange={(e) => onSlide(Number(e.target.value))}
+        style={{ width: "24rem", verticalAlign: "middle" }}
+      />{" "}
+      <small data-testid="time-bar-to">{addDays(base, BAR_DAYS)}</small>{" "}
+      <strong data-testid="time-bar-date">{addDays(base, offset)}</strong>
+    </p>
   );
 }
 

@@ -40,6 +40,8 @@ export type EntityRef = components["schemas"]["EntityRef"];
 
 export type RelationsAsOf = components["schemas"]["RelationsAsOf"];
 export type Relation = components["schemas"]["Relation"];
+export type RelationMap = components["schemas"]["RelationMap"];
+export type RelationMapNode = components["schemas"]["RelationMapNode"];
 export type Problem = components["schemas"]["Problem"];
 export type PackList = components["schemas"]["PackList"];
 export type PackSummary = components["schemas"]["PackSummary"];

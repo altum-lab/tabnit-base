@@ -29,3 +29,19 @@ export function formatInstant(instant: string, timeZone: string | undefined): st
   const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((candidate) => candidate.type === type)?.value ?? "";
   return `${part("year")}-${part("month")}-${part("day")} ${part("hour")}:${part("minute")}:${part("second")}`;
 }
+
+// 날짜(2026-03-01)에 날수를 더한다. 시점 막대가 쓴다 (D-08).
+//
+// 화면은 오늘을 정하지 않는다: 받은 날짜에서 며칠 앞뒤인지만 셈한다. 시간대에 닿지 않게 협정 세계시의 자정으로 셈한다.
+// 읽을 수 없는 날짜이면 받은 글자를 그대로 돌려준다. 지어내지 않는다.
+export function addDays(date: string, days: number): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!match) {
+    return date;
+  }
+  const moved = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + days));
+  if (Number.isNaN(moved.getTime())) {
+    return date;
+  }
+  return moved.toISOString().slice(0, 10);
+}

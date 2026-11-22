@@ -190,13 +190,13 @@ test("화면을 주소로 오가고 없는 주소는 없는 화면이라고 알�
   await expect(page).toHaveURL(/\/changes$/);
   await expect(page.getByRole("heading", { name: "변동 감지" })).toBeVisible();
 
-  await page.getByRole("navigation", { name: "화면" }).getByRole("link", { name: "관계 조회" }).click();
+  await page.getByRole("navigation", { name: "화면" }).getByRole("link", { name: "관계 지도" }).click();
   await expect(page).toHaveURL(/\/relations$/);
-  await expect(page.getByRole("heading", { name: "관계 조회" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "관계 지도" })).toBeVisible();
 
   // 주소를 직접 열어도 (새로 고쳐도) 그 화면이 뜬다.
   await page.reload();
-  await expect(page.getByRole("heading", { name: "관계 조회" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "관계 지도" })).toBeVisible();
 
   await page.goto("/no-such-screen");
   await expect(page.getByRole("heading", { name: "없는 화면입니다" })).toBeVisible();

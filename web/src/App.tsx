@@ -19,7 +19,7 @@ import { RelationsPage } from "./pages/RelationsPage";
 const SCREENS = [
   { path: "/changes", label: "변동 감지", element: <ChangesPage /> },
   { path: "/actions", label: "조치", element: <ActionsPage /> },
-  { path: "/relations", label: "관계 조회", element: <RelationsPage /> },
+  { path: "/relations", label: "관계 지도", element: <RelationsPage /> },
 ];
 
 const ROLE_LABELS: Record<Session["role"], string> = { ADMIN: "관리자", OFFICER: "담당자" };

@@ -78,6 +78,11 @@ class E2eSeedData {
 			for (int i = 0; i < 60; i++) {
 				relation(store, many, entity(store, String.format("m%02d", (i * 7) % 60)), "R", "2020-01-01", null);
 			}
+			// 관계 지도가 잘리는 것을 보는 자료 (D-08): 이웃이 지도의 한도(200개)를 넘는 개체.
+			EntityRef crowd = entity(store, "crowd");
+			for (int i = 0; i < 250; i++) {
+				relation(store, crowd, entity(store, String.format("c%03d", i)), "R", "2020-01-01", null);
+			}
 			// 변동 감지 화면의 시험이 판을 올릴 Pack: 시험용 Pack 의 사본이다. 판은 시험이 화면으로 올린다.
 			PackCopies.load(dataSource, java.nio.file.Files.createTempDirectory("tabnit-e2e-pack"), CHANGES_PACK, text -> text);
 			// 조치 화면의 시험이 읽을 Pack: 시험용 Pack 의 사본에 그 시나리오의 판을 차례로 올려 조치까지 만들어 둔다.

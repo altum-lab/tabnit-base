@@ -21,6 +21,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/relation-map": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 개체 하나를 가운데 두고, 조회 시점에 유효한 관계로 이어진 이웃을 노드와 간선으로 돌려준다
+         * @description 관계 지도 화면이 쓴다. 영향이 퍼지는 방향을 보지 않는다: 들어오는 관계와 나가는 관계를 모두 따라간다. 담당자와 관리자가 부를 수 있다
+         */
+        get: operations["getRelationMap"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/session": {
         parameters: {
             query?: never;
@@ -247,6 +267,52 @@ export interface components {
             /** @description 답에 쓴 한 번에 주는 수 */
             limit: number;
             relations: components["schemas"]["Relation"][];
+        };
+        /** @description 관계 지도. 개체 하나를 가운데 둔 노드와 간선 */
+        RelationMap: {
+            /**
+             * Format: date
+             * @description 답에 쓴 날짜. 요청에 있었든 없었든 담는다
+             */
+            asOf: string;
+            /** @description 가운데 개체의 id */
+            centerEntityId: string;
+            /** @description 답에 쓴 깊이 */
+            depth: number;
+            /** @description 담는 노드의 한도. 가운데 개체를 넣어 센다. 200 이다 */
+            maxNodes: number;
+            /** @description 자르기 전의 노드의 수. 깊이 안에서 찾은 것을 가운데 개체를 넣어 센다. 깊이 너머는 세지 않는다 */
+            totalNodes: number;
+            /** @description 노드가 한도를 넘어 잘렸는가. true 이면 nodes 는 가까운 것부터 maxNodes 개다 */
+            truncated: boolean;
+            nodes: components["schemas"]["RelationMapNode"][];
+            edges: components["schemas"]["RelationMapEdge"][];
+        };
+        RelationMapNode: {
+            entityId: string;
+            /** @description 그 개체. 표시 이름은 조회 시점의 값이다 */
+            entity: components["schemas"]["EntityRef"];
+            /** @description 가운데 개체에서 건넌 관계의 수 가운데 가장 작은 것. 가운데 개체는 0 */
+            depth: number;
+        };
+        /** @description 조회 시점에 유효한 관계 하나. 두 끝이 모두 nodes 에 있다 */
+        RelationMapEdge: {
+            id: string;
+            relationType: string;
+            /** @description 관계에 적힌 출발 개체의 id. nodes 의 entityId 가운데 하나다 */
+            sourceEntityId: string;
+            /** @description 관계에 적힌 도착 개체의 id. nodes 의 entityId 가운데 하나다 */
+            targetEntityId: string;
+            /** Format: date */
+            validFrom: string;
+            /**
+             * Format: date
+             * @description 종료일. 제외한다. 없으면 null
+             */
+            validTo: string | null;
+            provenance: components["schemas"]["Provenance"];
+            /** Format: date-time */
+            recordedAt: string;
         };
         Relation: {
             id: string;
@@ -764,6 +830,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RelationsAsOf"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getRelationMap: {
+        parameters: {
+            query: {
+                /** @description 가운데 개체의 id. 서버가 준 값을 그대로 보낸다 */
+                entityId: string;
+                /** @description 조회 시점. 없으면 설치 설정의 시간대에서의 오늘 */
+                asOf?: string;
+                /** @description 가운데 개체에서 따라갈 관계의 수. 없으면 1. 영어 숫자 한 글자(1, 2, 3)로 적는다 */
+                depth?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 노드와 간선. 노드는 깊이, 개체 유형, 개체의 id 차례이고 가운데 개체가 맨 앞이다. 간선은 관계 유형, 출발 개체의 id, 도착 개체의 id, 관계의 id 차례다. 모두 글자 코드 순이다. 노드가 maxNodes 를 넘으면 앞에서부터 maxNodes 개만 담고 truncated 가 true 다. 간선은 담긴 노드끼리 이은 것만 들어 있다. 이어진 것이 없으면 노드는 가운데 개체 하나이고 간선은 빈 목록이다 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelationMap"];
                 };
             };
             400: components["responses"]["Problem"];

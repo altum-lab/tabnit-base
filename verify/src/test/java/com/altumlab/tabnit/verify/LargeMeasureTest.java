@@ -32,7 +32,7 @@ class LargeMeasureTest {
         assertThat(all).contains("같음  영향 범위 계산 (core) 의 영향 대상의 수: 110");
         for (String what : new String[] { "영향 범위 계산 (core)", "영향 범위 조회: 첫 쪽 50개", "영향 범위 조회: 마지막 쪽",
                 "영향 범위 조회: 한 쪽 200개", "영향 범위 조회: 대상 하나", "영향 범위 조회: 끝까지", "조치 조회: 첫 쪽 50개",
-                "관계 조회: 변동 대상", "관계 조회: 가운데 층의 개체" }) {
+                "관계 조회: 변동 대상", "관계 조회: 가운데 층의 개체", "관계 지도: 변동 대상을 가운데로 깊이 3" }) {
             assertThat(result.lines()).as(what + "\n" + all)
                 .anyMatch(line -> line.contains(what) && line.matches(".*가운데 +[0-9.]+ ms.*가장 큼 +[0-9.]+ ms.*6번.*"));
         }

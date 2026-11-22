@@ -20,6 +20,7 @@ import com.altumlab.tabnit.rules.ActionDecisions;
 import com.altumlab.tabnit.rules.ActionRecords;
 import com.altumlab.tabnit.link.EditionRecords;
 import org.springframework.util.unit.DataSize;
+import com.altumlab.tabnit.core.RelationMapQuery;
 import com.altumlab.tabnit.core.RelationQuery;
 import java.time.Clock;
 import java.time.ZoneId;
@@ -168,6 +169,12 @@ class ApiConfiguration implements WebMvcConfigurer {
 	@Bean
 	RelationQuery relationQuery(DataSource dataSource) {
 		return new RelationQuery(dataSource);
+	}
+
+	/** 관계 지도용 조회 (D2 AD-352). */
+	@Bean
+	RelationMapQuery relationMapQuery(DataSource dataSource) {
+		return new RelationMapQuery(dataSource);
 	}
 
 	/** 판을 투입하고 그 변동을 조치까지 잇는다 (D2 AD-233). */

@@ -397,7 +397,7 @@ class AuditApiTests {
 		assertThat(actions).doesNotHaveDuplicates()
 			.containsExactlyInAnyOrder("getRelationsAsOf", "listPacks", "submitEdition", "listActions", "getAction",
 					"decideAction", "getChangeImpactScope", "loadPack", "login", "listUnprocessedChanges",
-					"reprocessChanges");
+					"reprocessChanges", "getRelationMap");
 	}
 
 	private org.springframework.test.web.servlet.ResultActions login(String loginId, String password) throws Exception {

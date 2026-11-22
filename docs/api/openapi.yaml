@@ -56,6 +56,58 @@ paths:
           $ref: '#/components/responses/Problem'
         '500':
           $ref: '#/components/responses/Problem'
+  /api/v1/relation-map:
+    get:
+      operationId: getRelationMap
+      summary: 개체 하나를 가운데 두고, 조회 시점에 유효한 관계로 이어진 이웃을 노드와 간선으로 돌려준다
+      description: >-
+        관계 지도 화면이 쓴다. 영향이 퍼지는 방향을 보지 않는다: 들어오는 관계와 나가는 관계를 모두 따라간다.
+        담당자와 관리자가 부를 수 있다
+      parameters:
+        - name: entityId
+          in: query
+          required: true
+          description: 가운데 개체의 id. 서버가 준 값을 그대로 보낸다
+          schema:
+            type: string
+            minLength: 1
+        - name: asOf
+          in: query
+          required: false
+          description: 조회 시점. 없으면 설치 설정의 시간대에서의 오늘
+          schema:
+            type: string
+            format: date
+        - name: depth
+          in: query
+          required: false
+          description: 가운데 개체에서 따라갈 관계의 수. 없으면 1. 영어 숫자 한 글자(1, 2, 3)로 적는다
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 3
+            default: 1
+      responses:
+        '200':
+          description: >-
+            노드와 간선. 노드는 깊이, 개체 유형, 개체의 id 차례이고 가운데 개체가 맨 앞이다.
+            간선은 관계 유형, 출발 개체의 id, 도착 개체의 id, 관계의 id 차례다. 모두 글자 코드 순이다.
+            노드가 maxNodes 를 넘으면 앞에서부터 maxNodes 개만 담고 truncated 가 true 다.
+            간선은 담긴 노드끼리 이은 것만 들어 있다. 이어진 것이 없으면 노드는 가운데 개체 하나이고 간선은 빈 목록이다
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelationMap'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/Problem'
   /api/v1/session:
     get:
       operationId: getSession
@@ -517,6 +569,84 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Relation'
+    RelationMap:
+      type: object
+      description: 관계 지도. 개체 하나를 가운데 둔 노드와 간선
+      required: [asOf, centerEntityId, depth, maxNodes, totalNodes, truncated, nodes, edges]
+      properties:
+        asOf:
+          type: string
+          format: date
+          description: 답에 쓴 날짜. 요청에 있었든 없었든 담는다
+        centerEntityId:
+          type: string
+          description: 가운데 개체의 id
+        depth:
+          type: integer
+          minimum: 1
+          maximum: 3
+          description: 답에 쓴 깊이
+        maxNodes:
+          type: integer
+          minimum: 1
+          description: 담는 노드의 한도. 가운데 개체를 넣어 센다. 200 이다
+        totalNodes:
+          type: integer
+          minimum: 1
+          description: 자르기 전의 노드의 수. 깊이 안에서 찾은 것을 가운데 개체를 넣어 센다. 깊이 너머는 세지 않는다
+        truncated:
+          type: boolean
+          description: 노드가 한도를 넘어 잘렸는가. true 이면 nodes 는 가까운 것부터 maxNodes 개다
+        nodes:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/RelationMapNode'
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/RelationMapEdge'
+    RelationMapNode:
+      type: object
+      required: [entityId, entity, depth]
+      properties:
+        entityId:
+          type: string
+        entity:
+          description: 그 개체. 표시 이름은 조회 시점의 값이다
+          $ref: '#/components/schemas/EntityRef'
+        depth:
+          type: integer
+          minimum: 0
+          description: 가운데 개체에서 건넌 관계의 수 가운데 가장 작은 것. 가운데 개체는 0
+    RelationMapEdge:
+      type: object
+      description: 조회 시점에 유효한 관계 하나. 두 끝이 모두 nodes 에 있다
+      required: [id, relationType, sourceEntityId, targetEntityId, validFrom, validTo, provenance, recordedAt]
+      properties:
+        id:
+          type: string
+        relationType:
+          type: string
+        sourceEntityId:
+          type: string
+          description: 관계에 적힌 출발 개체의 id. nodes 의 entityId 가운데 하나다
+        targetEntityId:
+          type: string
+          description: 관계에 적힌 도착 개체의 id. nodes 의 entityId 가운데 하나다
+        validFrom:
+          type: string
+          format: date
+        validTo:
+          type: [string, 'null']
+          format: date
+          description: 종료일. 제외한다. 없으면 null
+        provenance:
+          $ref: '#/components/schemas/Provenance'
+        recordedAt:
+          type: string
+          format: date-time
     Relation:
       type: object
       required: [id, relationType, sourceEntityId, targetEntityId, source, target, validFrom, validTo, provenance, recordedAt]

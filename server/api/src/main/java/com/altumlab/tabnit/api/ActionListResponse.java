@@ -12,14 +12,11 @@ import java.util.List;
 record ActionListResponse(String packId, String status, String changeEventId, int total, int offset, int limit,
 		List<Item> actions) {
 
-	record Entity(String entityId, String entityType) {
-	}
-
-	record Basis(Entity entity, String inputSourceId, int editionNo, LocalDate effectiveDate) {
+	record Basis(EntityViews.Item entity, String inputSourceId, int editionNo, LocalDate effectiveDate) {
 	}
 
 	record Item(String id, String changeEventId, String ruleNo, String ruleLabel, String actionText, int priority,
-			LocalDate dueDate, String status, String appliesTo, Entity target, Basis basis, Instant createdAt) {
+			LocalDate dueDate, String status, String appliesTo, EntityViews.Item target, Basis basis, Instant createdAt) {
 	}
 
 	/**

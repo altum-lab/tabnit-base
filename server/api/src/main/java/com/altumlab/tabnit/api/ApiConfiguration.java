@@ -199,8 +199,14 @@ class ApiConfiguration implements WebMvcConfigurer {
 	}
 
 	@Bean
-	ActionViews actionViews(EntityQuery entityQuery) {
-		return new ActionViews(entityQuery);
+	ActionViews actionViews(EntityViews entityViews) {
+		return new ActionViews(entityViews);
+	}
+
+	/** 개체를 유형, 키, 표시 이름과 함께 옮긴다 (D2 AD-349). */
+	@Bean
+	EntityViews entityViews(EntityQuery entityQuery, DataSource dataSource, PackDefinitions packDefinitions) {
+		return new EntityViews(entityQuery, new com.altumlab.tabnit.core.AttributeValueQuery(dataSource), packDefinitions);
 	}
 
 	@Bean

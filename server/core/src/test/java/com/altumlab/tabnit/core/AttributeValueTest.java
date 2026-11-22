@@ -521,6 +521,73 @@ class AttributeValueTest {
         return ref;
     }
 
+    // ── 개체 여럿의 기준 날짜에 유효한 값 (D-09, D2 AD-349) ──────────────────
+
+    @Test
+    void 개체_여럿의_기준_날짜에_유효한_값을_한_번에_돌려준다() {
+        EntityRef a = entity("av-batch", "a");
+        EntityRef b = entity("av-batch", "b");
+        EntityRef none = entity("av-batch", "none");
+        store.saveAttributeValue(value(a, "name", "가의 옛 이름", "2026-01-01", "2026-03-01"), RECORDED_AT);
+        store.saveAttributeValue(value(a, "name", "가의 새 이름", "2026-03-01", null), RECORDED_AT);
+        store.saveAttributeValue(value(a, "size", "7", "2026-01-01", null), RECORDED_AT);
+        store.saveAttributeValue(value(b, "name", "나의 이름", "2026-02-01", "2026-06-01"), RECORDED_AT);
+        List<String> ids = List.of(none.id(), b.id(), a.id(), a.id());
+
+        // 개체의 식별자, 속성의 이름 순이다. 값이 없는 개체는 줄이 없다.
+        assertThat(query.valuesAsOf(ids, LocalDate.parse("2026-03-01")))
+            .extracting(AttributeValue::entityId, AttributeValue::attributeName, AttributeValue::value)
+            .containsExactly(org.assertj.core.groups.Tuple.tuple(a.id(), "name", "가의 새 이름"),
+                    org.assertj.core.groups.Tuple.tuple(a.id(), "size", "7"),
+                    org.assertj.core.groups.Tuple.tuple(b.id(), "name", "나의 이름"));
+        // 경계: 종료일 전날에는 옛 값, 종료일 당일에는 없다. 개체 하나를 읽는 조회와 같다.
+        assertThat(query.valuesAsOf(ids, LocalDate.parse("2026-02-28"))).extracting(AttributeValue::value)
+            .containsExactly("가의 옛 이름", "7", "나의 이름");
+        assertThat(query.valuesAsOf(ids, LocalDate.parse("2026-06-01"))).extracting(AttributeValue::value)
+            .containsExactly("가의 새 이름", "7");
+        assertThat(query.valuesAsOf(List.of(a.id()), LocalDate.parse("2026-03-01")))
+            .isEqualTo(query.valuesAsOf(a.id(), LocalDate.parse("2026-03-01")));
+        assertThat(query.valuesAsOf(ids, LocalDate.parse("2025-12-31"))).isEmpty();
+        assertThat(query.valuesAsOf(List.of(), LocalDate.parse("2026-03-01"))).isEmpty();
+        // 기준 날짜는 반드시 받는다.
+        assertThatThrownBy(() -> query.valuesAsOf(ids, null)).isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> query.valuesAsOf(List.of(""), LocalDate.parse("2026-03-01")))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> query.valuesAsOf(ids, LocalDate.MAX)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void 개체_여럿을_물을_때도_없는_개체는_값_없음이_아니라_오류로_알린다() {
+        EntityRef a = entity("av-batch-missing", "a");
+        store.saveAttributeValue(value(a, "name", "이름", "2026-01-01", null), RECORDED_AT);
+
+        // 개체 하나를 읽는 조회와 같다 (D3 2절). 없는 것이 여럿이면 식별자 순으로 첫째를 알린다.
+        assertThatThrownBy(() -> query.valuesAsOf(
+                List.of(a.id(), "av-batch-missing|T|z-없는 것", "av-batch-missing|T|b-없는 것"), LocalDate.parse("2026-03-01")))
+            .isInstanceOf(EntityNotFoundException.class)
+            .hasMessageContaining("av-batch-missing|T|b-없는 것");
+        assertThatThrownBy(() -> query.valuesAsOf("av-batch-missing|T|b-없는 것", LocalDate.parse("2026-03-01")))
+            .isInstanceOf(EntityNotFoundException.class);
+    }
+
+    @Test
+    void 개체가_많아도_기준_날짜에_유효한_값을_모두_식별자_순으로_돌려준다() {
+        List<String> ids = new java.util.ArrayList<>();
+        for (int i = 0; i < 2300; i++) {
+            EntityRef e = entity("av-batch-big", "k" + (i * 7) % 2300);
+            ids.add(e.id());
+            if (i % 100 == 0) {
+                store.saveAttributeValue(value(e, "name", "이름 " + e.entityKey(), "2026-01-01", null), RECORDED_AT);
+            }
+        }
+
+        List<AttributeValue> found = query.valuesAsOf(ids, LocalDate.parse("2026-03-01"));
+
+        assertThat(found).hasSize(23);
+        assertThat(found).extracting(AttributeValue::entityId).isSortedAccordingTo(CodePointOrder.STRINGS);
+        assertThat(found).isEqualTo(query.valuesAsOf(ids.reversed(), LocalDate.parse("2026-03-01")));
+    }
+
     // ── 어느 날부터 유효한 값 (C-08, D2 AD-344) ─────────────────────────
 
     @Test

@@ -2,6 +2,11 @@ package com.altumlab.tabnit.pack;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.TreeSet;
+import java.util.TreeMap;
+import java.util.Optional;
+import java.util.Objects;
+import java.util.Map;
 
 /**
  * 적재된 Pack 의 정의 (D6 4절 ~ 5절).
@@ -38,6 +43,44 @@ public record PackDefinition(String packId, String label, int defaultMaxDepth, I
             List<MappingDefinition> mappings) {
         this(packId, label, defaultMaxDepth, loadedAt, entityTypes, relationTypes, attributes, localizedLabels, mappings,
                 List.of());
+    }
+
+    /**
+     * 개체 유형의 표시 이름으로 쓸 속성의 이름 (D6 5절, D2 AD-70). 그 유형이 스스로 적었으면 그것이고, 아니면 상위
+     * 유형에서 받는다 (여러 단계 위도). 상위 유형들이 서로 다른 값을 내려주는 Pack 은 읽을 때 거부되므로 (D2 AD-88),
+     * 어느 길로 올라가도 값이 같다. 이름의 글자 코드 순으로 올라가 처음 만나는 것을 돌려준다.
+     *
+     * @return 어디에도 적지 않았거나 그런 유형이 없으면 비어 있다
+     */
+    public Optional<String> displayNameAttributeOf(String entityType) {
+        Objects.requireNonNull(entityType, "개체 유형의 이름은 반드시 있어야 합니다");
+        Map<String, EntityTypeDefinition> byName = new TreeMap<>(PackOrder.STRINGS);
+        entityTypes.forEach(type -> byName.put(type.name(), type));
+        // 너비 우선으로 올라간다. 이미 본 유형은 다시 보지 않는다 (상위 유형의 사슬은 돌아오지 않지만 여러 길로 닿을 수 있다).
+        TreeSet<String> seen = new TreeSet<>(PackOrder.STRINGS);
+        List<String> level = List.of(entityType);
+        while (!level.isEmpty()) {
+            TreeSet<String> next = new TreeSet<>(PackOrder.STRINGS);
+            for (String name : level) {
+                EntityTypeDefinition type = byName.get(name);
+                if (type == null || !seen.add(name)) {
+                    continue;
+                }
+                if (type.displayNameAttribute() != null) {
+                    return Optional.of(type.displayNameAttribute());
+                }
+                next.addAll(type.parents());
+            }
+            level = List.copyOf(next);
+        }
+        return Optional.empty();
+    }
+
+    /** 개체 유형의 이름표 (화면에 보일 이름). 그런 유형이 없으면 비어 있다. */
+    public Optional<String> entityTypeLabelOf(String entityType) {
+        Objects.requireNonNull(entityType, "개체 유형의 이름은 반드시 있어야 합니다");
+        // 적재된 정의에는 이름표가 반드시 있다 (D6 5절). 손으로 만든 정의에 이름표가 없어도 없다고 답한다.
+        return entityTypes.stream().filter(type -> type.name().equals(entityType)).findFirst().map(EntityTypeDefinition::label);
     }
 
     /** 적재한 때를 빼고 내용이 같은가. */

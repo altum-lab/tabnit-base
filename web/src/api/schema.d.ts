@@ -255,6 +255,10 @@ export interface components {
             sourceEntityId: string;
             /** @description 도착 개체의 id */
             targetEntityId: string;
+            /** @description 출발 개체. 표시 이름은 조회 시점의 값이다 */
+            source: components["schemas"]["EntityRef"];
+            /** @description 도착 개체. 표시 이름은 조회 시점의 값이다 */
+            target: components["schemas"]["EntityRef"];
             /**
              * Format: date
              * @description 시작일. 포함한다
@@ -363,12 +367,18 @@ export interface components {
          * @enum {string}
          */
         ActionStatus: "PENDING" | "CONFIRMED" | "ON_HOLD";
-        /** @description 개체 하나. 표시 이름은 아직 없다 */
+        /** @description 개체 하나. 화면은 표시 이름, 유형의 이름표, 키로 보여 준다. id 는 서버에 되돌려 보내는 값이다. 표시 이름은 날짜에 따라 달라질 수 있다: 어느 날짜의 값인지는 이 개체가 든 응답이 정한다 (관계 조회는 조회 시점, 조치와 영향 범위는 그 변동이 나온 판의 적용일) */
         EntityRef: {
             /** @description 개체의 id */
             entityId: string;
-            /** @description 개체 유형 */
+            /** @description 개체 유형의 이름. Pack 이 정한 것 */
             entityType: string;
+            /** @description 개체 유형의 이름표 (화면에 보일 이름). Pack 이 정한 것 */
+            entityTypeLabel: string;
+            /** @description 입력의 키 */
+            entityKey: string;
+            /** @description 표시 이름. Pack 이 그 유형의 표시 이름으로 정한 속성의, 그 날짜에 유효한 값이다. Pack 이 정하지 않았거나 그 날짜에 값이 없으면 null 이고, 화면은 키를 보여 준다 */
+            displayName: string | null;
         };
         ActionList: {
             packId: string;
@@ -511,6 +521,8 @@ export interface components {
             entityId: string;
             /** @description 개체 유형. 계산할 때의 값 */
             entityType: string;
+            /** @description 영향 대상인 개체. 표시 이름은 판의 적용일(asOfEffective)의 값이다 */
+            entity: components["schemas"]["EntityRef"];
             /** @description 깊이. 가장 가까운 변동 대상에서 건넌 관계의 수. 경로의 단계의 수와 같다 */
             depth: number;
             path: components["schemas"]["ImpactPath"];
@@ -518,6 +530,8 @@ export interface components {
         ImpactPath: {
             /** @description 경로가 시작한 변동 대상 개체의 id */
             startEntityId: string;
+            /** @description 경로가 시작한 변동 대상 개체. 표시 이름은 판의 적용일의 값이다 */
+            start: components["schemas"]["EntityRef"];
             /**
              * Format: date
              * @description 이 경로의 관계가 모두 유효한 날짜. asOfPrevious 와 asOfEffective 가운데 하나다
@@ -535,6 +549,10 @@ export interface components {
             sourceEntityId: string;
             /** @description 그 관계의 도착 개체의 id */
             targetEntityId: string;
+            /** @description 그 관계의 출발 개체. 표시 이름은 판의 적용일의 값이다 */
+            source: components["schemas"]["EntityRef"];
+            /** @description 그 관계의 도착 개체. 표시 이름은 판의 적용일의 값이다 */
+            target: components["schemas"]["EntityRef"];
         };
         EditionSubmission: {
             /**

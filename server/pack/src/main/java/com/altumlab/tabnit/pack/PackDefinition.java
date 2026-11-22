@@ -79,7 +79,8 @@ public record PackDefinition(String packId, String label, int defaultMaxDepth, I
     /** 개체 유형의 이름표 (화면에 보일 이름). 그런 유형이 없으면 비어 있다. */
     public Optional<String> entityTypeLabelOf(String entityType) {
         Objects.requireNonNull(entityType, "개체 유형의 이름은 반드시 있어야 합니다");
-        return entityTypes.stream().filter(type -> type.name().equals(entityType)).map(EntityTypeDefinition::label).findFirst();
+        // 적재된 정의에는 이름표가 반드시 있다 (D6 5절). 손으로 만든 정의에 이름표가 없어도 없다고 답한다.
+        return entityTypes.stream().filter(type -> type.name().equals(entityType)).findFirst().map(EntityTypeDefinition::label);
     }
 
     /** 적재한 때를 빼고 내용이 같은가. */

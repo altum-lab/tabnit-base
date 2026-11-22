@@ -1,5 +1,6 @@
 package com.altumlab.tabnit.link;
 
+import com.altumlab.tabnit.core.AttributeValueQuery;
 import com.altumlab.tabnit.core.AttributeValueRejectedException;
 import com.altumlab.tabnit.core.AttributeValueStore;
 import com.altumlab.tabnit.core.CoreStorageException;
@@ -42,12 +43,15 @@ public class MappingExecutor {
 
     private final AttributeValueStore attributeValueStore;
 
+    private final AttributeValueQuery attributeValueQuery;
+
     private final TransactionTemplate transaction;
 
     public MappingExecutor(DataSource dataSource) {
         Objects.requireNonNull(dataSource, "데이터 원본은 반드시 있어야 합니다");
         this.relationStore = new RelationStore(dataSource);
         this.attributeValueStore = new AttributeValueStore(dataSource);
+        this.attributeValueQuery = new AttributeValueQuery(dataSource);
         this.transaction = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
     }
 
@@ -68,7 +72,15 @@ public class MappingExecutor {
     public MappingOutcome execute(PackDefinition pack, String inputSourceId, byte[] content, int editionNo,
             LocalDate effectiveDate, Instant recordedAt) {
         Objects.requireNonNull(recordedAt, "기록한 때는 반드시 있어야 합니다");
-        EditionPlan plan = plan(pack, inputSourceId, content, editionNo, effectiveDate, null);
+        EditionPlan plan;
+        try {
+            plan = plan(pack, inputSourceId, content, editionNo, effectiveDate, null);
+        }
+        catch (CoreStorageException e) {
+            // 계획을 세우며 저장소에 이미 있는 값을 읽지 못했다.
+            throw new MappingExecutionException("입력 자료 " + inputSourceId + " 의 " + editionNo
+                    + "번째 판을 넣지 못했습니다. 넣은 것은 없습니다. 까닭: " + e.getMessage(), e);
+        }
         try {
             transaction.executeWithoutResult(status -> apply(plan, inputSourceId, editionNo, recordedAt));
         }
@@ -80,7 +92,8 @@ public class MappingExecutor {
     }
 
     /**
-     * 파일을 읽어 계획을 세운다. 저장소에 닿지 않는다.
+     * 파일을 읽어 계획을 세운다. 저장소에 쓰지 않는다. 새로 넣을 속성 값이 저장소에 이미 있는 값과 기간이 겹치는지
+     * 가리려고 그 개체들의 값을 한 번 읽는다 (D2 AD-344).
      *
      * @param previousItems 바로 앞 판의 항목. 앞 판이 없으면 null
      * @throws TableFileRejectedException 파일 수준의 문제이거나, 앞 판의 것을 끝낼 수 없어 판을 거부할 때
@@ -104,7 +117,7 @@ public class MappingExecutor {
         TableFile file = CsvTableReader.read(content);
         requireColumns(mapping, file);
         return new EditionPlanner(pack, mapping, file, new Provenance(inputSourceId, editionNo), effectiveDate,
-                previousItems).plan();
+                previousItems, attributeValueQuery::valuesInEffectFrom).plan();
     }
 
     /**

@@ -3,6 +3,7 @@ package com.altumlab.tabnit.link;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.altumlab.tabnit.core.AttributeValue;
 import com.altumlab.tabnit.core.AttributeValueQuery;
 import com.altumlab.tabnit.core.EntityNotFoundException;
 import com.altumlab.tabnit.core.RelationQuery;
@@ -501,26 +502,135 @@ class EditionIngestTest {
 
     @Test
     void 저장소가_받지_않으면_판도_원본도_남지_않고_투입_기록에는_남는다() {
-        // 두 입력 자료가 같은 개체의 같은 속성을 겹치는 기간으로 넣는다. 둘째의 저장을 core 가 거부한다.
+        // 저장소가 한 값을 받지 않게 해 둔다 (다른 시험과 섞이지 않게 빈 데이터베이스에서).
+        javax.sql.DataSource broken = LinkTestDatabase.fresh();
+        new org.springframework.jdbc.core.JdbcTemplate(broken)
+            .execute("alter table attribute_value add constraint test_refuse check (value <> '받지 않는 값')");
+        EditionIngest failing = new EditionIngest(broken);
+        EditionRecords failedRecords = new EditionRecords(broken);
         PackDefinition pack = pack("i-fail", shared("one"), shared("two"));
-        ingest.ingest(pack, "one", "1.csv", bytes("line,other,otherName\n1,O-1,하나\n"), EFFECTIVE, RECEIVED_AT);
+        failing.ingest(pack, "one", "1.csv", bytes("line,other,otherName\n1,O-1,하나\n"), EFFECTIVE, RECEIVED_AT);
 
-        assertThatThrownBy(() -> ingest.ingest(pack, "two", "2.csv",
-                bytes("line,other,otherName\n1,O-0,새 개체\n2,O-1,둘\n"), EFFECTIVE.plusDays(5), RECEIVED_AT.plusSeconds(1)))
+        assertThatThrownBy(() -> failing.ingest(pack, "two", "2.csv",
+                bytes("line,other,otherName\n1,O-0,새 개체\n2,O-2,받지 않는 값\n"), EFFECTIVE.plusDays(5),
+                RECEIVED_AT.plusSeconds(1)))
             .isInstanceOf(IngestFailedException.class)
             .hasMessageContaining("two");
 
-        assertThat(records.findEdition("i-fail|two|1")).isEmpty();
-        assertThat(records.originalContent("i-fail|two|1")).isEmpty();
-        assertThat(records.inputSourcesWithEditions("i-fail")).containsExactly("one");
+        assertThat(failedRecords.findEdition("i-fail|two|1")).isEmpty();
+        assertThat(failedRecords.originalContent("i-fail|two|1")).isEmpty();
+        assertThat(failedRecords.inputSourcesWithEditions("i-fail")).containsExactly("one");
         // 먼저 저장된 O-0 도 남지 않는다.
-        assertThatThrownBy(() -> values.valuesAsOf("i-fail|Other|O-0", EFFECTIVE.plusDays(5)))
+        assertThatThrownBy(() -> new AttributeValueQuery(broken).valuesAsOf("i-fail|Other|O-0", EFFECTIVE.plusDays(5)))
             .isInstanceOf(EntityNotFoundException.class);
-        assertThat(records.ingestRecords("i-fail", "two")).singleElement().satisfies(r -> {
+        assertThat(failedRecords.ingestRecords("i-fail", "two")).singleElement().satisfies(r -> {
             assertThat(r.outcome()).isEqualTo(IngestOutcome.REJECTED);
             assertThat(r.reasonCode()).isEqualTo("STORAGE_FAILURE");
             assertThat(r.editionId()).isNull();
         });
+    }
+
+    // ── 저장소에 이미 있는 값과 겹친다: 그 값만 넣지 않고 알린다 (C-08, D2 AD-344) ──────────
+
+    @Test
+    void 다른_입력_자료가_넣은_값과_기간이_겹치면_그_값만_넣지_않고_알리며_나머지는_받는다() {
+        PackDefinition pack = pack("i-overlap", shared("one"), shared("two"));
+        ingest.ingest(pack, "one", "1.csv", bytes("line,other,otherName\n1,O-1,하나\n"), EFFECTIVE, RECEIVED_AT);
+
+        IngestResult result = ingest.ingest(pack, "two", "2.csv",
+                bytes("line,other,otherName\n1,O-0,새 개체\n2,O-1,둘\n"), EFFECTIVE.plusDays(5), RECEIVED_AT.plusSeconds(1));
+
+        assertThat(result.outcome()).isEqualTo(IngestOutcome.ACCEPTED);
+        // 어느 행의 어느 속성이 무엇과 겹치는지 알린다: 겹치는 값, 그 기간, 넣은 입력 자료와 판.
+        assertThat(result.mapping().notices()).singleElement().satisfies(notice -> {
+            assertThat(notice.kind()).isEqualTo("ATTRIBUTE_CONFLICT");
+            assertThat(notice.code()).isEqualTo("OVERLAPS_STORED_VALUE");
+            assertThat(notice.rowNo()).isEqualTo(3);
+            assertThat(notice.subject()).contains("O-1").contains("otherName");
+            assertThat(notice.detail()).contains("둘").contains("하나").contains("2026-03-01").contains("one");
+        });
+        assertThat(records.notices("i-overlap|two|1")).isEqualTo(result.mapping().notices());
+        // 겹치지 않는 행은 들어갔다. 겹친 값은 먼저 있던 것 그대로다. 행은 둘 다 항목이다.
+        assertThat(values.valueAsOf("i-overlap|Other|O-0", "otherName", EFFECTIVE.plusDays(5)))
+            .map(AttributeValue::value).contains("새 개체");
+        assertThat(values.valuesInEffectFrom(List.of("i-overlap|Other|O-1"), EFFECTIVE))
+            .extracting(AttributeValue::value).containsExactly("하나");
+        assertThat(records.items("i-overlap|two|1")).extracting(IngestedItem::itemKey).containsExactly("1", "2");
+    }
+
+    @Test
+    void 겹쳐서_넣지_못한_값은_겹치던_값이_끝난_뒤의_판에서_다시_가려_들어간다() {
+        PackDefinition pack = pack("i-overlap-later", shared("one"), shared("two"));
+        ingest.ingest(pack, "one", "1.csv", bytes("line,other,otherName\n1,O-1,하나\n"), EFFECTIVE, RECEIVED_AT);
+        ingest.ingest(pack, "two", "2.csv", bytes("line,other,otherName\n2,O-1,둘\n"), EFFECTIVE.plusDays(5),
+                RECEIVED_AT.plusSeconds(1));
+        // one 의 둘째 판에서 그 행이 없어져 값이 끝난다.
+        ingest.ingest(pack, "one", "1.csv", bytes("line,other,otherName\n9,O-9,다른 것\n"), EFFECTIVE.plusDays(10),
+                RECEIVED_AT.plusSeconds(2));
+
+        // two 의 둘째 판: 그 행은 그대로이고 다른 행이 늘었다. 겹치던 값이 끝난 날보다 앞이면 여전히 겹친다.
+        IngestResult still = ingest.ingest(pack, "two", "2.csv", bytes("line,other,otherName\n2,O-1,둘\n3,O-3,셋\n"),
+                EFFECTIVE.plusDays(7), RECEIVED_AT.plusSeconds(3));
+        assertThat(still.mapping().notices()).extracting(IngestNotice::code).containsExactly("OVERLAPS_STORED_VALUE");
+        // 넣지 못한 행은 만든 것이 앞 판과 같으므로 변동이 아니다. 늘어난 행만 변동이다.
+        assertThat(still.mapping().changes()).extracting(ItemChange::itemKey).containsExactly("3");
+
+        // 끝난 날(맞닿는 날)부터는 겹치지 않는다.
+        IngestResult settled = ingest.ingest(pack, "two", "2.csv",
+                bytes("line,other,otherName\n2,O-1,둘\n3,O-3,셋\n4,O-4,넷\n"), EFFECTIVE.plusDays(10),
+                RECEIVED_AT.plusSeconds(4));
+        assertThat(settled.mapping().notices()).isEmpty();
+        // 값이 실제로 들어간 판에서 그 행이 변동이 되고, 바뀐 것에 그 속성이 든다.
+        assertThat(settled.mapping().changes())
+            .extracting(ItemChange::itemKey, ItemChange::kind, ItemChange::changedAttributes)
+            .containsExactly(org.assertj.core.groups.Tuple.tuple("2", ChangeKind.CHANGED, List.of("otherName")),
+                    org.assertj.core.groups.Tuple.tuple("4", ChangeKind.ADDED, List.of("otherName")));
+        assertThat(values.valueAsOf("i-overlap-later|Other|O-1", "otherName", EFFECTIVE.plusDays(9)))
+            .map(AttributeValue::value).contains("하나");
+        assertThat(values.valueAsOf("i-overlap-later|Other|O-1", "otherName", EFFECTIVE.plusDays(10)))
+            .map(AttributeValue::value).contains("둘");
+    }
+
+    @Test
+    void 값과_기간이_같아도_다른_입력_자료가_넣은_것이면_겹침이고_여러_행이_적으면_행마다_알린다() {
+        PackDefinition pack = pack("i-overlap-same", shared("one"), shared("two"));
+        ingest.ingest(pack, "one", "1.csv", bytes("line,other,otherName\n1,O-1,하나\n"), EFFECTIVE, RECEIVED_AT);
+
+        // 같은 날, 같은 값. 식별자까지 같다. 저장 실패가 아니라 알림이다. 두 행이 같은 것을 적었다.
+        IngestResult result = ingest.ingest(pack, "two", "2.csv",
+                bytes("line,other,otherName\n1,O-1,하나\n2,O-1,하나\n"), EFFECTIVE, RECEIVED_AT.plusSeconds(1));
+
+        assertThat(result.outcome()).isEqualTo(IngestOutcome.ACCEPTED);
+        assertThat(result.mapping().notices()).extracting(IngestNotice::rowNo, IngestNotice::code)
+            .containsExactly(org.assertj.core.groups.Tuple.tuple(2, "OVERLAPS_STORED_VALUE"),
+                    org.assertj.core.groups.Tuple.tuple(3, "OVERLAPS_STORED_VALUE"));
+        assertThat(values.valuesInEffectFrom(List.of("i-overlap-same|Other|O-1"), EFFECTIVE))
+            .extracting(v -> v.provenance().inputSourceId()).containsExactly("one");
+    }
+
+    @Test
+    void 한_판_안에서_서로_부딪힌_값은_저장소의_값과_겹쳐도_부딪힘으로만_알린다() {
+        PackDefinition pack = pack("i-overlap-both", shared("one"), shared("two"));
+        ingest.ingest(pack, "one", "1.csv", bytes("line,other,otherName\n1,O-1,하나\n"), EFFECTIVE, RECEIVED_AT);
+
+        IngestResult result = ingest.ingest(pack, "two", "2.csv",
+                bytes("line,other,otherName\n1,O-1,둘\n2,O-1,셋\n"), EFFECTIVE.plusDays(5), RECEIVED_AT.plusSeconds(1));
+
+        assertThat(result.mapping().notices()).extracting(IngestNotice::code)
+            .containsExactly("CONFLICTING_VALUES", "CONFLICTING_VALUES");
+    }
+
+    @Test
+    void 같은_입력_자료의_앞_판이_넣은_값을_바꾸는_것은_겹침이_아니다() {
+        PackDefinition pack = pack("i-overlap-own", shared("one"));
+        ingest.ingest(pack, "one", "1.csv", bytes("line,other,otherName\n1,O-1,하나\n"), EFFECTIVE, RECEIVED_AT);
+
+        IngestResult result = ingest.ingest(pack, "one", "1.csv", bytes("line,other,otherName\n1,O-1,고친 것\n"),
+                EFFECTIVE.plusDays(5), RECEIVED_AT.plusSeconds(1));
+
+        assertThat(result.mapping().notices()).isEmpty();
+        assertThat(values.valueAsOf("i-overlap-own|Other|O-1", "otherName", EFFECTIVE.plusDays(5)))
+            .map(AttributeValue::value).contains("고친 것");
     }
 
     // ── 같은 입력에는 같은 결과 ──────────────────────────────────────

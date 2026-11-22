@@ -256,6 +256,106 @@ class PackRuleScopeTest {
         assertThat(definitions.find("s-mapping").orElseThrow().rules().get(0).inputSources()).containsExactly("unit");
     }
 
+    // ── 적재할 때의 경고 (D2 AD-323) ──────────────────────────────
+
+    /** 영향 대상(Unit)에 거는 규칙의 앞부분. 조건과 그 밖의 항목을 이어 적는다. */
+    private static String impactRule(String no, String rest) {
+        return rule(no) + rest + " .\n";
+    }
+
+    @Test
+    void 개체를_여럿_만드는_입력_자료에_걸리는_규칙이_유형을_정하지_않고_변동_대상의_속성을_보면_경고한다() throws IOException {
+        // doc 의 행은 Doc 과 Unit 을 만든다. unit 의 행은 Unit 하나만 만든다.
+        String changeLevel = "; tabnit:condition [ tabnit:subject tabnit:ChangeTarget ; tabnit:property ex:level ; "
+                + "tabnit:operator tabnit:GreaterThan ; tabnit:value 3 ]";
+        String compareToChange = "; tabnit:condition [ tabnit:subject tabnit:ImpactTarget ; tabnit:property ex:grade ; "
+                + "tabnit:operator tabnit:LessThan ; tabnit:compareToSubject tabnit:ChangeTarget ; tabnit:compareToProperty ex:level ]";
+        String typed = "; tabnit:condition [ tabnit:subject tabnit:ChangeTarget ; tabnit:typeIs ex:Doc ]";
+        Path dir = pack("s-warn",
+                // 입력 자료를 가리지 않는다: doc 에도 걸린다. 유형을 정하지 않았다.
+                impactRule("0001", changeLevel)
+                        // 견주는 상대가 변동 대상의 속성인 것도 같다.
+                        + impactRule("0002", "; tabnit:whenInputSource \"doc\" " + compareToChange)
+                        // 변동 대상의 유형을 정했다.
+                        + impactRule("0003", changeLevel + typed)
+                        // 개체를 하나만 만드는 입력 자료에만 걸린다.
+                        + impactRule("0004", "; tabnit:whenInputSource \"unit\" " + changeLevel)
+                        // 변동 대상의 속성을 보지 않는다.
+                        + impactRule("0005", "; tabnit:condition [ tabnit:subject tabnit:ImpactTarget ; tabnit:property ex:grade ; "
+                                + "tabnit:operator tabnit:GreaterThan ; tabnit:value 3 ]")
+                        // 이어진 대상의 값을 변동 대상의 속성과 견주는 것도 변동 대상의 속성을 보는 것이다.
+                        + impactRule("0006", "; tabnit:condition [ tabnit:subject tabnit:LinkedTarget ; tabnit:linkedBy ex:covers ; "
+                                + "tabnit:property ex:level ; tabnit:operator tabnit:LessThan ; "
+                                + "tabnit:compareToSubject tabnit:ChangeTarget ; tabnit:compareToProperty ex:level ]"));
+
+        PackLoadResult first = loader.load(dir, LOADED_AT);
+        PackLoadResult again = loader.load(dir, LOADED_AT);
+
+        assertThat(first.outcome()).isEqualTo(PackLoadResult.Outcome.LOADED);
+        // 경고는 적재를 막지 않는다. 규칙 번호 순이고, 어느 입력 자료와 어느 속성인지와 무엇을 하면 되는지를 담는다.
+        assertThat(first.warnings()).extracting(PackWarning::item).containsExactly("0001", "0002", "0006");
+        assertThat(first.warnings().get(0).message()).contains("doc").contains("level").contains("typeIs");
+        assertThat(first.warnings().get(0).file()).isEqualTo("rules");
+        // 같은 Pack 을 다시 적재해도 같은 경고가 나온다.
+        assertThat(again.outcome()).isEqualTo(PackLoadResult.Outcome.UNCHANGED);
+        assertThat(again.warnings()).isEqualTo(first.warnings());
+    }
+
+    @Test
+    void 저장소의_Pack_은_경고_없이_적재된다() throws IOException {
+        // 저장소의 Pack 은 본보기다. 경고가 나는 규칙을 두지 않는다. 규칙을 고쳐 경고가 생기면 여기서 드러난다.
+        List<Path> packs;
+        try (java.util.stream.Stream<Path> children = Files.list(Path.of("../../packs"))) {
+            packs = children.filter(dir -> Files.isRegularFile(dir.resolve("pack.ttl"))).sorted().toList();
+        }
+        assertThat(packs).hasSizeGreaterThanOrEqualTo(3);
+        for (Path dir : packs) {
+            assertThat(loader.load(dir, LOADED_AT).warnings()).as(dir.getFileName().toString()).isEmpty();
+        }
+    }
+
+    @Test
+    void 같은_유형의_개체만_여럿_만드는_입력_자료는_경고에_들지_않는다() throws IOException {
+        Path dir = pack("s-warn-text", impactRule("0001", "; tabnit:condition [ tabnit:subject tabnit:ChangeTarget ; "
+                + "tabnit:property ex:level ; tabnit:operator tabnit:GreaterThan ; tabnit:value 3 ]"));
+        // 한 행이 Unit 둘을 잇는 입력 자료를 더한다: 유형은 하나이고 개체는 둘이다.
+        String ex = "@prefix ex: <urn:tabnit:pack:s-warn-text:> .\n";
+        Files.writeString(dir.resolve("ontology.ttl"), Files.readString(dir.resolve("ontology.ttl"), StandardCharsets.UTF_8)
+                + "ex:next a owl:ObjectProperty ; rdfs:label \"다음\" ; rdfs:domain ex:Unit ; rdfs:range ex:Unit ; "
+                + "tabnit:impactDirection tabnit:None .\n", StandardCharsets.UTF_8);
+        Files.writeString(dir.resolve("mappings/pair.ttl"), PREFIXES + ex + """
+                ex:m-pair a tabnit:Mapping ;
+                    tabnit:inputSourceId "pair" ;
+                    tabnit:fileFormat tabnit:Csv ;
+                    tabnit:requiredColumns ( "from" "to" ) ;
+                    tabnit:itemKeyColumns ( "from" "to" ) ;
+                    tabnit:primaryEntity [ tabnit:entityType ex:Unit ; tabnit:keyColumn "from" ] ;
+                    tabnit:relation [ tabnit:relationType ex:next ;
+                                      tabnit:sourceEntity [ tabnit:entityType ex:Unit ; tabnit:keyColumn "from" ] ;
+                                      tabnit:targetEntity [ tabnit:entityType ex:Unit ; tabnit:keyColumn "to" ] ] .
+                """, StandardCharsets.UTF_8);
+
+        List<PackWarning> warnings = loader.load(dir, LOADED_AT).warnings();
+
+        // 유형이 다른 개체를 만드는 doc 만 적는다. pair 는 유형 조건으로 가를 수 없어 적지 않는다 (D2 AD-343).
+        assertThat(warnings).singleElement()
+            .satisfies(warning -> assertThat(warning.message()).contains("doc (Doc, Unit)").doesNotContain("pair"));
+    }
+
+    @Test
+    void 대상이_변동_대상인_규칙과_경고할_것이_없는_Pack_은_경고가_없다() throws IOException {
+        Path dir = pack("s-warn-none", """
+                ex:r1 a tabnit:Rule ; tabnit:ruleNo "0001" ; rdfs:label "이름" ; tabnit:priority 1 ;
+                    tabnit:appliesTo tabnit:ChangeTarget ; tabnit:targetType ex:Doc ;
+                    tabnit:condition [ tabnit:subject tabnit:ChangeTarget ; tabnit:property ex:level ;
+                                       tabnit:operator tabnit:GreaterThan ; tabnit:value 3 ] ;
+                    tabnit:actionText "할 일" ; tabnit:dueInDays 7 .
+                """);
+
+        // 대상이 변동 대상 자신이면 조건이 보는 변동 대상도 그 개체다. 대상 유형이 이미 가린다.
+        assertThat(loader.load(dir, LOADED_AT).warnings()).isEmpty();
+    }
+
     private static String rule(String no) {
         return RULE.formatted(no, no).stripTrailing();
     }

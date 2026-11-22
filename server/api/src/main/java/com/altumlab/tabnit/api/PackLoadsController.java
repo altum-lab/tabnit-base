@@ -37,7 +37,15 @@ class PackLoadsController {
 		AuditTrail.target("packId", name);
 		PackLoadResult result = this.loading.load(name);
 		AuditTrail.detail("outcome", result.outcome().name());
-		return new PackLoadResponse(result.packId(), result.outcome().name());
+		if (!result.warnings().isEmpty()) {
+			// 감사 기록에는 경고의 수만 남긴다. 경고의 문구는 응답으로 간다.
+			AuditTrail.detail("warnings", Integer.toString(result.warnings().size()));
+		}
+		return new PackLoadResponse(result.packId(), result.outcome().name(),
+				result.warnings()
+					.stream()
+					.map(warning -> new PackLoadResponse.Warning(warning.file(), warning.item(), warning.message()))
+					.toList());
 	}
 
 }

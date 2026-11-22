@@ -55,7 +55,7 @@ public class PackLoader {
         }
         PackDefinition pack = read.definition();
         try {
-            return transaction.execute(status -> store(pack));
+            return transaction.execute(status -> store(pack, read.warnings()));
         }
         catch (DataAccessException | TransactionException e) {
             throw new PackStorageException("Pack 을 저장하지 못했습니다. Pack: " + pack.packId()
@@ -63,17 +63,17 @@ public class PackLoader {
         }
     }
 
-    private PackLoadResult store(PackDefinition pack) {
+    private PackLoadResult store(PackDefinition pack, List<PackWarning> warnings) {
         // 같은 Pack 을 동시에 적재하면 한쪽이 기다린다. 트랜잭션이 끝나면 풀린다.
         jdbc.query("select pg_advisory_xact_lock(hashtext(?))", rs -> {
         }, "tabnit-pack:" + pack.packId());
         Optional<PackDefinition> existing = tables.read(pack.packId());
         if (existing.isEmpty()) {
             tables.insert(pack);
-            return new PackLoadResult(pack.packId(), PackLoadResult.Outcome.LOADED);
+            return new PackLoadResult(pack.packId(), PackLoadResult.Outcome.LOADED, warnings);
         }
         if (existing.get().sameContentAs(pack)) {
-            return new PackLoadResult(pack.packId(), PackLoadResult.Outcome.UNCHANGED);
+            return new PackLoadResult(pack.packId(), PackLoadResult.Outcome.UNCHANGED, warnings);
         }
         List<String> reasons = rejectedChanges(existing.get(), pack);
         if (!reasons.isEmpty()) {
@@ -81,7 +81,7 @@ public class PackLoader {
         }
         tables.delete(pack.packId());
         tables.insert(pack);
-        return new PackLoadResult(pack.packId(), PackLoadResult.Outcome.UPDATED);
+        return new PackLoadResult(pack.packId(), PackLoadResult.Outcome.UPDATED, warnings);
     }
 
     /**

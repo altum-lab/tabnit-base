@@ -73,7 +73,12 @@ final class PackReader {
             ValueFormat.BOOLEAN);
 
     /** 읽은 결과. 문제가 하나라도 있으면 정의는 null 이다. */
-    record Result(PackDefinition definition, List<PackProblem> problems) {
+    record Result(PackDefinition definition, List<PackProblem> problems, List<PackWarning> warnings) {
+
+        /** 문제가 있어 정의를 만들지 못했다. 경고는 내지 않는다. */
+        Result(PackDefinition definition, List<PackProblem> problems) {
+            this(definition, problems, List.of());
+        }
     }
 
     private final Path directory;
@@ -140,11 +145,12 @@ final class PackReader {
             // 같은 문제를 두 번 알리지 않고, 차례를 정해 둔다.
             TreeSet<PackProblem> ordered = new TreeSet<>(PackOrder.PROBLEMS);
             ordered.addAll(problems);
-            return new Result(null, List.copyOf(ordered));
+            return new Result(null, List.copyOf(ordered), List.of());
         }
         return new Result(new PackDefinition(packId, label[0], maxDepth[0], loadedAt, List.copyOf(entityTypes.values()),
                 List.copyOf(relationTypes.values()), List.copyOf(attributes.values()),
-                localizedLabels.stream().sorted(PackOrder.LABELS).toList(), mappings, rules), List.of());
+                localizedLabels.stream().sorted(PackOrder.LABELS).toList(), mappings, rules), List.of(),
+                RuleWarnings.find(mappings, rules));
     }
 
     // ── pack.ttl ────────────────────────────────────────────────

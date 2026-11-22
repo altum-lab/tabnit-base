@@ -29,7 +29,8 @@ type Action = {
 };
 
 async function listActions(request: APIRequestContext, params: Record<string, string>) {
-  const response = await request.get("/api/v1/actions", { params });
+  // 한 번에 받을 수 있는 가장 큰 크기로 받는다. 시험 자료의 조치는 그보다 적다.
+  const response = await request.get("/api/v1/actions", { params: { limit: "200", ...params } });
   expect(response.ok()).toBe(true);
   return (await response.json()) as { total: number; actions: Action[] };
 }
@@ -146,7 +147,7 @@ test("조치를 펼치면 근거 경로가 서버가 준 단계 그대로 나오
   if (!reached || !own) {
     return;
   }
-  const scope = (await (await request.get("/api/v1/impact-scopes", { params: { changeEventId: reached.changeEventId } })).json()) as {
+  const scope = (await (await request.get("/api/v1/impact-scopes", { params: { changeEventId: reached.changeEventId, limit: "200" } })).json()) as {
     targets: { entityId: string; path: { startEntityId: string; asOf: string; steps: { relationId: string; relationType: string }[] } }[];
   };
   const target = scope.targets.find((candidate) => candidate.entityId === reached.target.entityId);
@@ -304,4 +305,68 @@ test("변동 감지 화면의 조치 수를 누르면 그 변동의 조치만 �
   expect(await shownActionIds(page)).toEqual(expected.actions.map((candidate) => candidate.id));
   expect(expected.total).toBeGreaterThan(0);
   await expect(page.getByTestId("change-filter")).toContainText("변동 하나의 조치만");
+});
+
+// ── 나눠 주기 (D-13, D7 2절) ──────────────────────────────────────────
+
+test("조치 목록에 전체 수와 지금 보는 자리가 나오고 주소의 건너뛸 수로 그 자리부터 열린다", async ({ page, request }) => {
+  const expected = await listActions(request, { packId: READ_PACK, status: "PENDING" });
+  expect(expected.total).toBeGreaterThan(2);
+
+  await page.goto(`/actions?packId=${READ_PACK}&status=PENDING`);
+  await expect(page.getByTestId("pager-position")).toHaveText(`전체 ${expected.total}건 가운데 1~${expected.total}번째`);
+  await expect(page.getByRole("button", { name: "이전" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "다음" })).toBeDisabled();
+
+  // 둘째부터 연다. 수는 그대로이고 목록은 서버가 준 순서의 둘째부터다.
+  await page.goto(`/actions?packId=${READ_PACK}&status=PENDING&offset=1`);
+  await expect(page.getByTestId("pager-position")).toHaveText(`전체 ${expected.total}건 가운데 2~${expected.total}번째`);
+  await expect(page.getByTestId("action-total")).toHaveText(`${expected.total}건`);
+  expect(await shownActionIds(page)).toEqual(expected.actions.slice(1).map((action) => action.id));
+
+  // 이전으로 돌아가면 처음부터이고 주소에서 건너뛸 수가 빠진다.
+  await page.getByRole("button", { name: "이전" }).click();
+  await expect(page.getByTestId("pager-position")).toHaveText(`전체 ${expected.total}건 가운데 1~${expected.total}번째`);
+  await expect(page).not.toHaveURL(/offset=/);
+  expect(await shownActionIds(page)).toEqual(expected.actions.map((action) => action.id));
+});
+
+test("전체 수를 넘긴 자리와 틀린 건너뛸 수는 화면이 멈추지 않고 알린다", async ({ page, request }) => {
+  const expected = await listActions(request, { packId: READ_PACK, status: "PENDING" });
+
+  await page.goto(`/actions?packId=${READ_PACK}&status=PENDING&offset=${expected.total + 10}`);
+  await expect(page.getByText("이 자리에는 조치가 없습니다. 이전으로 돌아가세요.")).toBeVisible();
+  await expect(page.getByTestId("action-total")).toHaveText(`${expected.total}건`);
+  await expect(page.getByRole("button", { name: "이전" })).toBeEnabled();
+
+  // 틀린 값은 서버가 알린다. 거르는 것을 바꾸면 처음부터 다시 본다.
+  await page.goto(`/actions?packId=${READ_PACK}&status=PENDING&offset=abc`);
+  await expect(page.getByRole("alert")).toContainText("건너뛸 수(offset)의 값이 틀렸습니다");
+  await page.getByLabel("상태").selectOption("ALL");
+  await expect(page).not.toHaveURL(/offset=/);
+  await expect(page.getByRole("table", { name: "조치 목록" })).toBeVisible();
+});
+
+test("조치의 근거 경로는 그 조치의 대상 하나만 물어 받는다", async ({ page, request }) => {
+  const expected = await listActions(request, { packId: READ_PACK, status: "PENDING" });
+  const onImpactTarget = expected.actions.find((action) => action.appliesTo === "IMPACT_TARGET");
+  if (!onImpactTarget) {
+    throw new Error("시험 자료에 영향 대상에 거는 조치가 없습니다.");
+  }
+  const asked: string[] = [];
+  page.on("request", (sent) => {
+    if (sent.url().includes("/api/v1/impact-scopes")) {
+      asked.push(sent.url());
+    }
+  });
+  await page.goto(`/actions?packId=${READ_PACK}&status=PENDING`);
+
+  await open(page, onImpactTarget.id);
+
+  const path = detail(page, onImpactTarget.id).locator("ol li");
+  await expect(path.first()).toBeVisible();
+  expect(asked.length).toBeGreaterThan(0);
+  for (const url of asked) {
+    expect(new URL(url).searchParams.get("entityId")).toBe(onImpactTarget.target.entityId);
+  }
 });

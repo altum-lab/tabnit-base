@@ -73,6 +73,11 @@ class E2eSeedData {
 
 			// 관계가 하나도 없는 개체.
 			entity(store, "alone");
+			// 나눠 주기를 보는 자료: 관계가 한 쪽(50개)을 넘는 개체. 넣는 순서는 일부러 섞는다 (7 은 60 과 서로소다).
+			EntityRef many = entity(store, "many");
+			for (int i = 0; i < 60; i++) {
+				relation(store, many, entity(store, String.format("m%02d", (i * 7) % 60)), "R", "2020-01-01", null);
+			}
 			// 변동 감지 화면의 시험이 판을 올릴 Pack: 시험용 Pack 의 사본이다. 판은 시험이 화면으로 올린다.
 			PackCopies.load(dataSource, java.nio.file.Files.createTempDirectory("tabnit-e2e-pack"), CHANGES_PACK, text -> text);
 			// 조치 화면의 시험이 읽을 Pack: 시험용 Pack 의 사본에 그 시나리오의 판을 차례로 올려 조치까지 만들어 둔다.

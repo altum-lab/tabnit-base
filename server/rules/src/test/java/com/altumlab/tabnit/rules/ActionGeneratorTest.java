@@ -703,6 +703,141 @@ class ActionGeneratorTest {
         assertThat(none.countsByDepth()).isEmpty();
     }
 
+    // ── 나눠 주기 (D-13, D2 AD-347) ──────────────────────────────
+
+    @Test
+    void 조치를_나눠_받아_이으면_한_번에_받은_것과_순서까지_같고_거른_전체_수가_함께_온다() {
+        String p = "a-page";
+        EntityRef start = entity(p, "Base", "B-1");
+        for (int i = 0; i < 12; i++) {
+            // 넣는 차례를 섞는다.
+            link(start, entity(p, "Other", "O-" + String.format("%02d", (i * 5) % 12)));
+        }
+        PackDefinition pack = pack(p, rule("0001", 1, IMPACT, "Other", 30), rule("0002", 5, IMPACT, "Other", 7),
+                rule("0003", 2, CHANGE, "Base", 7));
+        generator.generate(pack, change("ev-page", start), EDITION, scope(start), 3, NOW);
+        List<Action> all = records.packActions(p, null, null);
+        assertThat(all).hasSize(25);
+
+        List<Action> joined = new ArrayList<>();
+        for (int offset = 0; offset < 35; offset += 7) {
+            ActionPage page = records.packActions(p, null, null, offset, 7);
+            assertThat(page.total()).isEqualTo(25);
+            assertThat(page.actions()).hasSize(Math.max(0, Math.min(7, 25 - offset)));
+            joined.addAll(page.actions());
+        }
+        assertThat(joined).isEqualTo(all);
+        // 거른 것의 전체 수다. 걸러도 나눠 받은 것을 이으면 거른 목록과 같다.
+        ActionPage byEvent = records.packActions(p, ActionStatus.PENDING, "ev-page", 20, 10);
+        assertThat(byEvent.total()).isEqualTo(25);
+        assertThat(byEvent.actions()).isEqualTo(all.subList(20, 25));
+        assertThat(records.packActions(p, ActionStatus.CONFIRMED, null, 0, 10)).isEqualTo(new ActionPage(List.of(), 0));
+        assertThat(records.packActions("a-page-없는-pack", null, null, 0, 10).total()).isZero();
+        // 전체 수를 넘겨 건너뛰면 빈 목록이고 전체 수는 그대로다. 두 번 물어도 같다.
+        assertThat(records.packActions(p, null, null, 25, 10)).isEqualTo(new ActionPage(List.of(), 25));
+        assertThat(records.packActions(p, null, null, 7, 7)).isEqualTo(records.packActions(p, null, null, 7, 7));
+        assertThatThrownBy(() -> records.packActions(p, null, null, -1, 10)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> records.packActions(p, null, null, 0, 0)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void 영향_대상을_나눠_받아_이으면_한_번에_받은_것과_같고_전체_수와_유형별_깊이별_수는_나누기_전의_것이다() {
+        String p = "a-scope-page";
+        EntityRef start = entity(p, "Base", "B-1");
+        EntityRef near = entity(p, "Other", "O-near");
+        link(start, near);
+        for (int i = 0; i < 9; i++) {
+            int n = (i * 4) % 9;
+            link(start, entity(p, n % 2 == 0 ? "Other" : "Third", "T-" + n));
+            link(near, entity(p, "Third", "far-" + n));
+        }
+        generator.generate(pack(p, rule("0001", 1, IMPACT, "Other", 7)), change("ev-scope-page", start), EDITION,
+                scope(start), 3, NOW);
+        StoredImpactScope whole = records.impactScope("ev-scope-page").orElseThrow();
+        assertThat(whole.targets()).hasSize(19);
+
+        List<StoredImpactTarget> joined = new ArrayList<>();
+        for (int offset = 0; offset < 24; offset += 4) {
+            StoredImpactScopePage page = records.impactScopePage("ev-scope-page", null, offset, 4).orElseThrow();
+            // 머리의 값과 수는 어느 쪽에서나 나누기 전의 것이다.
+            assertThat(page.total()).isEqualTo(19);
+            assertThat(page.countsByType()).isEqualTo(whole.countsByType());
+            assertThat(page.countsByDepth()).isEqualTo(whole.countsByDepth());
+            assertThat(new ArrayList<>(page.countsByType().keySet())).isEqualTo(new ArrayList<>(whole.countsByType().keySet()));
+            assertThat(page.scope().targets()).hasSize(Math.max(0, Math.min(4, 19 - offset)));
+            assertThat(page.scope().asOfEffective()).isEqualTo(whole.asOfEffective());
+            assertThat(page.scope().storedAt()).isEqualTo(whole.storedAt());
+            joined.addAll(page.scope().targets());
+        }
+        // 근거 경로까지 같다.
+        assertThat(joined).isEqualTo(whole.targets());
+        assertThat(records.impactScopePage("ev-scope-page", null, 19, 4).orElseThrow().scope().targets()).isEmpty();
+    }
+
+    @Test
+    void 영향_대상_하나만_물으면_그_대상과_근거_경로만_오고_수는_거르지_않은_것이다() {
+        String p = "a-scope-one";
+        EntityRef start = entity(p, "Base", "B-1");
+        EntityRef near = entity(p, "Other", "O-1");
+        EntityRef far = entity(p, "Other", "O-2");
+        EntityRef outside = entity(p, "Other", "O-9");
+        link(start, near);
+        link(near, far);
+        generator.generate(pack(p, rule("0001", 1, IMPACT, "Other", 7)), change("ev-scope-one", start), EDITION,
+                scope(start), 3, NOW);
+        StoredImpactScope whole = records.impactScope("ev-scope-one").orElseThrow();
+
+        StoredImpactScopePage one = records.impactScopePage("ev-scope-one", far.id(), 0, 50).orElseThrow();
+
+        assertThat(one.scope().targets()).containsExactly(whole.targets().get(1));
+        assertThat(one.scope().targets().get(0).steps()).hasSize(2);
+        assertThat(one.total()).isEqualTo(2);
+        assertThat(one.countsByDepth()).isEqualTo(whole.countsByDepth());
+        // 영향 대상이 아닌 개체(범위 밖의 개체, 변동 대상 자신, 없는 개체)는 빈 목록이다. 영향 범위는 있다.
+        for (String notTarget : new String[] { outside.id(), start.id(), "a-scope-one|Other|없는 것" }) {
+            StoredImpactScopePage none = records.impactScopePage("ev-scope-one", notTarget, 0, 50).orElseThrow();
+            assertThat(none.scope().targets()).isEmpty();
+            assertThat(none.total()).isEqualTo(2);
+        }
+        // 대상 하나를 물을 때 건너뛰면 빈 목록이다.
+        assertThat(records.impactScopePage("ev-scope-one", far.id(), 1, 50).orElseThrow().scope().targets()).isEmpty();
+        // 저장된 영향 범위가 없으면 비어 있다. 틀린 값은 받지 않는다.
+        assertThat(records.impactScopePage("없는 변동", null, 0, 50)).isEmpty();
+        assertThatThrownBy(() -> records.impactScopePage("ev-scope-one", null, -1, 50))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> records.impactScopePage("ev-scope-one", null, 0, 0))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> records.impactScopePage("ev-scope-one", "", 0, 50))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void 나눠_읽을_때도_근거_경로가_깊이와_맞지_않는_영향_대상은_내보내지_않고_알린다() {
+        String p = "a-scope-broken";
+        EntityRef start = entity(p, "Base", "B-1");
+        EntityRef near = entity(p, "Other", "O-1");
+        EntityRef far = entity(p, "Other", "O-2");
+        link(start, near);
+        link(near, far);
+        generator.generate(pack(p, rule("0001", 1, IMPACT, "Other", 7)), change("ev-scope-broken", start), EDITION,
+                scope(start), 3, NOW);
+        // 저장소가 어긋난 경우를 만든다: 먼 대상의 둘째 단계를 지운다.
+        int removed = jdbc.update("delete from impact_path_step where change_event_hash = ? and entity_hash = ? and step_no = 2",
+                RulesHash.sha256Hex("ev-scope-broken"), RulesHash.sha256Hex(far.id()));
+        assertThat(removed).isEqualTo(1);
+
+        // 그 대상이 든 쪽을 읽으면 근거 없이 내보내지 않고 알린다. 하나만 물어도 같다.
+        assertThatThrownBy(() -> records.impactScopePage("ev-scope-broken", null, 0, 50))
+            .isInstanceOf(ActionStorageException.class)
+            .hasMessageContaining(far.id());
+        assertThatThrownBy(() -> records.impactScopePage("ev-scope-broken", far.id(), 0, 50))
+            .isInstanceOf(ActionStorageException.class);
+        // 그 대상이 들지 않은 쪽은 읽힌다: 어긋난 것은 그 쪽을 읽을 때에야 드러난다. 수에는 그 대상도 들어 있다.
+        StoredImpactScopePage firstOnly = records.impactScopePage("ev-scope-broken", null, 0, 1).orElseThrow();
+        assertThat(firstOnly.scope().targets()).extracting(StoredImpactTarget::entityId).containsExactly(near.id());
+        assertThat(firstOnly.total()).isEqualTo(2);
+    }
+
     // ── 도우미 ──────────────────────────────────────────────────
 
     private int count(String table, String changeEventId) {

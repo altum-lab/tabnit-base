@@ -11,12 +11,22 @@ import java.util.List;
  *
  * @param asOf 답에 쓴 날짜. 요청에 있었든 없었든 담는다
  * @param entityId 조회한 개체의 id
- * @param relations 조회 시점에 유효한 관계. core 가 준 순서 그대로다
+ * @param total 조회 시점에 유효한 관계의 전체 수. 나누기 전의 수다
+ * @param offset 답에 쓴 건너뛴 수
+ * @param limit 답에 쓴 한 번에 주는 수
+ * @param relations 조회 시점에 유효한 관계 가운데 이 쪽의 것. core 가 준 순서 그대로다
  */
-record RelationsAsOfResponse(String asOf, String entityId, List<RelationItem> relations) {
+record RelationsAsOfResponse(String asOf, String entityId, int total, int offset, int limit,
+		List<RelationItem> relations) {
 
-	static RelationsAsOfResponse of(LocalDate asOf, String entityId, List<Relation> relations) {
-		return new RelationsAsOfResponse(asOf.toString(), entityId,
+	/**
+	 * @param total 나누기 전의 전체 수. core 가 센 값이다
+	 * @param page 답에 쓴 건너뛴 수와 한 번에 주는 수
+	 * @param relations 이 쪽의 관계
+	 */
+	static RelationsAsOfResponse of(LocalDate asOf, String entityId, int total, PageRequest page,
+			List<Relation> relations) {
+		return new RelationsAsOfResponse(asOf.toString(), entityId, total, page.offset(), page.limit(),
 				relations.stream().map(RelationItem::of).toList());
 	}
 

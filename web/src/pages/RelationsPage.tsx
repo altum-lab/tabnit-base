@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { api, type RelationsAsOf } from "../api/client";
 import { CONNECTION_FAILED, messageOf } from "../api/problem";
+import { Pager } from "./Pager";
 
 // 관계 조회 화면. 시점 조회 API (docs/api/openapi.yaml 의 getRelationsAsOf) 의 값을 그대로 보여 준다.
 //
@@ -19,13 +20,14 @@ export function RelationsPage() {
   const [asOf, setAsOf] = useState("");
   const [view, setView] = useState<View>({ kind: "idle" });
 
-  async function search(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  // 조회한 개체와 조회 시점으로 한 쪽을 받는다. 다른 쪽으로 넘길 때는 서버가 답한 조회 시점을 그대로 보낸다:
+  // 조회 시점을 비워 서버가 정했더라도 쪽마다 같은 날짜로 본다.
+  async function load(query: { entityId: string; asOf?: string; offset?: number }) {
     setView({ kind: "loading" });
     try {
       const { data, error, response } = await api.GET("/api/v1/relations", {
         // 조회 시점을 비웠으면 항목을 보내지 않는다. 그러면 서버가 날짜를 정한다.
-        params: { query: asOf ? { entityId, asOf } : { entityId } },
+        params: { query },
       });
       if (data) {
         setView({ kind: "loaded", result: data });
@@ -36,6 +38,11 @@ export function RelationsPage() {
       // 응답을 받지 못했다 (연결 실패 등).
       setView({ kind: "failed", message: CONNECTION_FAILED });
     }
+  }
+
+  function search(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void load(asOf ? { entityId, asOf } : { entityId });
   }
 
   return (
@@ -68,20 +75,37 @@ export function RelationsPage() {
 
       {view.kind === "failed" && <p role="alert">{view.message}</p>}
 
-      {view.kind === "loaded" && <Result result={view.result} />}
+      {view.kind === "loaded" && (
+        <Result
+          result={view.result}
+          onMove={(offset) => void load({ entityId: view.result.entityId, asOf: view.result.asOf, offset })}
+        />
+      )}
     </section>
   );
 }
 
-function Result({ result }: { result: RelationsAsOf }) {
+function Result({ result, onMove }: { result: RelationsAsOf; onMove: (offset: number) => void }) {
   return (
     <section aria-label="조회 결과">
       <p>
         조회 시점 <time data-testid="answered-as-of">{result.asOf}</time> 기준
       </p>
 
-      {result.relations.length === 0 ? (
+      {result.total > 0 && (
+        <Pager
+          total={result.total}
+          offset={result.offset}
+          limit={result.limit}
+          shown={result.relations.length}
+          onMove={onMove}
+        />
+      )}
+
+      {result.total === 0 ? (
         <p role="status">이 조회 시점에 유효한 관계가 없습니다.</p>
+      ) : result.relations.length === 0 ? (
+        <p role="status">이 자리에는 관계가 없습니다. 이전으로 돌아가세요.</p>
       ) : (
         <table>
           <caption>관계 목록</caption>

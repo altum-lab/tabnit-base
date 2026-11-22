@@ -129,3 +129,45 @@ test("공통 오류 형식이 아닌 오류에는 내용을 그대로 보이지 
   await expect(page.getByRole("alert")).toContainText("요청을 처리하지 못했습니다");
   await expect(page.getByRole("alert")).not.toContainText("Exception");
 });
+
+test("관계가 많으면 나눠 보여 주고 이전과 다음으로 넘기며 전체 수는 서버가 준 값이다", async ({ page }) => {
+  await page.goto("/relations");
+  await page.getByLabel("개체 id").fill("e2e|T|many");
+  await page.getByLabel("조회 시점").fill("2026-03-01");
+  await page.getByRole("button", { name: "조회" }).click();
+
+  const rows = page.getByRole("table", { name: "관계 목록" }).locator("tbody tr");
+  const position = page.getByTestId("pager-position");
+  await expect(position).toHaveText("전체 60건 가운데 1~50번째");
+  await expect(rows).toHaveCount(50);
+  await expect(page.getByRole("button", { name: "이전" })).toBeDisabled();
+  const first = await rows.evaluateAll((all) => all.map((row) => row.getAttribute("data-relation-id")));
+
+  await page.getByRole("button", { name: "다음" }).click();
+  await expect(position).toHaveText("전체 60건 가운데 51~60번째");
+  await expect(rows).toHaveCount(10);
+  await expect(page.getByRole("button", { name: "다음" })).toBeDisabled();
+  const second = await rows.evaluateAll((all) => all.map((row) => row.getAttribute("data-relation-id")));
+  // 조회 시점은 넘겨도 그대로다.
+  await expect(page.getByTestId("answered-as-of")).toHaveText("2026-03-01");
+
+  // 나눠 받은 것을 이으면 서버가 한 번에 준 것과 순서까지 같다.
+  const whole = await (await page.request.get("/api/v1/relations?entityId=e2e%7CT%7Cmany&asOf=2026-03-01&limit=200")).json();
+  expect([...first, ...second]).toEqual(whole.relations.map((relation: { id: string }) => relation.id));
+  expect(whole.total).toBe(60);
+
+  await page.getByRole("button", { name: "이전" }).click();
+  await expect(position).toHaveText("전체 60건 가운데 1~50번째");
+  await expect(rows).toHaveCount(50);
+});
+
+test("관계가 한 쪽에 다 들어오면 넘길 곳이 없다", async ({ page }) => {
+  await page.goto("/relations");
+  await page.getByLabel("개체 id").fill("e2e|T|me");
+  await page.getByLabel("조회 시점").fill("2026-03-01");
+  await page.getByRole("button", { name: "조회" }).click();
+
+  await expect(page.getByTestId("pager-position")).toHaveText("전체 4건 가운데 1~4번째");
+  await expect(page.getByRole("button", { name: "이전" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "다음" })).toBeDisabled();
+});

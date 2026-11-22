@@ -10,6 +10,7 @@ import {
   type PackSummary,
 } from "../api/client";
 import { CONNECTION_FAILED, isProblem, messageOf } from "../api/problem";
+import { Pager } from "./Pager";
 
 // 조치 화면. Pack 의 조치를 근거와 함께 보고, 그 자리에서 확정하거나 보류한다.
 // 서버의 listActions, getAction, getChangeImpactScope, decideAction (docs/api/openapi.yaml) 의 값을 그대로 보여 준다.
@@ -40,7 +41,7 @@ type Packs =
 type List =
   | { kind: "idle" }
   | { kind: "loading" }
-  | { kind: "loaded"; total: number; actions: Action[] }
+  | { kind: "loaded"; total: number; offset: number; limit: number; actions: Action[] }
   | { kind: "failed"; message: string };
 
 function statusChoice(value: string | null): StatusChoice {
@@ -52,6 +53,8 @@ export function ActionsPage() {
   const packId = params.get("packId") ?? "";
   const status = statusChoice(params.get("status"));
   const changeEventId = params.get("changeEventId");
+  // 건너뛸 수. 주소에 둔다: 새로 고치거나 주소를 건네도 같은 쪽이 열린다. 틀린 값은 서버가 알린다.
+  const offset = params.get("offset");
 
   const [packs, setPacks] = useState<Packs>({ kind: "loading" });
   const [list, setList] = useState<List>({ kind: "idle" });
@@ -96,6 +99,8 @@ export function ActionsPage() {
               packId,
               ...(status === "ALL" ? {} : { status }),
               ...(changeEventId ? { changeEventId } : {}),
+              // 글자 그대로 보낸다. 수인지와 범위는 서버가 확인해 알린다.
+              ...(offset ? { offset: offset as unknown as number } : {}),
             },
           },
         });
@@ -104,7 +109,7 @@ export function ActionsPage() {
         }
         setList(
           data
-            ? { kind: "loaded", total: data.total, actions: data.actions }
+            ? { kind: "loaded", total: data.total, offset: data.offset, limit: data.limit, actions: data.actions }
             : { kind: "failed", message: messageOf(error, response.status) },
         );
       } catch {
@@ -113,7 +118,7 @@ export function ActionsPage() {
         }
       }
     },
-    [packId, status, changeEventId],
+    [packId, status, changeEventId, offset],
   );
 
   useEffect(() => {
@@ -137,8 +142,21 @@ export function ActionsPage() {
     }
   }, []);
 
+  function move(nextOffset: number) {
+    const updated = new URLSearchParams(params);
+    if (nextOffset > 0) {
+      updated.set("offset", String(nextOffset));
+    } else {
+      updated.delete("offset");
+    }
+    setOpened([]);
+    setParams(updated);
+  }
+
   function choose(next: { packId?: string; status?: StatusChoice; changeEventId?: null }) {
     const updated = new URLSearchParams(params);
+    // 거르는 것을 바꾸면 처음부터 본다.
+    updated.delete("offset");
     if (next.packId !== undefined) {
       updated.set("packId", next.packId);
       // Pack 을 바꾸면 앞 Pack 의 변동으로 거르던 것은 뜻이 없다.
@@ -236,8 +254,13 @@ export function ActionsPage() {
               </button>
             </p>
           )}
-          {list.actions.length === 0 ? (
+          {list.total > 0 && (
+            <Pager total={list.total} offset={list.offset} limit={list.limit} shown={list.actions.length} onMove={move} />
+          )}
+          {list.total === 0 ? (
             <p role="status">해당하는 조치가 없습니다.</p>
+          ) : list.actions.length === 0 ? (
+            <p role="status">이 자리에는 조치가 없습니다. 이전으로 돌아가세요.</p>
           ) : (
             <table>
               <caption>조치 목록</caption>
@@ -357,13 +380,14 @@ function Detail({ action, onAction }: { action: Action; onAction: (changed: Acti
     setScope({ kind: "loading" });
     try {
       const { data, error, response } = await api.GET("/api/v1/impact-scopes", {
-        params: { query: { changeEventId: action.changeEventId } },
+        // 이 조치의 대상 하나만 묻는다. 영향 대상은 나눠 오므로 통째로 받아 찾지 않는다 (D2 AD-347).
+        params: { query: { changeEventId: action.changeEventId, entityId: action.target.entityId } },
       });
       setScope(data ? { kind: "loaded", value: data } : { kind: "failed", message: messageOf(error, response.status) });
     } catch {
       setScope({ kind: "failed", message: CONNECTION_FAILED });
     }
-  }, [action.changeEventId]);
+  }, [action.changeEventId, action.target.entityId]);
 
   // 펼쳤을 때, 그리고 목록이 이 조치의 상태를 다르게 알려 왔을 때 이력을 다시 받는다.
   useEffect(() => {

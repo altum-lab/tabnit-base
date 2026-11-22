@@ -260,6 +260,87 @@ class RelationAsOfQueryTest {
 
     // ── 도우미 ──────────────────────────────────────────────────
 
+    // ── 나눠 주기 (D-13, D2 AD-347) ──────────────────────────────
+
+    @Test
+    void 나눠_받은_것을_이으면_한_번에_받은_것과_순서까지_같고_전체_수가_함께_온다() {
+        EntityRef hub = entity("pack-page", "hub");
+        for (int i = 0; i < 23; i++) {
+            // 넣는 차례를 섞는다. 유형도 둘로 나눈다. 유효하지 않은 것도 섞는다.
+            int n = (i * 7) % 23;
+            relation(hub, entity("pack-page", "t" + n), n % 2 == 0 ? "b-type" : "a-type", "2026-01-01", null);
+        }
+        relation(hub, entity("pack-page", "ended"), "a-type", "2026-01-01", "2026-03-01");
+        LocalDate asOf = date("2026-03-01");
+        List<Relation> all = query.relationsAsOf(hub.id(), asOf);
+        assertThat(all).hasSize(23);
+
+        List<Relation> joined = new java.util.ArrayList<>();
+        for (int offset = 0; offset < 30; offset += 5) {
+            RelationPage page = query.relationsAsOf(hub.id(), asOf, offset, 5);
+            // 전체 수는 나누기 전의 수다. 어느 쪽에서나 같다.
+            assertThat(page.total()).isEqualTo(23);
+            assertThat(page.relations()).hasSize(Math.max(0, Math.min(5, 23 - offset)));
+            joined.addAll(page.relations());
+        }
+        assertThat(joined).isEqualTo(all);
+        // 크기가 달라도, 한 번에 다 받아도 같다.
+        assertThat(query.relationsAsOf(hub.id(), asOf, 0, 200).relations()).isEqualTo(all);
+        assertThat(query.relationsAsOf(hub.id(), asOf, 22, 1).relations()).containsExactly(all.get(22));
+        // 두 번 물어도 같다.
+        assertThat(query.relationsAsOf(hub.id(), asOf, 5, 5)).isEqualTo(query.relationsAsOf(hub.id(), asOf, 5, 5));
+    }
+
+    @Test
+    void 전체_수를_넘겨_건너뛰면_빈_목록이고_전체_수는_그대로다() {
+        EntityRef a = entity("pack-page-end", "a");
+        relation(a, entity("pack-page-end", "b"), "R", "2026-01-01", null);
+        EntityRef alone = entity("pack-page-end", "alone");
+
+        RelationPage past = query.relationsAsOf(a.id(), date("2026-03-01"), 1, 10);
+        assertThat(past.relations()).isEmpty();
+        assertThat(past.total()).isEqualTo(1);
+        assertThat(query.relationsAsOf(a.id(), date("2026-03-01"), 1000, 10).total()).isEqualTo(1);
+        // 관계가 없는 개체와 유효한 것이 없는 날짜는 전체 수가 0 이다.
+        assertThat(query.relationsAsOf(alone.id(), date("2026-03-01"), 0, 10))
+            .isEqualTo(new RelationPage(List.of(), 0));
+        assertThat(query.relationsAsOf(a.id(), date("2025-12-31"), 0, 10).total()).isZero();
+    }
+
+    @Test
+    void 나눠_물을_때도_전체_수와_목록이_유효기간의_경계에서_함께_바뀐다() {
+        EntityRef a = entity("pack-page-edge", "a");
+        String kept = relation(a, entity("pack-page-edge", "b"), "R", "2026-01-01", null);
+        String ending = relation(a, entity("pack-page-edge", "c"), "R", "2026-02-01", "2026-03-01");
+
+        // 시작일 전날, 시작일 당일, 종료일 전날, 종료일 당일. 전체 수는 따로 세므로 목록과 같은 날에 바뀌는지 본다.
+        String[][] cases = { { "2025-12-31" }, { "2026-01-01", kept }, { "2026-01-31", kept }, { "2026-02-01", kept, ending },
+                { "2026-02-28", kept, ending }, { "2026-03-01", kept } };
+        for (String[] expected : cases) {
+            RelationPage page = query.relationsAsOf(a.id(), date(expected[0]), 0, 10);
+            List<String> ids = page.relations().stream().map(Relation::id).toList();
+            assertThat(ids).as(expected[0]).containsExactlyInAnyOrder(java.util.Arrays.copyOfRange(expected, 1, expected.length));
+            assertThat(page.total()).as(expected[0]).isEqualTo(expected.length - 1);
+            // 한 번에 읽는 조회와 같다.
+            assertThat(page.relations()).as(expected[0]).isEqualTo(query.relationsAsOf(a.id(), date(expected[0])));
+        }
+    }
+
+    @Test
+    void 나눠_물을_때도_없는_개체는_오류이고_틀린_건너뛸_수와_크기는_받지_않는다() {
+        EntityRef a = entity("pack-page-bad", "a");
+
+        assertThatThrownBy(() -> query.relationsAsOf("pack-page-bad|T|missing", date("2026-03-01"), 0, 10))
+            .isInstanceOf(EntityNotFoundException.class);
+        assertThatThrownBy(() -> query.relationsAsOf(a.id(), null, 0, 10)).isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> query.relationsAsOf(a.id(), date("2026-03-01"), -1, 10))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> query.relationsAsOf(a.id(), date("2026-03-01"), 0, 0))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> query.relationsAsOf(a.id(), date("2026-03-01"), 0, -5))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
     private EntityRef entity(String pack, String key) {
         EntityRef ref = new EntityRef(pack, "T", key);
         store.saveEntity(ref, RECORDED_AT);

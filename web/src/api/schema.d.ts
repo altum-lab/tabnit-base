@@ -240,6 +240,12 @@ export interface components {
              */
             asOf: string;
             entityId: string;
+            /** @description 조회 시점에 유효한 관계의 전체 수. 나누기 전의 수다. 화면은 다시 세지 않는다 */
+            total: number;
+            /** @description 답에 쓴 건너뛴 수 */
+            offset: number;
+            /** @description 답에 쓴 한 번에 주는 수 */
+            limit: number;
             relations: components["schemas"]["Relation"][];
         };
         Relation: {
@@ -368,8 +374,12 @@ export interface components {
             status: components["schemas"]["ActionStatus"] | null;
             /** @description 거르는 데 쓴 변동 이벤트의 id. 가리지 않았으면 null */
             changeEventId: string | null;
-            /** @description actions 의 수. 화면은 다시 세지 않는다 */
+            /** @description 거른 조치의 전체 수. 나누기 전의 수다. 화면은 다시 세지 않는다 */
             total: number;
+            /** @description 답에 쓴 건너뛴 수 */
+            offset: number;
+            /** @description 답에 쓴 한 번에 주는 수 */
+            limit: number;
             actions: components["schemas"]["Action"][];
         };
         /** @description 조치 하나. 해야 할 일 */
@@ -476,8 +486,12 @@ export interface components {
              * @description 저장한 때 (협정 세계시)
              */
             storedAt: string;
-            /** @description 영향 대상의 수. 변동 대상 자신은 세지 않는다 */
+            /** @description 영향 대상의 전체 수. 나누기 전의 수다. 변동 대상 자신은 세지 않는다 */
             total: number;
+            /** @description 답에 쓴 건너뛴 수 */
+            offset: number;
+            /** @description 답에 쓴 한 번에 주는 수 */
+            limit: number;
             /** @description 개체 유형별 수. 합계는 total 과 같다 */
             countsByType: {
                 entityType: string;
@@ -671,7 +685,7 @@ export interface components {
              * @description 오류의 종류. 화면이 이것으로 가른다. 바뀌지 않는 값이다
              * @enum {string}
              */
-            code: "MISSING_ENTITY_ID" | "INVALID_AS_OF" | "ENTITY_NOT_FOUND" | "MISSING_LOGIN_ID" | "MISSING_PASSWORD" | "LOGIN_FAILED" | "MISSING_PACK_ID" | "MISSING_INPUT_SOURCE_ID" | "MISSING_EFFECTIVE_DATE" | "INVALID_EFFECTIVE_DATE" | "MISSING_FILE" | "INVALID_EDITION" | "PACK_NOT_FOUND" | "INPUT_SOURCE_NOT_FOUND" | "FILE_TOO_LARGE" | "EDITION_REJECTED" | "INVALID_STATUS" | "MISSING_ACTION_ID" | "INVALID_ACTION_ID" | "ACTION_NOT_FOUND" | "INVALID_BODY" | "MISSING_DECISION" | "INVALID_DECISION" | "INVALID_NOTE" | "ACTION_DECISION_CONFLICT" | "MISSING_CHANGE_EVENT_ID" | "INVALID_CHANGE_EVENT_ID" | "IMPACT_SCOPE_NOT_FOUND" | "UNAUTHENTICATED" | "FORBIDDEN" | "INTERNAL" | "INVALID_PACK_ID" | "PACK_FOLDER_NOT_FOUND" | "PACK_INVALID" | "PACK_CHANGE_REJECTED";
+            code: "MISSING_ENTITY_ID" | "INVALID_AS_OF" | "ENTITY_NOT_FOUND" | "MISSING_LOGIN_ID" | "MISSING_PASSWORD" | "LOGIN_FAILED" | "MISSING_PACK_ID" | "MISSING_INPUT_SOURCE_ID" | "MISSING_EFFECTIVE_DATE" | "INVALID_EFFECTIVE_DATE" | "MISSING_FILE" | "INVALID_EDITION" | "PACK_NOT_FOUND" | "INPUT_SOURCE_NOT_FOUND" | "FILE_TOO_LARGE" | "EDITION_REJECTED" | "INVALID_STATUS" | "MISSING_ACTION_ID" | "INVALID_ACTION_ID" | "ACTION_NOT_FOUND" | "INVALID_BODY" | "MISSING_DECISION" | "INVALID_DECISION" | "INVALID_NOTE" | "ACTION_DECISION_CONFLICT" | "MISSING_CHANGE_EVENT_ID" | "INVALID_CHANGE_EVENT_ID" | "IMPACT_SCOPE_NOT_FOUND" | "UNAUTHENTICATED" | "FORBIDDEN" | "INTERNAL" | "INVALID_PACK_ID" | "PACK_FOLDER_NOT_FOUND" | "PACK_INVALID" | "PACK_CHANGE_REJECTED" | "INVALID_OFFSET" | "INVALID_LIMIT" | "INVALID_ENTITY_ID";
             /** @description 틀린 항목의 이름. 입력 오류일 때만 있다 */
             field?: string;
             /** @description code 가 PACK_INVALID 일 때만 있다. Pack 에서 찾은 문제 전부. pack 이 준 순서 그대로다 */
@@ -691,7 +705,12 @@ export interface components {
             };
         };
     };
-    parameters: never;
+    parameters: {
+        /** @description 건너뛸 수. 없으면 0. 전체 수와 같거나 크면 빈 목록이다 */
+        Offset: number;
+        /** @description 한 번에 받을 수. 없으면 50. 1 부터 200 까지 */
+        Limit: number;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -705,6 +724,10 @@ export interface operations {
                 entityId: string;
                 /** @description 조회 시점. 없으면 설치 설정의 시간대에서의 오늘 */
                 asOf?: string;
+                /** @description 건너뛸 수. 없으면 0. 전체 수와 같거나 크면 빈 목록이다 */
+                offset?: components["parameters"]["Offset"];
+                /** @description 한 번에 받을 수. 없으면 50. 1 부터 200 까지 */
+                limit?: components["parameters"]["Limit"];
             };
             header?: never;
             path?: never;
@@ -712,7 +735,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 조회 시점에 유효한 관계. 개체가 출발 쪽이든 도착 쪽이든 들어 있다. 순서는 관계 유형, 상대 개체의 id, 관계의 id 차례이고 모두 글자 코드 순이다. 유효한 것이 없으면 빈 목록이다 */
+            /** @description 조회 시점에 유효한 관계. 개체가 출발 쪽이든 도착 쪽이든 들어 있다. 순서는 관계 유형, 상대 개체의 id, 관계의 id 차례이고 모두 글자 코드 순이다. 유효한 것이 없으면 빈 목록이다. 나눠 준다: offset 만큼 건너뛰고 limit 개까지 준다. total 은 나누기 전의 전체 수다. 나눠 받은 것을 이으면 한 번에 받은 것과 순서까지 같다 */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -971,6 +994,10 @@ export interface operations {
                 status?: components["schemas"]["ActionStatus"];
                 /** @description 이 변동 이벤트에서 나온 조치만. 서버가 준 id 를 그대로 보낸다. 없으면 가리지 않는다 */
                 changeEventId?: string;
+                /** @description 건너뛸 수. 없으면 0. 전체 수와 같거나 크면 빈 목록이다 */
+                offset?: components["parameters"]["Offset"];
+                /** @description 한 번에 받을 수. 없으면 50. 1 부터 200 까지 */
+                limit?: components["parameters"]["Limit"];
             };
             header?: never;
             path?: never;
@@ -978,7 +1005,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 거른 조치를 한 번에 모두 돌려준다. 순서는 기한이 이른 것부터이고, 같으면 우선순위(수가 작은 것부터), 규칙 번호, 대상 개체의 id, 조치의 id 차례다. 글자는 모두 글자 코드 순이다. 해당하는 것이 없으면 빈 목록이다. 그 Pack 의 것이 아닌 변동 이벤트로 거르면 빈 목록이다 */
+            /** @description 거른 조치를 나눠 돌려준다: offset 만큼 건너뛰고 limit 개까지 준다. total 은 거른 조치의 전체 수다. 순서는 기한이 이른 것부터이고, 같으면 우선순위(수가 작은 것부터), 규칙 번호, 대상 개체의 id, 조치의 id 차례다. 글자는 모두 글자 코드 순이다. 해당하는 것이 없으면 빈 목록이다. 그 Pack 의 것이 아닌 변동 이벤트로 거르면 빈 목록이다 */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1065,6 +1092,12 @@ export interface operations {
             query: {
                 /** @description 변동 이벤트의 id. 서버가 준 값을 그대로 보낸다 */
                 changeEventId: string;
+                /** @description 이 개체인 영향 대상만 준다 (조치의 근거 경로를 찾을 때 쓴다). 그 개체가 영향 대상이 아니면 targets 는 빈 목록이다. total, countsByType, countsByDepth 는 거르지 않은 영향 범위의 값 그대로다 */
+                entityId?: string;
+                /** @description 건너뛸 수. 없으면 0. 전체 수와 같거나 크면 빈 목록이다 */
+                offset?: components["parameters"]["Offset"];
+                /** @description 한 번에 받을 수. 없으면 50. 1 부터 200 까지 */
+                limit?: components["parameters"]["Limit"];
             };
             header?: never;
             path?: never;
@@ -1072,7 +1105,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 영향 대상의 순서는 깊이, 개체 유형, 개체의 id 차례다. countsByType 은 개체 유형의 글자 코드 순, countsByDepth 는 깊이 순이다. 경로의 단계는 변동 대상 쪽부터의 차례다. 영향 대상이 없으면 빈 목록이다 */
+            /** @description 영향 대상을 나눠 돌려준다: offset 만큼 건너뛰고 limit 개까지 준다. total 과 countsByType, countsByDepth 는 나누기 전의 영향 범위 전체의 값이다. 영향 대상의 순서는 깊이, 개체 유형, 개체의 id 차례다. countsByType 은 개체 유형의 글자 코드 순, countsByDepth 는 깊이 순이다. 경로의 단계는 변동 대상 쪽부터의 차례다. 영향 대상이 없으면 빈 목록이다 */
             200: {
                 headers: {
                     [name: string]: unknown;

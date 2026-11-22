@@ -2,9 +2,11 @@ package com.altumlab.tabnit.api;
 
 import com.altumlab.tabnit.pack.PackDefinitions;
 import com.altumlab.tabnit.rules.Action;
+import com.altumlab.tabnit.rules.ActionPage;
 import com.altumlab.tabnit.rules.ActionRecords;
 import com.altumlab.tabnit.rules.ActionStatus;
 import com.altumlab.tabnit.rules.StoredImpactScope;
+import com.altumlab.tabnit.rules.StoredImpactScopePage;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -35,12 +37,14 @@ class ActionsController {
 	@GetMapping("/api/v1/actions")
 	@Audited(action = "listActions", params = { "packId", "status", "changeEventId" })
 	ActionListResponse list(@RequestParam(required = false) String packId, @RequestParam(required = false) String status,
-			@RequestParam(required = false) String changeEventId) {
+			@RequestParam(required = false) String changeEventId, @RequestParam(required = false) String offset,
+			@RequestParam(required = false) String limit) {
 		if (packId == null || packId.isBlank()) {
 			throw new ApiProblemException(HttpStatus.BAD_REQUEST, "MISSING_PACK_ID", "packId",
 					"Pack 의 식별자가 없습니다. packId 에 Pack 의 식별자를 넣어 다시 보내세요.");
 		}
 		ActionStatus wanted = status == null ? null : status(status);
+		PageRequest page = PageRequest.of(offset, limit);
 		if (changeEventId != null) {
 			// 항목이 있는데 값이 비었으면 거르지 않는 것으로 보지 않는다. 조용히 빈 목록이 되지 않게 알린다.
 			requireChangeEventId(changeEventId);
@@ -50,23 +54,40 @@ class ActionsController {
 			throw new ApiProblemException(HttpStatus.NOT_FOUND, "PACK_NOT_FOUND", "packId",
 					"Pack " + packId + " 이 적재되어 있지 않습니다. Pack 의 식별자를 확인하세요.");
 		}
-		List<Action> found = this.actions.packActions(packId, wanted, changeEventId);
-		return ActionListResponse.of(packId, wanted == null ? null : wanted.name(), changeEventId, this.views.items(found));
+		// 나누는 일은 rules 가 한다 (D2 AD-347).
+		ActionPage found = this.actions.packActions(packId, wanted, changeEventId, page.offset(), page.limit());
+		return ActionListResponse.of(packId, wanted == null ? null : wanted.name(), changeEventId, found.total(), page,
+				this.views.items(found.actions()));
 	}
 
 	@GetMapping("/api/v1/impact-scopes")
 	@Audited(action = "getChangeImpactScope", params = "changeEventId")
-	ChangeImpactScopeResponse impactScope(@RequestParam(required = false) String changeEventId) {
+	ChangeImpactScopeResponse impactScope(@RequestParam(required = false) String changeEventId,
+			@RequestParam(required = false) String entityId, @RequestParam(required = false) String offset,
+			@RequestParam(required = false) String limit) {
 		if (changeEventId == null || changeEventId.isEmpty()) {
 			throw new ApiProblemException(HttpStatus.BAD_REQUEST, "MISSING_CHANGE_EVENT_ID", "changeEventId",
 					"변동 이벤트의 id 가 없습니다. changeEventId 에 변동 이벤트의 id 를 넣어 다시 보내세요.");
 		}
 		requireChangeEventId(changeEventId);
-		StoredImpactScope scope = this.actions.impactScope(changeEventId)
+		if (entityId != null) {
+			// 항목이 있는데 값이 비었으면 거르지 않는 것으로 보지 않는다. 쓸 수 없는 글자가 든 개체는 있을 수 없다.
+			if (entityId.isEmpty()) {
+				throw new ApiProblemException(HttpStatus.BAD_REQUEST, "MISSING_ENTITY_ID", "entityId",
+						"개체의 id 가 비어 있습니다. entityId 에 개체의 id 를 넣거나 항목을 빼고 다시 보내세요.");
+			}
+			if (!ActionRecords.isReadableEntityId(entityId)) {
+				throw new ApiProblemException(HttpStatus.BAD_REQUEST, "INVALID_ENTITY_ID", "entityId",
+						"개체의 id 에 쓸 수 없는 글자가 있습니다. 서버가 준 id 를 그대로 넣어 다시 보내세요.");
+			}
+		}
+		PageRequest page = PageRequest.of(offset, limit);
+		// 나누는 일과 대상 하나를 찾는 일은 rules 가 한다 (D2 AD-347).
+		StoredImpactScopePage scope = this.actions.impactScopePage(changeEventId, entityId, page.offset(), page.limit())
 			.orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND, "IMPACT_SCOPE_NOT_FOUND", "changeEventId",
 					"그 변동 이벤트의 저장된 영향 범위가 없습니다. 변동 이벤트의 id 를 확인하세요."
 							+ " 아직 처리되지 않았거나 처리에 실패한 변동에는 영향 범위가 없습니다."));
-		return ChangeImpactScopeResponse.of(scope);
+		return ChangeImpactScopeResponse.of(scope, page);
 	}
 
 	private static ActionStatus status(String value) {

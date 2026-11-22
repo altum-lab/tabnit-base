@@ -21,8 +21,12 @@ import org.springframework.transaction.support.TransactionTemplate;
  * 저장된 영향 범위와 조치를 읽는다 (D5 6절). 읽기만 한다.
  *
  * <p>영향 범위와 조치는 트랜잭션 하나로 함께 저장되고 뒤에 고치지 않으므로 (D2 AD-209, AD-119), 영향 범위의 행이
- * 보이면 그 대상과 경로도 모두 보인다. 그래서 여러 문장을 한 시점으로 묶지 않는다.
+ * 보이면 그 대상과 경로도 모두 보인다. 그래서 통째로 읽는 조회는 여러 문장을 한 시점으로 묶지 않는다.
  * 조치의 상태는 확정과 보류로 바뀐다 ({@link ActionDecisions}). 조치는 한 문장으로 읽는다.
+ *
+ * <p>나눠 읽는 조회 (D2 AD-347)는 전체 수와 그 쪽을 따로 읽으므로 한 시점의 것으로 묶는다 (읽기 전용,
+ * REPEATABLE READ). 부르는 쪽이 이미 트랜잭션 안이면 그 트랜잭션에 들어 그 격리 수준을 따른다:
+ * 한 시점을 보장받으려면 트랜잭션 밖에서 부른다.
  */
 public class ActionRecords {
 
@@ -150,6 +154,11 @@ public class ActionRecords {
         return changeEventId != null && !changeEventId.isEmpty() && ActionGenerator.storable(changeEventId);
     }
 
+    /** 개체의 식별자로 읽을 수 있는 글자인가. {@link #isReadableChangeEventId} 와 같은 기준이다. */
+    public static boolean isReadableEntityId(String entityId) {
+        return entityId != null && !entityId.isEmpty() && ActionGenerator.storable(entityId);
+    }
+
     /** 조치의 식별자로 읽을 수 있는 글자인가. {@link #isReadableChangeEventId} 와 같은 기준이다. */
     public static boolean isReadableActionId(String actionId) {
         return actionId != null && !actionId.isEmpty() && ActionGenerator.storable(actionId);
@@ -193,6 +202,64 @@ public class ActionRecords {
         }
         catch (DataAccessException e) {
             throw new ActionStorageException("Pack " + packId + " 의 조치를 읽지 못했습니다. 저장소의 상태를 확인한 뒤 다시 시도하세요.", e);
+        }
+    }
+
+    /**
+     * Pack 하나의 조치 목록을 나눠 돌려준다 (D2 AD-347). 거르는 것과 순서는
+     * {@link #packActions(String, ActionStatus, String)} 와 같다: 나눠 받은 것을 이으면 한 번에 받은 것과 순서까지 같다.
+     *
+     * @param offset 건너뛸 수. 0 이상. 전체 수와 같거나 크면 빈 목록이다
+     * @param limit 한 번에 받을 수. 1 이상. 위쪽 한도는 부르는 쪽이 정한다
+     * @return 그 쪽의 조치와, 거른 조치의 전체 수
+     */
+    public ActionPage packActions(String packId, ActionStatus status, String changeEventId, int offset, int limit) {
+        Objects.requireNonNull(packId, "Pack 의 식별자는 반드시 있어야 합니다");
+        requirePage(offset, limit);
+        if (changeEventId != null) {
+            ActionGenerator.requireStorable(changeEventId, "변동 이벤트의 식별자");
+        }
+        StringBuilder where = new StringBuilder(" where a.pack_id = ?\n");
+        List<Object> arguments = new ArrayList<>();
+        arguments.add(packId);
+        if (status != null) {
+            where.append(" and a.status = ?\n");
+            arguments.add(status.name());
+        }
+        if (changeEventId != null) {
+            where.append(" and a.change_event_hash = ?\n");
+            arguments.add(RulesHash.sha256Hex(changeEventId));
+        }
+        List<Object> paged = new ArrayList<>(arguments);
+        paged.add(limit);
+        paged.add(offset);
+        try {
+            // 전체 수와 그 쪽은 한 시점의 것으로 읽는다. 따로 읽으면 그 사이에 조치가 늘어 수와 목록이 어긋날 수 있다.
+            return snapshot.execute(tx -> {
+                Integer total = jdbc.queryForObject("select count(*) from action a\n" + where, Integer.class,
+                        arguments.toArray());
+                List<Action> actions = jdbc.query("""
+                        select a.id, a.pack_id, s.change_event_id, a.rule_no, a.rule_label, a.action_text, a.priority,
+                               a.applies_to, a.target_entity_id, a.target_entity_type, a.basis_entity_id,
+                               a.basis_input_source_id, a.basis_edition_no, a.as_of, a.due_date, a.status, a.created_at
+                          from action a
+                          join impact_scope s on s.change_event_hash = a.change_event_hash
+                        """ + where + " order by a.due_date, a.priority, a.rule_no, a.target_entity_id, a.id limit ? offset ?",
+                        ACTION, paged.toArray());
+                return new ActionPage(actions, total == null ? 0 : total);
+            });
+        }
+        catch (DataAccessException | TransactionException e) {
+            throw new ActionStorageException("Pack " + packId + " 의 조치를 읽지 못했습니다. 저장소의 상태를 확인한 뒤 다시 시도하세요.", e);
+        }
+    }
+
+    private static void requirePage(int offset, int limit) {
+        if (offset < 0) {
+            throw new IllegalArgumentException("건너뛸 수는 0 이상이어야 합니다. 받은 값: " + offset + ".");
+        }
+        if (limit < 1) {
+            throw new IllegalArgumentException("한 번에 받을 수는 1 이상이어야 합니다. 받은 값: " + limit + ".");
         }
     }
 
@@ -265,5 +332,130 @@ public class ActionRecords {
         catch (DataAccessException e) {
             throw new ActionStorageException("변동 이벤트 " + changeEventId + " 의 영향 범위를 읽지 못했습니다. 저장소의 상태를 확인한 뒤 다시 시도하세요.", e);
         }
+    }
+
+    /**
+     * 변동 이벤트 하나의 저장된 영향 범위에서 영향 대상을 나눠 돌려준다 (D2 AD-347). 순서는
+     * {@link #impactScope(String)} 와 같다: 나눠 받은 것을 이으면 한 번에 받은 것과 근거 경로까지 같다.
+     * 전체 수와 유형별·깊이별 수는 나누기 전의, 거르지 않은 영향 범위 전체의 것이다.
+     *
+     * @param entityId 이 개체인 영향 대상만. null 이면 가리지 않는다. 그 개체가 영향 대상이 아니면 빈 목록이다
+     * @param offset 건너뛸 수. 0 이상
+     * @param limit 한 번에 받을 수. 1 이상. 위쪽 한도는 부르는 쪽이 정한다
+     * @return 저장된 것이 없으면 (아직 처리되지 않았거나 실패한 변동) 비어 있다
+     */
+    public Optional<StoredImpactScopePage> impactScopePage(String changeEventId, String entityId, int offset, int limit) {
+        Objects.requireNonNull(changeEventId, "변동 이벤트의 식별자는 반드시 있어야 합니다");
+        ActionGenerator.requireStorable(changeEventId, "변동 이벤트의 식별자");
+        requirePage(offset, limit);
+        if (entityId != null) {
+            if (entityId.isEmpty()) {
+                throw new IllegalArgumentException("개체의 식별자가 비어 있습니다. 가리지 않으려면 넘기지 마세요.");
+            }
+            ActionGenerator.requireStorable(entityId, "개체의 식별자");
+        }
+        String hash = RulesHash.sha256Hex(changeEventId);
+        try {
+            // 저장된 영향 범위는 바뀌지 않지만, 머리와 대상과 단계는 한 시점의 것으로 읽는다.
+            return snapshot.execute(tx -> readScopePage(changeEventId, hash, entityId, offset, limit));
+        }
+        catch (DataAccessException | TransactionException e) {
+            throw new ActionStorageException("변동 이벤트 " + changeEventId + " 의 영향 범위를 읽지 못했습니다. 저장소의 상태를 확인한 뒤 다시 시도하세요.", e);
+        }
+    }
+
+    private Optional<StoredImpactScopePage> readScopePage(String changeEventId, String hash, String entityId, int offset,
+            int limit) {
+        List<StoredImpactScope> heads = jdbc.query("""
+                select change_event_id, pack_id, as_of_previous, as_of_effective, max_depth, truncated, stored_at
+                  from impact_scope
+                 where change_event_hash = ?
+                """,
+                (rs, row) -> new StoredImpactScope(rs.getString("change_event_id"), rs.getString("pack_id"),
+                        rs.getObject("as_of_previous", LocalDate.class), rs.getObject("as_of_effective", LocalDate.class),
+                        rs.getInt("max_depth"), rs.getBoolean("truncated"),
+                        rs.getObject("stored_at", OffsetDateTime.class).toInstant(), List.of()),
+                hash);
+        if (heads.isEmpty()) {
+            return Optional.empty();
+        }
+        // 수는 거르지 않은 영향 범위 전체에서 센다. 유형은 글자 코드 순, 깊이는 수의 순이다.
+        java.util.LinkedHashMap<String, Integer> byType = new java.util.LinkedHashMap<>();
+        jdbc.query("""
+                select entity_type, count(*) as n
+                  from impact_target
+                 where change_event_hash = ?
+                 group by entity_type
+                 order by entity_type
+                """, rs -> {
+            byType.put(rs.getString("entity_type"), rs.getInt("n"));
+        }, hash);
+        java.util.LinkedHashMap<Integer, Integer> byDepth = new java.util.LinkedHashMap<>();
+        jdbc.query("""
+                select depth, count(*) as n
+                  from impact_target
+                 where change_event_hash = ?
+                 group by depth
+                 order by depth
+                """, rs -> {
+            byDepth.put(rs.getInt("depth"), rs.getInt("n"));
+        }, hash);
+        int total = byDepth.values().stream().mapToInt(Integer::intValue).sum();
+        // 이 쪽의 영향 대상. 대상 하나만 물으면 그 개체의 해시로 찾는다 (기본 키).
+        List<Object> arguments = new ArrayList<>();
+        arguments.add(hash);
+        String only = "";
+        if (entityId != null) {
+            // 해시로 찾고 식별자로 한 번 더 견준다 (조치 하나를 찾을 때와 같은 방식).
+            only = " and entity_hash = ? and entity_id = ?\n";
+            arguments.add(RulesHash.sha256Hex(entityId));
+            arguments.add(entityId);
+        }
+        arguments.add(limit);
+        arguments.add(offset);
+        List<String> hashes = new ArrayList<>();
+        List<StoredImpactTarget> bare = jdbc.query("""
+                select entity_hash, entity_id, entity_type, depth, path_start_entity_id, path_as_of
+                  from impact_target
+                 where change_event_hash = ?
+                """ + only + " order by depth, entity_type, entity_id limit ? offset ?", (rs, row) -> {
+            hashes.add(rs.getString("entity_hash"));
+            return new StoredImpactTarget(rs.getString("entity_id"), rs.getString("entity_type"), rs.getInt("depth"),
+                    rs.getString("path_start_entity_id"), rs.getObject("path_as_of", LocalDate.class), List.of());
+        }, arguments.toArray());
+        // 이 쪽의 대상의 단계만 읽는다. 대상의 해시로 묶는다: 찾는 데만 쓰고, 차례는 위의 질의가 정했다.
+        TreeMap<String, List<StoredPathStep>> steps = new TreeMap<>(RulesOrder.STRINGS);
+        if (!hashes.isEmpty()) {
+            jdbc.query("""
+                    select entity_hash, step_no, relation_id, relation_type, source_entity_id, target_entity_id
+                      from impact_path_step
+                     where change_event_hash = ? and entity_hash = any(?)
+                     order by entity_hash, step_no
+                    """, ps -> {
+                ps.setString(1, hash);
+                ps.setArray(2, ps.getConnection().createArrayOf("text", hashes.toArray()));
+            }, rs -> {
+                steps.computeIfAbsent(rs.getString("entity_hash"), key -> new ArrayList<>())
+                    .add(new StoredPathStep(rs.getInt("step_no"), rs.getString("relation_id"), rs.getString("relation_type"),
+                            rs.getString("source_entity_id"), rs.getString("target_entity_id")));
+            });
+        }
+        List<StoredImpactTarget> targets = new ArrayList<>();
+        for (int i = 0; i < bare.size(); i++) {
+            StoredImpactTarget target = bare.get(i);
+            List<StoredPathStep> path = steps.getOrDefault(hashes.get(i), List.of());
+            if (path.size() != target.depth()) {
+                // 근거 경로 없는 영향 대상은 저장되지 않는다. 여기 오면 저장소가 어긋난 것이다. 근거 없이 내보내지 않는다.
+                throw new ActionStorageException("변동 이벤트 " + changeEventId + " 의 영향 대상 " + target.entityId()
+                        + " 의 근거 경로가 깊이와 맞지 않습니다 (깊이 " + target.depth() + ", 단계 " + path.size()
+                        + "). 저장소의 상태를 확인하세요.", null);
+            }
+            targets.add(new StoredImpactTarget(target.entityId(), target.entityType(), target.depth(),
+                    target.pathStartEntityId(), target.pathAsOf(), path));
+        }
+        StoredImpactScope head = heads.get(0);
+        return Optional.of(new StoredImpactScopePage(new StoredImpactScope(head.changeEventId(), head.packId(),
+                head.asOfPrevious(), head.asOfEffective(), head.maxDepth(), head.truncated(), head.storedAt(), targets),
+                total, byType, byDepth));
     }
 }

@@ -28,6 +28,99 @@ class VerifyRunnerTest {
     @TempDir
     Path temp;
 
+    // ── 나눠 주는 목록을 잇는다 (D-13, D2 AD-347) ─────────────────────────
+
+    /** 지어낸 목록을 쪽으로 나눠 주는 가짜 제품. 부른 건너뛸 수를 적어 둔다. */
+    private static java.util.function.IntFunction<Product.Reply> pages(List<Integer> items, int pageSize,
+            List<Integer> asked) {
+        return offset -> {
+            asked.add(offset);
+            List<Integer> page = items.subList(Math.min(offset, items.size()), Math.min(offset + pageSize, items.size()));
+            return new Product.Reply(200, new java.util.LinkedHashMap<>(Map.of("total", items.size(), "offset", offset,
+                    "limit", pageSize, "name", "머리의 값", "items", List.copyOf(page))));
+        };
+    }
+
+    private static List<Integer> numbers(int count) {
+        List<Integer> items = new java.util.ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            // 차례가 값의 크기와 다르다: 이으면서 정렬하면 드러난다.
+            items.add((i * 7) % count);
+        }
+        return items;
+    }
+
+    @Test
+    void 나눠_받은_목록을_끝까지_받아_제품이_준_차례_그대로_잇는다() {
+        List<Integer> items = numbers(450);
+        List<Integer> asked = new java.util.ArrayList<>();
+
+        Product.Reply whole = PagedLists.whole(pages(items, 200, asked), "items", 200, 3, "지어낸 목록");
+
+        assertThat(asked).containsExactly(0, 200, 400);
+        assertThat(whole.status()).isEqualTo(200);
+        Map<?, ?> body = (Map<?, ?>) whole.body();
+        assertThat(body.get("items")).isEqualTo(items);
+        // 목록 말고는 첫 답의 것이다.
+        assertThat(body.get("total")).isEqualTo(450);
+        assertThat(body.get("name")).isEqualTo("머리의 값");
+    }
+
+    @Test
+    void 빈_목록과_한_쪽에_다_든_목록과_쪽의_크기로_딱_떨어지는_목록도_잇는다() {
+        for (int count : new int[] { 0, 1, 199, 200, 201, 400 }) {
+            List<Integer> items = numbers(count);
+            List<Integer> asked = new java.util.ArrayList<>();
+
+            Product.Reply whole = PagedLists.whole(pages(items, 200, asked), "items", 200, 3, "지어낸 목록");
+
+            assertThat(((Map<?, ?>) whole.body()).get("items")).as("항목 " + count + "개").isEqualTo(items);
+            // 마지막 쪽이 꽉 찼으면 다음 쪽이 비었는지 한 번 더 묻는다.
+            assertThat(asked).as("항목 " + count + "개").hasSize(count / 200 + 1);
+        }
+    }
+
+    @Test
+    void 오류인_답과_목록이_없는_답은_받은_그대로_돌려준다() {
+        Product.Reply problem = new Product.Reply(404, Map.of("code", "지어낸_코드"));
+        assertThat(PagedLists.whole(offset -> problem, "items", 200, 3, "지어낸 목록")).isSameAs(problem);
+        Product.Reply noList = new Product.Reply(200, Map.of("total", 3));
+        assertThat(PagedLists.whole(offset -> noList, "items", 200, 3, "지어낸 목록")).isSameAs(noList);
+        Product.Reply notMap = new Product.Reply(200, "글자");
+        assertThat(PagedLists.whole(offset -> notMap, "items", 200, 3, "지어낸 목록")).isSameAs(notMap);
+    }
+
+    @Test
+    void 받는_사이에_목록이_바뀌면_처음부터_다시_받고_계속_바뀌면_알린다() {
+        // 첫 시도의 둘째 쪽에서 전체 수가 달라진다. 둘째 시도는 처음부터 끝까지 같다.
+        List<Integer> before = numbers(300);
+        List<Integer> after = numbers(301);
+        List<Integer> asked = new java.util.ArrayList<>();
+        java.util.function.IntFunction<Product.Reply> changing = offset -> {
+            boolean firstCall = asked.isEmpty();
+            return pages(firstCall ? before : after, 200, asked).apply(offset);
+        };
+
+        Product.Reply whole = PagedLists.whole(changing, "items", 200, 3, "지어낸 목록");
+
+        assertThat(asked).containsExactly(0, 200, 0, 200);
+        assertThat(((Map<?, ?>) whole.body()).get("items")).isEqualTo(after);
+
+        // 전체 수는 같은데 이은 수가 다른 것도 바뀐 것이다 (하나가 빠졌다).
+        java.util.function.IntFunction<Product.Reply> shrinking = offset -> new Product.Reply(200,
+                Map.of("total", 5, "items", offset == 0 ? List.of(1, 2) : List.of()));
+        assertThatThrownBy(() -> PagedLists.whole(shrinking, "items", 2, 3, "지어낸 목록"))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("지어낸 목록")
+            .hasMessageContaining("3번");
+        // 받을 때마다 전체 수가 달라지면 정해진 횟수 뒤에 알린다.
+        int[] calls = { 0 };
+        java.util.function.IntFunction<Product.Reply> always = offset -> new Product.Reply(200,
+                Map.of("total", ++calls[0], "items", List.of(1, 2)));
+        assertThatThrownBy(() -> PagedLists.whole(always, "items", 2, 2, "지어낸 목록"))
+            .isInstanceOf(IllegalStateException.class);
+    }
+
     // ── 식별자 ────────────────────────────────────────────────────
 
     @Test

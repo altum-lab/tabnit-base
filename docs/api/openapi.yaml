@@ -33,12 +33,15 @@ paths:
           schema:
             type: string
             format: date
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/Limit'
       responses:
         '200':
           description: >-
             조회 시점에 유효한 관계. 개체가 출발 쪽이든 도착 쪽이든 들어 있다.
             순서는 관계 유형, 상대 개체의 id, 관계의 id 차례이고 모두 글자 코드 순이다.
-            유효한 것이 없으면 빈 목록이다
+            유효한 것이 없으면 빈 목록이다. 나눠 준다: offset 만큼 건너뛰고 limit 개까지 준다.
+            total 은 나누기 전의 전체 수다. 나눠 받은 것을 이으면 한 번에 받은 것과 순서까지 같다
           content:
             application/json:
               schema:
@@ -314,10 +317,13 @@ paths:
           schema:
             type: string
             minLength: 1
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/Limit'
       responses:
         '200':
           description: >-
-            거른 조치를 한 번에 모두 돌려준다. 순서는 기한이 이른 것부터이고, 같으면 우선순위(수가 작은 것부터),
+            거른 조치를 나눠 돌려준다: offset 만큼 건너뛰고 limit 개까지 준다. total 은 거른 조치의 전체 수다.
+            순서는 기한이 이른 것부터이고, 같으면 우선순위(수가 작은 것부터),
             규칙 번호, 대상 개체의 id, 조치의 id 차례다. 글자는 모두 글자 코드 순이다.
             해당하는 것이 없으면 빈 목록이다. 그 Pack 의 것이 아닌 변동 이벤트로 거르면 빈 목록이다
           content:
@@ -424,10 +430,22 @@ paths:
           schema:
             type: string
             minLength: 1
+        - name: entityId
+          in: query
+          required: false
+          description: >-
+            이 개체인 영향 대상만 준다 (조치의 근거 경로를 찾을 때 쓴다). 그 개체가 영향 대상이 아니면 targets 는
+            빈 목록이다. total, countsByType, countsByDepth 는 거르지 않은 영향 범위의 값 그대로다
+          schema:
+            type: string
+            minLength: 1
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/Limit'
       responses:
         '200':
           description: >-
-            영향 대상의 순서는 깊이, 개체 유형, 개체의 id 차례다. countsByType 은 개체 유형의 글자 코드 순,
+            영향 대상을 나눠 돌려준다: offset 만큼 건너뛰고 limit 개까지 준다. total 과 countsByType, countsByDepth 는
+            나누기 전의 영향 범위 전체의 값이다. 영향 대상의 순서는 깊이, 개체 유형, 개체의 id 차례다. countsByType 은 개체 유형의 글자 코드 순,
             countsByDepth 는 깊이 순이다. 경로의 단계는 변동 대상 쪽부터의 차례다.
             영향 대상이 없으면 빈 목록이다
           content:
@@ -445,6 +463,26 @@ paths:
         '500':
           $ref: '#/components/responses/Problem'
 components:
+  parameters:
+    Offset:
+      name: offset
+      in: query
+      required: false
+      description: 건너뛸 수. 없으면 0. 전체 수와 같거나 크면 빈 목록이다
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: 한 번에 받을 수. 없으면 50. 1 부터 200 까지
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
   responses:
     Problem:
       description: 공통 오류 형식 (RFC 9457 에 code 와 field 를 더한 것)
@@ -455,7 +493,7 @@ components:
   schemas:
     RelationsAsOf:
       type: object
-      required: [asOf, entityId, relations]
+      required: [asOf, entityId, total, offset, limit, relations]
       properties:
         asOf:
           type: string
@@ -463,6 +501,18 @@ components:
           description: 답에 쓴 날짜. 요청에 asOf 가 있었든 없었든 담는다
         entityId:
           type: string
+        total:
+          type: integer
+          minimum: 0
+          description: 조회 시점에 유효한 관계의 전체 수. 나누기 전의 수다. 화면은 다시 세지 않는다
+        offset:
+          type: integer
+          minimum: 0
+          description: 답에 쓴 건너뛴 수
+        limit:
+          type: integer
+          minimum: 1
+          description: 답에 쓴 한 번에 주는 수
         relations:
           type: array
           items:
@@ -654,7 +704,7 @@ components:
           description: 개체 유형
     ActionList:
       type: object
-      required: [packId, status, changeEventId, total, actions]
+      required: [packId, status, changeEventId, total, offset, limit, actions]
       properties:
         packId:
           type: string
@@ -669,7 +719,15 @@ components:
         total:
           type: integer
           minimum: 0
-          description: actions 의 수. 화면은 다시 세지 않는다
+          description: 거른 조치의 전체 수. 나누기 전의 수다. 화면은 다시 세지 않는다
+        offset:
+          type: integer
+          minimum: 0
+          description: 답에 쓴 건너뛴 수
+        limit:
+          type: integer
+          minimum: 1
+          description: 답에 쓴 한 번에 주는 수
         actions:
           type: array
           items:
@@ -800,7 +858,7 @@ components:
           description: 그 판의 적용일
     ChangeImpactScope:
       type: object
-      required: [changeEventId, packId, asOfPrevious, asOfEffective, maxDepth, truncated, storedAt, total, countsByType, countsByDepth, targets]
+      required: [changeEventId, packId, asOfPrevious, asOfEffective, maxDepth, truncated, storedAt, total, offset, limit, countsByType, countsByDepth, targets]
       properties:
         changeEventId:
           type: string
@@ -828,7 +886,15 @@ components:
         total:
           type: integer
           minimum: 0
-          description: 영향 대상의 수. 변동 대상 자신은 세지 않는다
+          description: 영향 대상의 전체 수. 나누기 전의 수다. 변동 대상 자신은 세지 않는다
+        offset:
+          type: integer
+          minimum: 0
+          description: 답에 쓴 건너뛴 수
+        limit:
+          type: integer
+          minimum: 1
+          description: 답에 쓴 한 번에 주는 수
         countsByType:
           type: array
           description: 개체 유형별 수. 합계는 total 과 같다
@@ -1157,7 +1223,7 @@ components:
         code:
           type: string
           description: 오류의 종류. 화면이 이것으로 가른다. 바뀌지 않는 값이다
-          enum: [MISSING_ENTITY_ID, INVALID_AS_OF, ENTITY_NOT_FOUND, MISSING_LOGIN_ID, MISSING_PASSWORD, LOGIN_FAILED, MISSING_PACK_ID, MISSING_INPUT_SOURCE_ID, MISSING_EFFECTIVE_DATE, INVALID_EFFECTIVE_DATE, MISSING_FILE, INVALID_EDITION, PACK_NOT_FOUND, INPUT_SOURCE_NOT_FOUND, FILE_TOO_LARGE, EDITION_REJECTED, INVALID_STATUS, MISSING_ACTION_ID, INVALID_ACTION_ID, ACTION_NOT_FOUND, INVALID_BODY, MISSING_DECISION, INVALID_DECISION, INVALID_NOTE, ACTION_DECISION_CONFLICT, MISSING_CHANGE_EVENT_ID, INVALID_CHANGE_EVENT_ID, IMPACT_SCOPE_NOT_FOUND, UNAUTHENTICATED, FORBIDDEN, INTERNAL, INVALID_PACK_ID, PACK_FOLDER_NOT_FOUND, PACK_INVALID, PACK_CHANGE_REJECTED]
+          enum: [MISSING_ENTITY_ID, INVALID_AS_OF, ENTITY_NOT_FOUND, MISSING_LOGIN_ID, MISSING_PASSWORD, LOGIN_FAILED, MISSING_PACK_ID, MISSING_INPUT_SOURCE_ID, MISSING_EFFECTIVE_DATE, INVALID_EFFECTIVE_DATE, MISSING_FILE, INVALID_EDITION, PACK_NOT_FOUND, INPUT_SOURCE_NOT_FOUND, FILE_TOO_LARGE, EDITION_REJECTED, INVALID_STATUS, MISSING_ACTION_ID, INVALID_ACTION_ID, ACTION_NOT_FOUND, INVALID_BODY, MISSING_DECISION, INVALID_DECISION, INVALID_NOTE, ACTION_DECISION_CONFLICT, MISSING_CHANGE_EVENT_ID, INVALID_CHANGE_EVENT_ID, IMPACT_SCOPE_NOT_FOUND, UNAUTHENTICATED, FORBIDDEN, INTERNAL, INVALID_PACK_ID, PACK_FOLDER_NOT_FOUND, PACK_INVALID, PACK_CHANGE_REJECTED, INVALID_OFFSET, INVALID_LIMIT, INVALID_ENTITY_ID]
         field:
           type: string
           description: 틀린 항목의 이름. 입력 오류일 때만 있다

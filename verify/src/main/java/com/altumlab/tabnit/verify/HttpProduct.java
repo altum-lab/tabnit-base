@@ -76,17 +76,34 @@ final class HttpProduct implements Product {
 
     @Override
     public Reply relations(String entityId, LocalDate asOf) {
-        return send("GET", "/api/v1/relations?entityId=" + encode(entityId) + "&asOf=" + asOf, null, null);
+        return whole("/api/v1/relations?entityId=" + encode(entityId) + "&asOf=" + asOf, "relations");
     }
 
     @Override
     public Reply impactScope(String changeEventId) {
-        return send("GET", "/api/v1/impact-scopes?changeEventId=" + encode(changeEventId), null, null);
+        return whole("/api/v1/impact-scopes?changeEventId=" + encode(changeEventId), "targets");
     }
 
     @Override
     public Reply actions(String packId, String changeEventId) {
-        return send("GET", "/api/v1/actions?packId=" + encode(packId) + "&changeEventId=" + encode(changeEventId), null, null);
+        return whole("/api/v1/actions?packId=" + encode(packId) + "&changeEventId=" + encode(changeEventId), "actions");
+    }
+
+    /** 한 번에 받는 수. 제품이 받는 가장 큰 값이다 (D7 2절 "나눠 주기"). */
+    private static final int PAGE_SIZE = 200;
+
+    /** 나눠 받는 사이에 전체 수가 달라지면 처음부터 다시 받는 횟수. */
+    private static final int MAX_ATTEMPTS = 3;
+
+    /**
+     * 나눠 주는 목록을 끝까지 받아 하나로 잇는다 (D2 AD-347). 잇는 일은 {@link PagedLists} 가 한다.
+     *
+     * @param path 나눠 주기의 항목을 뺀 주소. 질의 항목이 이미 하나 이상 있다
+     * @param listKey 답에서 목록이 든 항목의 이름
+     */
+    private Reply whole(String path, String listKey) {
+        return PagedLists.whole(offset -> send("GET", path + "&offset=" + offset + "&limit=" + PAGE_SIZE, null, null),
+                listKey, PAGE_SIZE, MAX_ATTEMPTS, "GET " + path);
     }
 
     private Reply send(String method, String path, String contentType, byte[] body) {

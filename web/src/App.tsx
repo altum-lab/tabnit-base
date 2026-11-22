@@ -4,6 +4,7 @@ import { api, SESSION_ENDED, type Session } from "./api/client";
 import { CONNECTION_FAILED, messageOf } from "./api/problem";
 import { ActionsPage } from "./pages/ActionsPage";
 import { ChangesPage } from "./pages/ChangesPage";
+import { SessionContext } from "./session";
 import { LoginPage } from "./pages/LoginPage";
 import { RelationsPage } from "./pages/RelationsPage";
 
@@ -125,6 +126,7 @@ export function App() {
         {logoutError && <p role="alert">{logoutError}</p>}
       </header>
       <main>
+        <SessionContext.Provider value={state.session}>
         <Routes>
           <Route path="/" element={<Navigate to="/changes" replace />} />
           {SCREENS.map((screen) => (
@@ -132,6 +134,7 @@ export function App() {
           ))}
           <Route path="*" element={<NotFound />} />
         </Routes>
+        </SessionContext.Provider>
       </main>
     </>
   );

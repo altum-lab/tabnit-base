@@ -2,6 +2,7 @@ import { type FormEvent, useCallback, useEffect, useRef, useState } from "react"
 import { Link } from "react-router";
 import { api, type ChangeProcessing, type EditionSubmission, type PackSummary } from "../api/client";
 import { CONNECTION_FAILED, messageOf } from "../api/problem";
+import { UnprocessedChanges } from "./UnprocessedChanges";
 
 // 변동 감지 화면. 파일 하나를 입력 자료의 새 판으로 올리고, 바뀐 항목과 그 처리 결과를 본다.
 // 서버의 listPacks 와 submitEdition (docs/api/openapi.yaml) 의 값을 그대로 보여 준다.
@@ -34,6 +35,8 @@ export function ChangesPage() {
   // 목록을 받지 못했을 때의 문구. 이미 받은 목록이 있으면 화면의 "지금의 판"이 옛 값일 수 있다고 알리는 데 쓴다.
   const [refreshFailed, setRefreshFailed] = useState<string | null>(null);
   const latestRequest = useRef(0);
+  // 판을 올린 횟수. 처리되지 않은 변동의 목록을 다시 받게 하는 데만 쓴다.
+  const [uploadCount, setUploadCount] = useState(0);
 
   // 목록을 받아 온다. 이미 받은 목록이 있을 때 다시 받다가 실패하면 그 목록을 그대로 두고 알리기만 한다:
   // 폼과 방금 올린 결과가 사라지지 않게 한다.
@@ -90,6 +93,7 @@ export function ChangesPage() {
       });
       if (data) {
         setUpload({ kind: "done", result: data });
+        setUploadCount((count) => count + 1);
         // 입력 자료의 가장 새 판이 바뀌었을 수 있다. 다시 받아 온다.
         void loadPacks();
       } else {
@@ -213,6 +217,10 @@ export function ChangesPage() {
       {upload.kind === "failed" && <p role="alert">{upload.message}</p>}
 
       {upload.kind === "done" && <Result result={upload.result} />}
+
+      {/* 고른 Pack 의 처리되지 않은 변동. 판을 올릴 때마다 다시 받는다. Pack 을 바꾸면 새로 그린다:
+          앞에 고른 Pack 에서 아직 돌고 있던 다시 처리의 결과와 목록이 새로 고른 Pack 의 것처럼 보이지 않게 한다. */}
+      {pack && <UnprocessedChanges key={pack.packId} packId={pack.packId} refreshKey={uploadCount} />}
     </section>
   );
 }

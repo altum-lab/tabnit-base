@@ -16,6 +16,7 @@ import com.altumlab.tabnit.pack.ValueFormat;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -245,6 +246,84 @@ class ChangeEventsTest {
         assertThat(events.unprocessed("e-many")).hasSize(count / 2)
             .first()
             .satisfies(e -> assertThat(e.itemKey()).isEqualTo("B-1001"));
+    }
+
+    // ── 실패의 까닭 (C-08, D2 AD-321, AD-345) ─────────────────────────
+
+    @Test
+    void 실패로_표시할_때_넘긴_까닭이_넘긴_차례로_남고_처리되지_않은_것의_까닭으로_읽힌다() {
+        PackDefinition pack = twoEvents("e-why");
+        List<ChangeFailureDetail> details = List.of(
+                new ChangeFailureDetail("0002", "VALUE_FORMAT_MISMATCH", "e-why|Base|B-1", "title", "값"),
+                new ChangeFailureDetail("0001", "DUE_DATE_OUT_OF_RANGE", null, null, null));
+
+        events.markFailed("e-why|src|2|B-1", ChangeFailedStage.RULES, "RULE_FAILED", details);
+
+        // 넘긴 차례 그대로다. 까닭이 없는 것(대기)은 들어 있지 않다.
+        assertThat(events.unprocessedFailureDetails(pack.packId())).containsOnlyKeys("e-why|src|2|B-1")
+            .containsEntry("e-why|src|2|B-1", details);
+        // 두 번 읽어도 같다.
+        assertThat(events.unprocessedFailureDetails(pack.packId()))
+            .isEqualTo(events.unprocessedFailureDetails(pack.packId()));
+        // 다른 Pack 의 것은 섞이지 않는다.
+        assertThat(events.unprocessedFailureDetails("e-why-없는-pack")).isEmpty();
+    }
+
+    @Test
+    void 다시_실패하면_까닭이_새것으로_바뀌고_처리되면_없어진다() {
+        PackDefinition pack = twoEvents("e-why-again");
+        ChangeFailureDetail first = new ChangeFailureDetail("0001", "FIRST", null, null, null);
+        ChangeFailureDetail second = new ChangeFailureDetail("0009", "SECOND", "e", "a", "v");
+        events.markFailed("e-why-again|src|2|B-1", ChangeFailedStage.RULES, "RULE_FAILED", List.of(first, first));
+        events.markFailed("e-why-again|src|2|B-2", ChangeFailedStage.RULES, "RULE_FAILED", List.of(first));
+
+        events.markFailed("e-why-again|src|2|B-1", ChangeFailedStage.RULES, "RULE_FAILED", List.of(second));
+        events.markProcessed("e-why-again|src|2|B-2");
+
+        assertThat(events.unprocessedFailureDetails(pack.packId())).containsOnlyKeys("e-why-again|src|2|B-1")
+            .containsEntry("e-why-again|src|2|B-1", List.of(second));
+        // 까닭 없이 다시 실패로 표시하면 앞의 까닭도 없어진다: 지금의 상태의 까닭만 남는다.
+        events.markFailed("e-why-again|src|2|B-1", ChangeFailedStage.IMPACT, "STORAGE_FAILURE");
+        assertThat(events.unprocessedFailureDetails(pack.packId())).isEmpty();
+        Integer rows = new org.springframework.jdbc.core.JdbcTemplate(LinkTestDatabase.dataSource()).queryForObject(
+                "select count(*) from change_event_failure where change_event_id like 'e-why-again|%'", Integer.class);
+        assertThat(rows).isZero();
+    }
+
+    @Test
+    void 틀린_까닭은_받지_않고_표시도_바뀌지_않는다() {
+        twoEvents("e-why-bad");
+
+        assertThatThrownBy(() -> events.markFailed("e-why-bad|src|2|B-1", ChangeFailedStage.RULES, "RULE_FAILED", null))
+            .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> events.markFailed("e-why-bad|src|2|B-1", ChangeFailedStage.RULES, "RULE_FAILED",
+                List.of(new ChangeFailureDetail("", "CODE", null, null, null))))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> events.markFailed("e-why-bad|src|2|B-1", ChangeFailedStage.RULES, "RULE_FAILED",
+                List.of(new ChangeFailureDetail("0001", "CODE", null, null, "nul\u0000"))))
+            .isInstanceOf(IllegalArgumentException.class);
+        // 처리됨은 실패로 바꾸지 못하고 까닭도 남지 않는다.
+        events.markProcessed("e-why-bad|src|2|B-2");
+        assertThatThrownBy(() -> events.markFailed("e-why-bad|src|2|B-2", ChangeFailedStage.RULES, "RULE_FAILED",
+                List.of(new ChangeFailureDetail("0001", "CODE", null, null, null))))
+            .isInstanceOf(ChangeEventRejectedException.class);
+
+        assertThat(events.find("e-why-bad|src|2|B-1")).hasValueSatisfying(
+                e -> assertThat(e.status()).isEqualTo(ChangeEventStatus.PENDING));
+        assertThat(events.unprocessedFailureDetails("e-why-bad")).isEmpty();
+    }
+
+    @Test
+    void 까닭이_많아도_모두_차례대로_남는다() {
+        PackDefinition pack = twoEvents("e-why-many");
+        List<ChangeFailureDetail> many = new ArrayList<>();
+        for (int i = 0; i < 300; i++) {
+            many.add(new ChangeFailureDetail(String.format("%04d", 300 - i), "CODE", "e" + i, "a", "v"));
+        }
+
+        events.markFailed("e-why-many|src|2|B-1", ChangeFailedStage.RULES, "RULE_FAILED", many);
+
+        assertThat(events.unprocessedFailureDetails(pack.packId()).get("e-why-many|src|2|B-1")).isEqualTo(many);
     }
 
     // ── 도우미 ──────────────────────────────────────────────────

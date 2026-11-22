@@ -101,6 +101,8 @@ class SecurityConfiguration {
 			// 관리자만 하는 일.
 			.requestMatchers(HttpMethod.POST, PackLoadsController.PATH)
 			.hasRole(ADMIN)
+			.requestMatchers(HttpMethod.POST, UnprocessedChangesController.REPROCESS_PATH)
+			.hasRole(ADMIN)
 			.requestMatchers("/actuator/**")
 			.hasRole(ADMIN)
 			// 그 밖의 API 는 담당자와 관리자가 한다. 둘 다 아닌 역할은 아무것도 부르지 못한다.

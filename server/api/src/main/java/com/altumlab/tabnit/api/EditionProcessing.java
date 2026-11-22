@@ -7,6 +7,9 @@ import com.altumlab.tabnit.core.ImpactRequest;
 import com.altumlab.tabnit.core.ImpactScope;
 import com.altumlab.tabnit.core.UnknownImpactDirectionException;
 import com.altumlab.tabnit.link.ChangeEvent;
+import com.altumlab.tabnit.link.UnprocessedChangeEvents;
+import com.altumlab.tabnit.link.ChangeEventStatus;
+import com.altumlab.tabnit.link.ChangeFailureDetail;
 import com.altumlab.tabnit.link.ChangeEvents;
 import com.altumlab.tabnit.link.ChangeFailedStage;
 import com.altumlab.tabnit.link.Edition;
@@ -199,6 +202,39 @@ class EditionProcessing {
 		return oneAtATime(packId, () -> process(pack(packId)));
 	}
 
+	/**
+	 * 그 Pack 의 처리되지 않은 변동 이벤트(대기, 실패)를 그 판과 실패의 까닭과 함께 읽는다. 처리하는 차례다 (D2 AD-207).
+	 * 읽기만 한다: 판 처리를 기다리지 않는다.
+	 *
+	 * @throws ApiProblemException Pack 이 없을 때
+	 */
+	List<UnprocessedChange> unprocessed(String packId) {
+		Objects.requireNonNull(packId, "Pack 의 식별자는 반드시 있어야 합니다");
+		pack(packId);
+		// 변동 이벤트와 까닭은 한 시점의 것으로 함께 읽는다. 그 사이에 다시 처리가 끼어들어도 서로 어긋나지 않는다.
+		UnprocessedChangeEvents read = this.changeEvents.unprocessedWithFailureDetails(packId);
+		// 판은 식별자로 찾는 데만 쓴다.
+		Map<String, Edition> editionsById = new TreeMap<>();
+		List<UnprocessedChange> found = new ArrayList<>();
+		for (ChangeEvent event : read.events()) {
+			Edition edition = editionsById.computeIfAbsent(event.editionId(),
+					id -> this.editions.findEdition(id).orElse(null));
+			if (edition == null) {
+				// 저장소가 어긋났다. 변동 이벤트는 판을 가리키므로 생기지 않아야 한다.
+				throw new IllegalStateException("변동 이벤트 " + event.id() + " 의 판 " + event.editionId()
+						+ " 이 없습니다. 저장소의 상태를 확인하세요.");
+			}
+			// 실패가 아닌 것(대기)에는 까닭이 없다.
+			found.add(new UnprocessedChange(event, edition,
+					event.status() == ChangeEventStatus.FAILED ? read.failuresOf(event.id()) : List.of()));
+		}
+		return found;
+	}
+
+	/** 처리되지 않은 변동 이벤트 하나와 그 판, 실패의 까닭. */
+	record UnprocessedChange(ChangeEvent event, Edition edition, List<ChangeFailureDetail> failures) {
+	}
+
 	private PackDefinition pack(String packId) {
 		// NUL 이 든 식별자의 Pack 은 있을 수 없다. 저장소에 묻지 않고 없는 것으로 답한다.
 		return (packId.indexOf('\u0000') >= 0 ? Optional.<PackDefinition>empty() : this.packs.find(packId))
@@ -273,9 +309,15 @@ class EditionProcessing {
 		if (generation.outcome() == ActionGeneration.Outcome.RULE_FAILED) {
 			// 평가에 실패한 규칙이 있다. 아무것도 저장되지 않았다 (D2 AD-227).
 			log.warn("변동 이벤트 {} 의 규칙 실행이 실패했습니다. 실패한 규칙: {}", event.id(), generation.failures());
-			this.changeEvents.markFailed(event.id(), ChangeFailedStage.RULES, "RULE_FAILED");
+			// 어느 규칙이 왜 실패했는지를 변동 이벤트에 함께 남긴다 (D2 AD-321, AD-345). 규칙 번호 순 그대로다.
+			List<ChangeFailureDetail> details = generation.failures()
+				.stream()
+				.map(failure -> new ChangeFailureDetail(failure.ruleNo(), failure.code(), failure.entityId(),
+						failure.attributeName(), failure.value()))
+				.toList();
+			this.changeEvents.markFailed(event.id(), ChangeFailedStage.RULES, "RULE_FAILED", details);
 			return new ProcessedChange(event.id(), event.editionId(), event.itemKey(), false, ChangeFailedStage.RULES.name(),
-					"RULE_FAILED", 0);
+					"RULE_FAILED", 0, details);
 		}
 		// 저장했거나 이미 저장되어 있었다. 저장한 뒤 표시하기 전에 멈췄던 변동은 여기서 표시만 된다 (D2 AD-228).
 		this.changeEvents.markProcessed(event.id());

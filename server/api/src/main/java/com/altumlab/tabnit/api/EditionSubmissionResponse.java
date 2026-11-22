@@ -2,6 +2,7 @@ package com.altumlab.tabnit.api;
 
 import com.altumlab.tabnit.link.ChangeEvent;
 import com.altumlab.tabnit.link.ChangeEventStatus;
+import com.altumlab.tabnit.link.ChangeFailureDetail;
 import com.altumlab.tabnit.link.Edition;
 import com.altumlab.tabnit.link.IngestNotice;
 import com.altumlab.tabnit.link.IngestOutcome;
@@ -25,7 +26,24 @@ record EditionSubmissionResponse(String outcome, String editionId, String packId
 			Processing processing) {
 	}
 
-	record Processing(String status, String failedStage, String failureCode, int actionCount) {
+	/** 규격의 ChangeProcessing. */
+	record Processing(String status, String failedStage, String failureCode, List<Failure> failures, int actionCount) {
+
+		/** 이 요청이 처리한 결과에서 만든다. */
+		static Processing of(ProcessedChange change) {
+			return new Processing(change.processed() ? ChangeEventStatus.PROCESSED.name() : ChangeEventStatus.FAILED.name(),
+					change.failedStage(), change.failureCode(), Failure.of(change.failures()), change.actionCount());
+		}
+	}
+
+	/** 평가에 실패한 규칙 하나. 규격의 ChangeFailure. */
+	record Failure(String ruleNo, String code, String entityId, String attributeName, String value) {
+
+		static List<Failure> of(List<ChangeFailureDetail> details) {
+			return details.stream()
+				.map(d -> new Failure(d.ruleNo(), d.code(), d.entityId(), d.attributeName(), d.value()))
+				.toList();
+		}
 	}
 
 	record Retried(String changeEventId, String editionId, String itemKey, Processing processing) {
@@ -51,18 +69,21 @@ record EditionSubmissionResponse(String outcome, String editionId, String packId
 			else if (change.processed() || change.failedStage() != null) {
 				// 앞선 판의 변동을 함께 다시 처리한 것. 결과를 표시하지 못한 것은 넣지 않는다 (상태가 바뀌지 않았다).
 				retried.add(new Retried(change.changeEventId(), change.editionId(), change.itemKey(),
-						new Processing(change.processed() ? ChangeEventStatus.PROCESSED.name() : ChangeEventStatus.FAILED.name(),
-								change.failedStage(), change.failureCode(), change.actionCount())));
+						Processing.of(change)));
 			}
 		}
 		List<Change> changes = new ArrayList<>();
 		if (accepted) {
 			for (ChangeEvent event : events) {
 				ProcessedChange done = processed.get(event.id());
-				// 상태와 실패의 까닭은 저장된 변동 이벤트의 것이다. 조치의 수는 이 요청이 처리한 결과에서 온다.
+				// 상태와 실패의 단계와 코드는 저장된 변동 이벤트의 것이다. 조치의 수와 평가에 실패한 규칙은 이 요청이
+				// 처리한 결과에서 온다 (저장한 것과 같은 것이다).
 				changes.add(new Change(event.id(), event.itemKey(), event.kind().name(), event.primaryEntityId(),
-						event.targetEntityIds(), new Processing(event.status().name(), event.failedStage(),
-								event.failureCode(), done == null ? 0 : done.actionCount())));
+						event.targetEntityIds(),
+						new Processing(event.status().name(), event.failedStage(), event.failureCode(),
+								done == null || event.status() != ChangeEventStatus.FAILED ? List.of()
+										: Failure.of(done.failures()),
+								done == null ? 0 : done.actionCount())));
 			}
 		}
 		List<Notice> notices = new ArrayList<>();

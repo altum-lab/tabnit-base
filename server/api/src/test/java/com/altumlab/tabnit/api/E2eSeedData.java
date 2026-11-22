@@ -32,6 +32,9 @@ class E2eSeedData {
 	/** 화면 시험(web/tests/actions.spec.ts)이 조치를 읽는 Pack 의 식별자. */
 	private static final String ACTIONS_PACK = "e2e-actions";
 
+	/** 화면 시험(web/tests/unprocessed.spec.ts)이 처리에 실패한 변동을 읽는 Pack 의 식별자. */
+	private static final String FAILED_PACK = "e2e-failed";
+
 	/** 그 Pack 에 올리는 판. 입력 자료, 파일, 적용일. 시험용 Pack 의 시나리오의 차례다. */
 	private static final String[][] ACTIONS_EDITIONS = { { "program", "program-v1.csv", "2026-01-01" },
 			{ "guideline", "guideline-v1.csv", "2026-01-01" },
@@ -79,6 +82,17 @@ class E2eSeedData {
 			for (String[] edition : ACTIONS_EDITIONS) {
 				processing.submit(ACTIONS_PACK, edition[0], edition[1],
 						java.nio.file.Files.readAllBytes(actionsPack.resolve("data/" + edition[1])),
+						java.time.LocalDate.parse(edition[2]));
+			}
+			// 처리되지 않은 변동의 시험이 읽을 Pack: 규칙 하나의 기한을 날짜로 담을 수 없게 고친 사본이다.
+			// 그 규칙에 걸리는 변동이 실패로 남는다. 고치지 않으므로 다시 처리해도 다시 실패한다: 시험을 되풀이할 수 있다.
+			PackCopies.requireUnstorableDueDate();
+			java.nio.file.Path failedPack = PackCopies.load(dataSource,
+					java.nio.file.Files.createTempDirectory("tabnit-e2e-pack"), FAILED_PACK,
+					PackCopies::unstorableDueDate);
+			for (String[] edition : ACTIONS_EDITIONS) {
+				processing.submit(FAILED_PACK, edition[0], edition[1],
+						java.nio.file.Files.readAllBytes(failedPack.resolve("data/" + edition[1])),
 						java.time.LocalDate.parse(edition[2]));
 			}
 		};

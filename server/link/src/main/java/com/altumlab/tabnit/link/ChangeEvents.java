@@ -34,12 +34,16 @@ public class ChangeEvents {
     /** 읽기는 한 시점의 것으로 한다. 이벤트와 변동 대상을 두 문장으로 읽는 사이에 새 판이 들어와도 어긋나지 않는다. */
     private final TransactionTemplate snapshot;
 
+    /** 표시와 그 까닭은 함께 바뀐다. 부르는 쪽에 트랜잭션이 있으면 거기에 든다. */
+    private final TransactionTemplate marking;
+
     public ChangeEvents(DataSource dataSource) {
         Objects.requireNonNull(dataSource, "데이터 원본은 반드시 있어야 합니다");
         this.jdbc = new JdbcTemplate(dataSource);
         this.snapshot = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
         this.snapshot.setReadOnly(true);
         this.snapshot.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
+        this.marking = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
     }
 
     /**
@@ -105,11 +109,18 @@ public class ChangeEvents {
      */
     public void markProcessed(String changeEventId) {
         Objects.requireNonNull(changeEventId, "변동 이벤트의 식별자는 반드시 있어야 합니다");
-        int changed = jdbc.update("""
-                update change_event
-                   set status = 'PROCESSED', failed_stage = null, failure_code = null
-                 where id = ? and status in ('PENDING', 'FAILED')
-                """, changeEventId);
+        int changed = marking.execute(status -> {
+            int updated = jdbc.update("""
+                    update change_event
+                       set status = 'PROCESSED', failed_stage = null, failure_code = null
+                     where id = ? and status in ('PENDING', 'FAILED')
+                    """, changeEventId);
+            if (updated > 0) {
+                // 실패의 까닭은 지금의 상태의 것이다. 처리됨에는 까닭이 없다.
+                jdbc.update("delete from change_event_failure where change_event_id = ?", changeEventId);
+            }
+            return updated;
+        });
         if (changed == 0) {
             // 바뀌지 않았다. 없는 것인지, 이미 처리된 것인지 가린다. 이미 처리됨이면 같은 표시를 다시 한 것이다.
             require(changeEventId);
@@ -124,24 +135,103 @@ public class ChangeEvents {
      * @throws ChangeEventRejectedException 그런 변동 이벤트가 없거나 이미 처리됨일 때. 처리됨은 실패로 바꾸지 못한다
      */
     public void markFailed(String changeEventId, ChangeFailedStage stage, String failureCode) {
+        markFailed(changeEventId, stage, failureCode, List.of());
+    }
+
+    /**
+     * 뒤 단계가 실패했다고 표시하고 그 까닭을 함께 남긴다 (D2 AD-321, AD-345). 표시와 까닭은 함께 바뀐다:
+     * 앞서 남긴 까닭은 없어지고 넘긴 것이 넘긴 차례로 남는다. 그 밖은 까닭 없이 표시하는 것과 같다.
+     *
+     * @param details 까닭. 평가에 실패한 규칙마다 한 줄이다. 없으면 빈 목록
+     * @throws ChangeEventRejectedException 그런 변동 이벤트가 없거나 이미 처리됨일 때
+     */
+    public void markFailed(String changeEventId, ChangeFailedStage stage, String failureCode,
+            List<ChangeFailureDetail> details) {
         Objects.requireNonNull(changeEventId, "변동 이벤트의 식별자는 반드시 있어야 합니다");
         Objects.requireNonNull(stage, "실패한 단계는 반드시 있어야 합니다");
         Objects.requireNonNull(failureCode, "실패한 이유의 코드는 반드시 있어야 합니다");
+        List<ChangeFailureDetail> lines = List.copyOf(Objects.requireNonNull(details, "실패의 까닭은 반드시 있어야 합니다. 없으면 빈 목록을 넘기세요"));
+        for (ChangeFailureDetail line : lines) {
+            if (unstorable(line.ruleNo()) || line.ruleNo().isBlank() || unstorable(line.code()) || line.code().isBlank()
+                    || (line.entityId() != null && unstorable(line.entityId()))
+                    || (line.attributeName() != null && unstorable(line.attributeName()))
+                    || (line.value() != null && unstorable(line.value()))) {
+                throw new IllegalArgumentException("실패의 까닭에는 규칙 번호와 코드가 있어야 하고, NUL 글자나 짝이 맞지 않는 "
+                        + "대리 문자를 담을 수 없습니다. 걸린 줄: 규칙 " + line.ruleNo() + ", 코드 " + line.code() + ".");
+            }
+        }
         if (failureCode.isBlank() || failureCode.indexOf('\u0000') >= 0 || hasUnpairedSurrogate(failureCode)) {
             // 저장소가 담지 못하거나 다른 글자로 바꿔 담는 글자다. 코드는 나중에 글자 그대로 견주므로 조용히 바뀌면 안 된다.
             throw new IllegalArgumentException(
                     "실패한 이유의 코드는 비어 있거나 NUL 글자, 짝이 맞지 않는 대리 문자를 담을 수 없습니다. 코드를 넘기세요.");
         }
-        int changed = jdbc.update("""
-                update change_event
-                   set status = 'FAILED', failed_stage = ?, failure_code = ?
-                 where id = ? and status in ('PENDING', 'FAILED')
-                """, stage.name(), failureCode, changeEventId);
+        int changed = marking.execute(status -> {
+            int updated = jdbc.update("""
+                    update change_event
+                       set status = 'FAILED', failed_stage = ?, failure_code = ?
+                     where id = ? and status in ('PENDING', 'FAILED')
+                    """, stage.name(), failureCode, changeEventId);
+            if (updated > 0) {
+                jdbc.update("delete from change_event_failure where change_event_id = ?", changeEventId);
+                for (int i = 0; i < lines.size(); i++) {
+                    ChangeFailureDetail line = lines.get(i);
+                    jdbc.update("""
+                            insert into change_event_failure
+                                (change_event_id, seq, rule_no, code, entity_id, attribute_name, value)
+                            values (?, ?, ?, ?, ?, ?, ?)
+                            """, changeEventId, i, line.ruleNo(), line.code(), line.entityId(), line.attributeName(),
+                            line.value());
+                }
+            }
+            return updated;
+        });
         if (changed == 0) {
             ChangeEvent current = require(changeEventId);
             throw new ChangeEventRejectedException("변동 이벤트 " + changeEventId + " 은(는) 이미 처리됨(" + current.status()
                     + ")이라 실패로 바꿀 수 없습니다. 처리된 변동의 결과는 바꾸지 않습니다.");
         }
+    }
+
+    /**
+     * 이 Pack 의 처리되지 않은 변동 이벤트 가운데 실패의 까닭이 남아 있는 것과 그 까닭. 변동 이벤트의 식별자 순이고,
+     * 까닭은 넘겨받은 차례다. 까닭이 없는 것은 들어 있지 않다.
+     */
+    public Map<String, List<ChangeFailureDetail>> unprocessedFailureDetails(String packId) {
+        Objects.requireNonNull(packId, "Pack 의 식별자는 반드시 있어야 합니다");
+        return snapshot.execute(status -> readFailureDetails(packId));
+    }
+
+    /**
+     * 이 Pack 의 처리되지 않은 변동 이벤트와 그 실패의 까닭을 한 시점의 것으로 함께 읽는다. 따로 읽으면 그 사이에
+     * 다시 처리가 끼어들어 상태와 까닭이 어긋날 수 있다.
+     */
+    public UnprocessedChangeEvents unprocessedWithFailureDetails(String packId) {
+        Objects.requireNonNull(packId, "Pack 의 식별자는 반드시 있어야 합니다");
+        return snapshot
+            .execute(status -> new UnprocessedChangeEvents(readUnprocessed(packId), readFailureDetails(packId)));
+    }
+
+    private Map<String, List<ChangeFailureDetail>> readFailureDetails(String packId) {
+        TreeMap<String, List<ChangeFailureDetail>> found = new TreeMap<>(LinkOrder.STRINGS);
+        jdbc.query("""
+                select f.change_event_id, f.rule_no, f.code, f.entity_id, f.attribute_name, f.value
+                  from change_event_failure f
+                  join change_event e on e.id = f.change_event_id
+                  join edition d on d.id = e.edition_id
+                 where d.pack_id = ? and e.status = 'FAILED'
+                 order by f.change_event_id, f.seq
+                """, rs -> {
+            found.computeIfAbsent(rs.getString("change_event_id"), k -> new ArrayList<>())
+                .add(new ChangeFailureDetail(rs.getString("rule_no"), rs.getString("code"), rs.getString("entity_id"),
+                        rs.getString("attribute_name"), rs.getString("value")));
+        }, packId);
+        TreeMap<String, List<ChangeFailureDetail>> fixed = new TreeMap<>(LinkOrder.STRINGS);
+        found.forEach((id, lines) -> fixed.put(id, List.copyOf(lines)));
+        return java.util.Collections.unmodifiableSortedMap(fixed);
+    }
+
+    private static boolean unstorable(String text) {
+        return text == null || text.indexOf('\u0000') >= 0 || hasUnpairedSurrogate(text);
     }
 
     private static boolean hasUnpairedSurrogate(String text) {

@@ -154,6 +154,30 @@ class LargePackTest {
     }
 
     @Test
+    void 같은_이름으로_다시_만들면_앞서_만든_파일이_남지_않고_남의_폴더는_지우지_않는다() throws IOException {
+        // 층 넷, 변동 있음 → 층 셋, 변동 없음. 앞의 넷째 층과 바뀐 판이 남으면 새 정의와 어긋난다.
+        LargePack.generate(new LargePack.Spec("large-again", 40, 60, 4, 2), temp.resolve("a"));
+        LargePack.generate(new LargePack.Spec("large-again", 40, 60, 3, 0), temp.resolve("a"));
+        LargePack.generate(new LargePack.Spec("large-again", 40, 60, 3, 0), temp.resolve("b"));
+
+        try (Stream<Path> files = Files.walk(temp.resolve("a"))) {
+            List<String> made = files.filter(Files::isRegularFile).map(f -> temp.resolve("a").relativize(f).toString()).sorted().toList();
+            try (Stream<Path> fresh = Files.walk(temp.resolve("b"))) {
+                assertThat(made).isEqualTo(
+                        fresh.filter(Files::isRegularFile).map(f -> temp.resolve("b").relativize(f).toString()).sorted().toList());
+            }
+        }
+        // 이 생성기가 만들지 않은 폴더가 그 이름으로 있으면 지우지 않고 알린다.
+        Path other = temp.resolve("c/large-other");
+        Files.createDirectories(other);
+        Files.writeString(other.resolve("남의 파일.txt"), "지우면 안 된다", StandardCharsets.UTF_8);
+        assertThatThrownBy(() -> LargePack.generate(new LargePack.Spec("large-other", 10, 10, 2, 1), temp.resolve("c")))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("지우지 않았습니다");
+        assertThat(other.resolve("남의 파일.txt")).hasContent("지우면 안 된다");
+    }
+
+    @Test
     void 만들_수_없는_값은_무엇이_틀렸는지_알리고_아무것도_만들지_않는다() {
         String[][] wrong = { { "Large", "10", "10", "2", "1", "이름" }, { "", "10", "10", "2", "1", "이름" },
                 { "p", "10", "10", "1", "1", "층" }, { "p", "10", "10", "22", "1", "층" }, { "p", "3", "1", "4", "1", "개체" },

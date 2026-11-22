@@ -96,6 +96,7 @@ final class LargePack {
             throw new IllegalArgumentException("변동의 수가 첫 층의 개체의 수(" + layerSizes[0] + ")보다 많습니다. 변동의 수를 줄이세요.");
         }
         Path pack = parent.resolve(spec.packId());
+        clearEarlier(pack);
         Files.createDirectories(pack.resolve("data"));
         Files.createDirectories(pack.resolve("mappings"));
         Files.createDirectories(pack.resolve("rules"));
@@ -131,6 +132,29 @@ final class LargePack {
             }
         }
         return new Expected(spec.packId(), spec.entities(), spec.relations(), steps, changes);
+    }
+
+    /**
+     * 같은 이름으로 앞서 만든 것을 지운다. 층의 수나 변동의 수를 바꿔 다시 만들면 앞의 파일(더 많던 층의 매핑과 자료,
+     * 바뀐 판)이 남아 새 정의와 어긋난다. 이 생성기가 만든 폴더만 지운다: 다른 것이 있으면 건드리지 않고 알린다.
+     */
+    private static void clearEarlier(Path pack) throws IOException {
+        if (!Files.exists(pack)) {
+            return;
+        }
+        Path marker = pack.resolve("pack.ttl");
+        boolean ours = Files.isRegularFile(marker)
+                && Files.readString(marker, StandardCharsets.UTF_8).startsWith(NOTE);
+        if (!ours) {
+            throw new IllegalArgumentException("만들 곳에 이 생성기가 만들지 않은 폴더가 이미 있습니다: " + pack
+                    + ". 이름이 겹치지 않게 다른 곳을 고르거나 그 폴더를 옮기세요. 지우지 않았습니다.");
+        }
+        try (java.util.stream.Stream<Path> files = Files.walk(pack)) {
+            // 깊은 것부터 지운다.
+            for (Path file : files.sorted(java.util.Comparator.reverseOrder()).toList()) {
+                Files.delete(file);
+            }
+        }
     }
 
     private static Spec check(Spec spec) {

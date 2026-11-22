@@ -1,5 +1,5 @@
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
-import { E2E_USER, expect, test } from "./fixtures";
+import { E2E_OTHER_USER, E2E_USER, apiAs, expect, test } from "./fixtures";
 
 // D-06 수용 기준: 조치 목록과 근거가 실제 API 에서 온다.
 // D-07 수용 기준: 화면에서 확정하면 상태와 이력이 바뀐다.
@@ -241,14 +241,16 @@ test("대기만 보는 목록에서 확정해도 방금 한 결과가 남고 목
   await expect(row(page, action.id)).toHaveCount(0);
 });
 
-test("다른 사람이 먼저 확정한 조치를 확정하려 하면 알리고 지금의 상태로 고친다", async ({ page, request }) => {
+test("다른 사람이 먼저 확정한 조치를 확정하려 하면 알리고 지금의 상태로 고친다", async ({ page, request, baseURL }) => {
   const action = await freshAction(request);
   await page.goto(`/actions?packId=${WRITE_PACK}&status=ALL&changeEventId=${encodeURIComponent(action.changeEventId)}`);
   await open(page, action.id);
   const panel = detail(page, action.id);
-  // 화면을 연 뒤에 다른 곳에서 먼저 확정한다.
-  const elsewhere = await request.post("/api/v1/action-decisions", { data: { actionId: action.id, decision: "CONFIRM", note: "먼저 확인했다" } });
+  // 화면을 연 뒤에 다른 사람이 먼저 확정한다. 화면과 같은 사람이 다시 보낸 것은 거부가 아니라 성공이다 (D2 AD-325).
+  const other = await apiAs(baseURL, E2E_OTHER_USER);
+  const elsewhere = await other.post("/api/v1/action-decisions", { data: { actionId: action.id, decision: "CONFIRM", note: "먼저 확인했다" } });
   expect(elsewhere.ok()).toBe(true);
+  await other.dispose();
 
   await panel.getByRole("button", { name: "확정" }).click();
 

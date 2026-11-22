@@ -207,7 +207,10 @@ class AuditApiTests {
 			.contentType(MediaType.APPLICATION_JSON)
 			.content("{ \"actionId\": " + json(action.id()) + ", \"decision\": \"HOLD\", \"note\": \"지어낸 사유: 홍길동 담당\" }"))
 			.andExpect(status().isOk());
-		// 같은 것을 다시 하면 거부된다 (409).
+		// 그 사이에 다른 사람이 확정했다 (HTTP 를 거치지 않아 감사 기록에는 남지 않는다). 그 뒤의 보류는 거부된다 (409).
+		// 같은 사람이 같은 보류를 다시 보내는 것은 이제 성공이라 (D2 AD-325) 거부의 경우를 이렇게 만든다.
+		new com.altumlab.tabnit.rules.ActionDecisions(this.dataSource).confirm(action.id(), "aud-other", null,
+				java.time.Instant.parse("2026-07-01T00:00:00Z"));
 		this.mvc.perform(post("/api/v1/action-decisions").with(officer).with(csrf())
 			.contentType(MediaType.APPLICATION_JSON)
 			.content("{ \"actionId\": " + json(action.id()) + ", \"decision\": \"HOLD\", \"note\": \"다시\" }"))
@@ -229,6 +232,28 @@ class AuditApiTests {
 		assertThat(rows.get(3).target()).isEqualTo("actionId=" + action.id());
 		// 사유에는 사람의 이름 같은 것이 들 수 있다. 감사 기록에 옮기지 않는다.
 		assertThat(allText(rows)).doesNotContain("홍길동").doesNotContain("지어낸 사유");
+	}
+
+	@Test
+	void 같은_사람이_다시_보낸_보류는_성공으로_답하고_감사_기록에도_성공으로_남는다() throws Exception {
+		RequestPostProcessor officer = user("aud-officer").roles("OFFICER");
+		Action action = pendingAction("aud-resend");
+		long mark = this.audit.lastId();
+
+		for (String note : List.of("기다린다", "다시 누름")) {
+			this.mvc.perform(post("/api/v1/action-decisions").with(officer).with(csrf())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{ \"actionId\": " + json(action.id()) + ", \"decision\": \"HOLD\", \"note\": \"" + note + "\" }"))
+				.andExpect(status().isOk());
+		}
+
+		// 요청마다 두 줄이다. 다시 보낸 것도 성공으로 남는다 (D2 AD-325). 이력은 한 줄이다.
+		List<AuditRecord> rows = this.audit.after(mark);
+		assertThat(rows).extracting(AuditRecord::outcome)
+			.containsExactly(AuditOutcome.STARTED, AuditOutcome.SUCCESS, AuditOutcome.STARTED, AuditOutcome.SUCCESS);
+		assertThat(rows.get(3).target()).isEqualTo("actionId=" + action.id());
+		assertThat(rows.get(3).detail()).isEqualTo("decision=HOLD");
+		assertThat(new ActionRecords(this.dataSource).history(action.id())).hasSize(1);
 	}
 
 	@Test

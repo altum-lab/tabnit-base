@@ -3,7 +3,7 @@
 # 규칙. 형식은 D8 2절 ~ 3절이다. 한도와 기한의 수치는 시연 자료의 것을 따랐다 (D2 AD-296).
 #
 # 0001, 0002 요건의 위험자산 한도가 바뀌면, 비중이 그 한도를 넘는 계좌에 건다 (영향 대상의 속성을 변동 대상의 속성과 견준다).
-# 0003 ~ 0005 금융기관의 등급 점수가 기준(10) 미만으로 바뀌면, 그 기관의 예금과 거기에 닿은 가입자와 사업장에 건다.
+# 0003 ~ 0005 금융기관의 등급 점수가 기준(10) 미만으로 바뀌면, 그 기관의 원리금보장 상품(예금, 이율보증)과 거기에 닿은 가입자와 사업장에 건다 (D2 AD-306).
 # 0006 퇴직일이 들어온 가입자 가운데 퇴직일이 판의 적용일 이하인 사람에게 건다 (속성을 판의 적용일과 견준다).
 # 0007, 0008 제도의 적립 비율이 기준(0.95) 미만으로 바뀌면, 그 사업장과 담당자에게 건다.
 #
@@ -66,7 +66,7 @@ ex:규칙-0002 a tabnit:Rule ;
 
 ex:규칙-0003 a tabnit:Rule ;
     tabnit:ruleNo "0003" ;
-    rdfs:label "등급 미달 기관의 예금 신규 편입 중단" ;
+    rdfs:label "등급 미달 기관의 원리금보장 상품 신규 편입 중단" ;
     tabnit:priority 1 ;
     tabnit:whenChangeKind tabnit:Changed ;
     tabnit:whenInputSource "institution" ;
@@ -86,10 +86,10 @@ ex:규칙-0003 a tabnit:Rule ;
     tabnit:condition [
         tabnit:subject tabnit:ImpactTarget ;
         tabnit:property ex:상품구분 ;
-        tabnit:operator tabnit:Equals ;
-        tabnit:value "예금"
+        tabnit:operator tabnit:In ;
+        tabnit:value "예금" , "이율보증"
     ] ;
-    tabnit:actionText "이 예금의 신규 편입과 재예치를 중단한다" ;
+    tabnit:actionText "이 상품의 신규 편입과 재예치를 중단한다" ;
     tabnit:dueInDays 0 .
 
 ex:규칙-0004 a tabnit:Rule ;

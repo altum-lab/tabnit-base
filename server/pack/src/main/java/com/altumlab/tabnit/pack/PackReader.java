@@ -44,6 +44,9 @@ final class PackReader {
 
     static final String XSD = "http://www.w3.org/2001/XMLSchema#";
 
+    /** Pack 이 적을 수 있는 최대 깊이의 상한 (D6 4절, D2 AD-333). */
+    static final int MAX_DEPTH_LIMIT = 20;
+
     static final String VOCAB = "urn:tabnit:vocab:";
 
     private static final String PACK_ADDRESS = "urn:tabnit:pack:";
@@ -643,15 +646,28 @@ final class PackReader {
                     && (XSD + "integer").equals(objects.get(0).getLiteralDatatypeURI())) {
                 try {
                     int value = Integer.parseInt(objects.get(0).getLiteralLexicalForm());
+                    if (value > MAX_DEPTH_LIMIT) {
+                        // 잘못 적은 값 하나로 영향 범위의 계산과 저장이 오래 멈추지 않게 한다 (D2 AD-333).
+                        problem(PACK_FILE, item, "tabnit:defaultMaxDepth " + value + " 은(는) 너무 큽니다. " + MAX_DEPTH_LIMIT
+                                + " 까지 적을 수 있습니다. 영향을 몇 단계까지 따라갈지 다시 정해 적으세요.");
+                        return 0;
+                    }
                     if (value >= 1) {
                         return value;
                     }
                 }
                 catch (NumberFormatException e) {
-                    // 아래에서 문제로 알린다.
+                    // int 에 담기지 않는 큰 수도 상한을 넘은 것이다. 상한을 알린다.
+                    String lexical = objects.get(0).getLiteralLexicalForm();
+                    if (lexical.matches("\\+?[0-9]+")) {
+                        problem(PACK_FILE, item, "tabnit:defaultMaxDepth 가 너무 큽니다. " + MAX_DEPTH_LIMIT
+                                + " 까지 적을 수 있습니다. 영향을 몇 단계까지 따라갈지 다시 정해 적으세요.");
+                        return 0;
+                    }
+                    // 그 밖은 아래에서 문제로 알린다.
                 }
             }
-            problem(PACK_FILE, item, "tabnit:defaultMaxDepth 는 1 이상의 정수 하나여야 합니다. 예: tabnit:defaultMaxDepth 3");
+            problem(PACK_FILE, item, "tabnit:defaultMaxDepth 는 1 이상 " + MAX_DEPTH_LIMIT + " 이하의 정수 하나여야 합니다. 예: tabnit:defaultMaxDepth 3");
             return 0;
         }
 

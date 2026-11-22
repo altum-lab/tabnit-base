@@ -1,6 +1,7 @@
 # 퇴직연금 Pack 의 검증 질문. 형식은 D4 3절이다.
 #
 # 상태: 확정 (2026-11-22, D2 AD-315). 자료나 규칙을 바꿔 정답이 달라지면 다시 확정한다 (D4 4절: 정답은 대표가 정한다).
+# 다시 확정하기 전인 것 (B-09 에서 금융기관의 둘째 판에 보험 바의 등급 하락을 더했다): Q-08 (변동이 하나 늘었다), Q-31 (새 질문).
 # 모든 이름은 지어낸 것이다. 실제 기관, 사업장, 사람, 규정과 관계가 없다.
 #
 # 정답을 만든 방법: 자료가 커서 (개체 362개) 손으로 적지 않았다. 예시 입력 파일에서 문서의 규칙
@@ -42,7 +43,7 @@ scenario:
     - { step: 19, inputSource: requirement, file: data/requirement-v2.csv, effectiveDate: 2026-04-01 }
     # 2026-06-01: 계좌 셋이 상품 하나씩을 팔고, 계좌 둘이 상품 하나씩을 새로 산다.
     - { step: 20, inputSource: account-product, file: data/account-product-v2.csv, effectiveDate: 2026-06-01 }
-    # 2026-08-18: 저축은행 다(I-03)의 등급이 BBB 에서 BB+ 로 내려간다 (점수 11 → 9). 저축은행 라(I-04)는 BBB- 가 된다 (점수 10). 저축은행 마(I-05)는 오른다. 여신전문 차(I-10)는 이름만 바뀐다.
+    # 2026-08-18: 저축은행 다(I-03)의 등급이 BBB 에서 BB+ 로 내려간다 (점수 11 → 9). 저축은행 라(I-04)는 BBB- 가 된다 (점수 10). 저축은행 마(I-05)는 오른다. 보험 바(I-06)는 BB+ 가 된다 (점수 9). 여신전문 차(I-10)는 이름만 바뀐다.
     - { step: 21, inputSource: institution, file: data/institution-v2.csv, effectiveDate: 2026-08-18 }
     # 2026-10-01: 퇴직 통보. N-003, N-015, N-040 은 퇴직일 2026-09-30, N-052 는 2026-10-01, N-066 은 예정(2026-10-31). N-077 은 출생연도만 고친다.
     - { step: 22, inputSource: participant, file: data/participant-v2.csv, effectiveDate: 2026-10-01 }
@@ -152,12 +153,13 @@ questions:
     kind: changes
     title: 금융기관의 둘째 판에서 나온 변동
     step: 21
-    # I-03, I-04, I-05 는 등급과 점수가, I-10 은 이름이 바뀌었다.
+    # I-03, I-04, I-05, I-06 은 등급과 점수가, I-10 은 이름이 바뀌었다.
     expect:
       changes:
         - { itemKey: [I-03], kind: changed }
         - { itemKey: [I-04], kind: changed }
         - { itemKey: [I-05], kind: changed }
+        - { itemKey: [I-06], kind: changed }
         - { itemKey: [I-10], kind: changed }
 
   - id: Q-09
@@ -1697,7 +1699,7 @@ questions:
     kind: actions
     title: 저축은행 다의 등급이 내려가 생긴 조치
     change: { step: 21, itemKey: [I-03] }
-    # 등급점수가 9 로 기준 10 미만이 되었다. 규칙 0003 (그 기관의 예금에 신규 편입 중단, 당일), 0005 (영향받은 사업장에 안내, 7일), 0004 (영향받은 가입자에 안내, 14일).
+    # 등급점수가 9 로 기준 10 미만이 되었다. 규칙 0003 (그 기관의 원리금보장 상품에 신규 편입 중단, 당일: 이 기관의 상품은 예금 둘이다), 0005 (영향받은 사업장에 안내, 7일), 0004 (영향받은 가입자에 안내, 14일).
     expect:
       actions:
         - { rule: "0003", priority: 1, target: { type: 운용상품, key: P-05 }, dueDate: 2026-08-18, basis: { entity: { type: 금융기관, key: I-03 }, inputSource: institution, edition: 2 } }
@@ -1831,6 +1833,53 @@ questions:
     # 규약의 입력 자료에서 나온 변동에 걸리는 규칙이 없다. 영향 범위는 넓지만 조치가 없다.
     expect:
       actions: []
+
+  - id: Q-31
+    kind: actions
+    title: 보험 바의 등급이 내려가 생긴 조치 (이율보증 상품에도 신규 편입 중단이 걸린다)
+    change: { step: 21, itemKey: [I-06] }
+    # 등급점수가 16 에서 9 로 기준 10 미만이 되었다. 규칙 0003 은 원리금보장 상품(예금과 이율보증)에 건다: 이 기관의 이율보증 상품 둘에 걸린다 (D2 AD-306). 그 상품에 닿은 사업장(0005)과 가입자(0004)에게도 안내가 생긴다.
+    expect:
+      actions:
+        - { rule: "0003", priority: 1, target: { type: 운용상품, key: P-11 }, dueDate: 2026-08-18, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0003", priority: 1, target: { type: 운용상품, key: P-12 }, dueDate: 2026-08-18, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0005", priority: 3, target: { type: 가입사업장, key: E-01 }, dueDate: 2026-08-25, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0005", priority: 3, target: { type: 가입사업장, key: E-06 }, dueDate: 2026-08-25, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0005", priority: 3, target: { type: 가입사업장, key: E-07 }, dueDate: 2026-08-25, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0005", priority: 3, target: { type: 가입사업장, key: E-08 }, dueDate: 2026-08-25, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0005", priority: 3, target: { type: 가입사업장, key: E-09 }, dueDate: 2026-08-25, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0005", priority: 3, target: { type: 가입사업장, key: E-10 }, dueDate: 2026-08-25, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0005", priority: 3, target: { type: 가입사업장, key: E-11 }, dueDate: 2026-08-25, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0005", priority: 3, target: { type: 가입사업장, key: E-12 }, dueDate: 2026-08-25, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0005", priority: 3, target: { type: 가입사업장, key: E-13 }, dueDate: 2026-08-25, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0005", priority: 3, target: { type: 가입사업장, key: E-14 }, dueDate: 2026-08-25, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0005", priority: 3, target: { type: 가입사업장, key: E-15 }, dueDate: 2026-08-25, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0004", priority: 2, target: { type: 연금가입자, key: N-002 }, dueDate: 2026-09-01, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0004", priority: 2, target: { type: 연금가입자, key: N-015 }, dueDate: 2026-09-01, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0004", priority: 2, target: { type: 연금가입자, key: N-016 }, dueDate: 2026-09-01, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0004", priority: 2, target: { type: 연금가입자, key: N-019 }, dueDate: 2026-09-01, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0004", priority: 2, target: { type: 연금가입자, key: N-021 }, dueDate: 2026-09-01, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0004", priority: 2, target: { type: 연금가입자, key: N-030 }, dueDate: 2026-09-01, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0004", priority: 2, target: { type: 연금가입자, key: N-043 }, dueDate: 2026-09-01, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0004", priority: 2, target: { type: 연금가입자, key: N-044 }, dueDate: 2026-09-01, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0004", priority: 2, target: { type: 연금가입자, key: N-047 }, dueDate: 2026-09-01, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0004", priority: 2, target: { type: 연금가입자, key: N-048 }, dueDate: 2026-09-01, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0004", priority: 2, target: { type: 연금가입자, key: N-049 }, dueDate: 2026-09-01, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0004", priority: 2, target: { type: 연금가입자, key: N-058 }, dueDate: 2026-09-01, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0004", priority: 2, target: { type: 연금가입자, key: N-067 }, dueDate: 2026-09-01, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0004", priority: 2, target: { type: 연금가입자, key: N-071 }, dueDate: 2026-09-01, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0004", priority: 2, target: { type: 연금가입자, key: N-072 }, dueDate: 2026-09-01, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0004", priority: 2, target: { type: 연금가입자, key: N-073 }, dueDate: 2026-09-01, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0004", priority: 2, target: { type: 연금가입자, key: N-075 }, dueDate: 2026-09-01, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0004", priority: 2, target: { type: 연금가입자, key: N-076 }, dueDate: 2026-09-01, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0004", priority: 2, target: { type: 연금가입자, key: N-077 }, dueDate: 2026-09-01, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0004", priority: 2, target: { type: 연금가입자, key: N-086 }, dueDate: 2026-09-01, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0004", priority: 2, target: { type: 연금가입자, key: N-090 }, dueDate: 2026-09-01, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0004", priority: 2, target: { type: 연금가입자, key: N-091 }, dueDate: 2026-09-01, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0004", priority: 2, target: { type: 연금가입자, key: N-100 }, dueDate: 2026-09-01, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0004", priority: 2, target: { type: 연금가입자, key: N-111 }, dueDate: 2026-09-01, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0004", priority: 2, target: { type: 연금가입자, key: N-112 }, dueDate: 2026-09-01, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
+        - { rule: "0004", priority: 2, target: { type: 연금가입자, key: N-115 }, dueDate: 2026-09-01, basis: { entity: { type: 금융기관, key: I-06 }, inputSource: institution, edition: 2 } }
 
   - id: Q-25
     kind: actions

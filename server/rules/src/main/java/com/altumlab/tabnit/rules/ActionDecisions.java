@@ -17,6 +17,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * 조치의 확정과 보류 (D8 5절, D2 AD-47). 상태를 바꾸고 누가 언제 했는지를 이력에 남긴다. 둘은 트랜잭션 하나로 함께 된다.
  *
  * <p>상태는 대기에서 확정이나 보류로, 보류에서 확정으로만 바뀐다. 확정은 되돌릴 수 없다.
+ * 지금의 상태로 바꾼 바로 그 사람이 같은 동작을 다시 보내면, 새 이력을 남기지 않고 지금의 조치를 돌려준다 (D2 AD-325).
  * 현재 시각을 읽지 않는다. 한 때는 밖에서 받는다. 누가 했는지는 아이디를 값으로 받는다: 그 아이디가 실제 사용자인지,
  * 확정할 권한이 있는지는 부르는 쪽이 확인한다 (D2 AD-246).
  *
@@ -57,9 +58,10 @@ public class ActionDecisions {
      * @param decidedBy 누가 했는가. 사용자의 아이디. 비어 있을 수 없다
      * @param note 사유. 없어도 된다. 비어 있으면 없는 것으로 남긴다
      * @param decidedAt 언제 했는가. 밖에서 받는다. 마이크로초까지 남긴다
-     * @return 바뀐 뒤의 조치와 그 이력. 같은 트랜잭션에서 읽은 것이다: 이력의 마지막 줄이 방금 한 것이다
+     * @return 바뀐 뒤의 조치와 그 이력. 같은 트랜잭션에서 읽은 것이다: 이력의 마지막 줄이 방금 한 것이다.
+     *         같은 사람이 다시 보낸 확정이면 처음 한 것이 마지막 줄이다
      * @throws ActionNotFoundException 그런 조치가 없을 때
-     * @throws ActionDecisionRejectedException 이미 확정된 조치일 때. 아무것도 바뀌지 않는다
+     * @throws ActionDecisionRejectedException 다른 사람이 이미 확정한 조치일 때. 아무것도 바뀌지 않는다
      * @throws ActionDecisionInputException 넘긴 값이 틀렸을 때. 어느 항목인지를 담는다. {@link IllegalArgumentException} 이기도 하다
      */
     public ActionWithHistory confirm(String actionId, String decidedBy, String note, Instant decidedAt) {
@@ -70,7 +72,7 @@ public class ActionDecisions {
      * 조치를 보류한다. 대기인 조치만 보류할 수 있다.
      *
      * @param note 사유. 반드시 있어야 한다 (D2 AD-247)
-     * @throws ActionDecisionRejectedException 이미 확정되었거나 보류된 조치일 때. 아무것도 바뀌지 않는다
+     * @throws ActionDecisionRejectedException 이미 확정되었거나 다른 사람이 보류한 조치일 때. 아무것도 바뀌지 않는다
      */
     public ActionWithHistory hold(String actionId, String decidedBy, String note, Instant decidedAt) {
         return decide(actionId, ActionStatus.ON_HOLD, decidedBy, note, decidedAt);
@@ -125,8 +127,14 @@ public class ActionDecisions {
                 if (!allowed(from, to)) {
                     // 마지막 이력을 같은 잠금 아래에서 읽는다. 알리는 지금의 상태와 어긋나지 않는다.
                     List<ActionDecision> history = records.history(actionId);
-                    return new ActionDecisionRejectedException(from, to,
-                            history.isEmpty() ? null : history.get(history.size() - 1), "조치 " + actionId + " 은(는) 지금 " + label(from)
+                    ActionDecision last = history.isEmpty() ? null : history.get(history.size() - 1);
+                    if (from == to && last != null && last.toStatus() == to && last.decidedBy().equals(decidedBy)) {
+                        // 같은 사람이 같은 동작을 다시 보냈다: 응답을 받지 못해 다시 누른 것이다. 아무것도 바꾸지 않고
+                        // 지금의 조치와 이력을 돌려준다. 사유와 시각은 처음 것이 남는다 (D2 AD-325).
+                        return records.detail(actionId)
+                            .orElseThrow(() -> new IllegalStateException("조치 " + actionId + " 을(를) 읽지 못했습니다."));
+                    }
+                    return new ActionDecisionRejectedException(from, to, last, "조치 " + actionId + " 은(는) 지금 " + label(from)
                             + " 상태라 " + label(to) + "(으)로 바꿀 수 없습니다. 대기인 조치는 확정하거나 보류할 수 있고, 보류인 조치는 확정할 수 있습니다."
                             + " 확정된 조치는 바꿀 수 없습니다.");
                 }

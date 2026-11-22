@@ -190,6 +190,27 @@ class PackLoaderTest {
     }
 
     @Test
+    void 최대_깊이는_상한까지_받고_넘으면_상한을_알리며_거부한다() throws IOException {
+        // 상한은 20 이다 (D2 AD-333). 잘못 적은 값 하나로 영향 범위의 계산이 오래 멈추지 않게 한다.
+        Path atLimit = pack("p-depth-limit", 20, "ex:A a owl:Class ; rdfs:label \"가\" .");
+        loader.load(atLimit, LOADED_AT);
+        assertThat(definitions.find("p-depth-limit").orElseThrow().defaultMaxDepth()).isEqualTo(20);
+
+        for (int depth : List.of(21, 800, 2147483647)) {
+            Path over = pack("p-depth-over", depth, "ex:A a owl:Class ; rdfs:label \"가\" .");
+            assertThat(problemsOf(over)).as("깊이 %d", depth).singleElement()
+                .satisfies(problem -> assertThat(problem.message()).contains("defaultMaxDepth").contains("20"));
+            assertThat(definitions.find("p-depth-over")).isEmpty();
+        }
+        // 정수 형식에 담기지 않는 큰 수도 상한을 알린다.
+        Path huge = pack("p-depth-huge", 1, "ex:A a owl:Class ; rdfs:label \"가\" .");
+        write(huge, "pack.ttl", PREFIXES + "<urn:tabnit:pack:p-depth-huge:> a tabnit:Pack ; tabnit:packId \"p-depth-huge\" ; "
+                + "rdfs:label \"이름표\" ; tabnit:defaultMaxDepth 99999999999 .\n");
+        assertThat(problemsOf(huge)).singleElement()
+            .satisfies(problem -> assertThat(problem.message()).contains("defaultMaxDepth").contains("20"));
+    }
+
+    @Test
     void 최대_깊이와_이름표의_경계_값은_거부한다() throws IOException {
         for (String depth : List.of("0", "-1", "2.5", "\"3\"", "99999999999")) {
             Path dir = pack("p-edge", 1, "ex:A a owl:Class ; rdfs:label \"가\" .");

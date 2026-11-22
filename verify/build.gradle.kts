@@ -55,3 +55,16 @@ tasks.register<JavaExec>("verifyQuestions") {
     // 저장소 맨 위의 packs/ 와, 보고를 둘 곳.
     args(rootProject.file("../packs").absolutePath, layout.buildDirectory.file("verify-report.txt").get().asFile.absolutePath)
 }
+
+// 큰 시험 자료를 만들고 제품에 넣어 수를 견준다 (보드 T-07). bash verify/large.sh 가 부른다.
+// 만든 것은 빌드 폴더 아래에 둔다: 저장소에 올리지 않는다.
+tasks.register<JavaExec>("largePack") {
+    group = "verification"
+    description = "개체 수와 관계 수를 정해 지어낸 Pack 을 만들고, 제품에 넣은 뒤의 수가 셈한 수와 같은지 본다"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("com.altumlab.tabnit.verify.LargePackMain")
+    args(layout.buildDirectory.dir("large").get().asFile.absolutePath,
+            (findProperty("entities") ?: "1000").toString(), (findProperty("relations") ?: "3000").toString(),
+            (findProperty("layers") ?: "3").toString(), (findProperty("changes") ?: "10").toString(),
+            (findProperty("mode") ?: "run").toString())
+}

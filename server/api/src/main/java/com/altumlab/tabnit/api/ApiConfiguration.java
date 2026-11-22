@@ -60,10 +60,26 @@ class ApiConfiguration implements WebMvcConfigurer {
 	/** 사용자를 만드는 명령. 실행 인자로 아이디를 줬을 때만 있다 (D2 AD-268). */
 	@Bean
 	@ConditionalOnProperty(UserCreationCommand.LOGIN_ID_PROPERTY)
-	UserCreationCommand userCreationCommand(UserAccounts accounts, Clock clock,
+	UserCreationCommand userCreationCommand(UserAccounts accounts, AuditLog audit, Clock clock,
 			@Value("${" + UserCreationCommand.LOGIN_ID_PROPERTY + "}") String loginId,
 			@Value("${tabnit.create-user.role:}") String role) {
-		return new UserCreationCommand(accounts, clock, loginId, role, System::getenv);
+		return new UserCreationCommand(accounts, audit, clock, loginId, role, System::getenv);
+	}
+
+	/** 로그인 막힘을 푸는 명령. 실행 인자로 아이디를 줬을 때만 있다 (D2 AD-320). */
+	@Bean
+	@ConditionalOnProperty(AccountCommands.UNLOCK_USER_PROPERTY)
+	UserUnlockCommand userUnlockCommand(UserAccounts accounts, AuditLog audit, Clock clock,
+			@Value("${" + AccountCommands.UNLOCK_USER_PROPERTY + "}") String loginId) {
+		return new UserUnlockCommand(accounts, audit, clock, loginId);
+	}
+
+	/** 비밀번호를 바꾸는 명령. 실행 인자로 아이디를 줬을 때만 있다 (D2 AD-320). */
+	@Bean
+	@ConditionalOnProperty(AccountCommands.CHANGE_PASSWORD_PROPERTY)
+	PasswordChangeCommand passwordChangeCommand(UserAccounts accounts, AuditLog audit, Clock clock,
+			@Value("${" + AccountCommands.CHANGE_PASSWORD_PROPERTY + "}") String loginId) {
+		return new PasswordChangeCommand(accounts, audit, clock, loginId, System::getenv);
 	}
 
 	/** 서버의 Pack 폴더에서 Pack 을 적재한다. 폴더는 설치 설정에서 받는다. 정하지 않으면 적재할 수 없다 (D2 AD-272). */

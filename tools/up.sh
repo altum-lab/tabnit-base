@@ -4,6 +4,8 @@
 # 쓰는 법 (저장소의 맨 위에서):
 #   bash tools/up.sh                  이미지를 만들고 띄운다. 뜰 때까지 기다린다
 #   bash tools/up.sh user 아이디 역할   사용자를 만든다. 역할은 ADMIN 또는 OFFICER.
+#   bash tools/up.sh unlock 아이디      로그인 막힘을 푼다.
+#   bash tools/up.sh password 아이디    비밀번호를 바꾼다. 막힘도 함께 풀린다. 이미 로그인된 세션은 끝나지 않는다.
 #                                     비밀번호는 환경 변수 TABNIT_NEW_USER_PASSWORD 로 넘긴다 (12자 이상)
 #   bash tools/up.sh logs             앱의 로그를 본다
 #   bash tools/up.sh down             내린다. 데이터는 남는다
@@ -98,6 +100,28 @@ case "${1:-up}" in
     # 비밀번호는 이 셸의 환경 변수를 컨테이너에 그대로 넘긴다. 값이 명령이나 파일에 남지 않는다.
     compose run --rm -e TABNIT_NEW_USER_PASSWORD app \
       "--tabnit.create-user.login-id=$2" "--tabnit.create-user.role=$3"
+    ;;
+  unlock)
+    if [ $# -ne 2 ]; then
+      echo "쓰는 법: bash tools/up.sh unlock 아이디" >&2
+      exit 2
+    fi
+    ensure_env
+    # 데이터베이스에 붙어야 하므로 비밀번호 파일을 쓴다.
+    compose run --rm app "--tabnit.unlock-user.login-id=$2"
+    ;;
+  password)
+    if [ $# -ne 2 ]; then
+      echo "쓰는 법: TABNIT_NEW_USER_PASSWORD='(12자 이상)' bash tools/up.sh password 아이디" >&2
+      exit 2
+    fi
+    if [ -z "${TABNIT_NEW_USER_PASSWORD:-}" ]; then
+      echo "[실패] 새 비밀번호가 없습니다. 환경 변수 TABNIT_NEW_USER_PASSWORD 에 넣어 다시 실행하세요. 명령의 인자로는 받지 않습니다." >&2
+      exit 2
+    fi
+    ensure_env
+    # 비밀번호는 이 셸의 환경 변수를 컨테이너에 그대로 넘긴다. 값이 명령이나 파일에 남지 않는다.
+    compose run --rm -e TABNIT_NEW_USER_PASSWORD app "--tabnit.change-password.login-id=$2"
     ;;
   logs)
     compose_without_password logs --tail 200 app

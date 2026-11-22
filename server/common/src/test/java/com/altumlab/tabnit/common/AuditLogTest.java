@@ -134,4 +134,31 @@ class AuditLogTest {
         // 읽은 것은 식별자 순이다.
         assertThat(rows).extracting(AuditRecord::id).isSorted();
     }
+
+    // ── 데이터베이스가 지킨다: 고치거나 지울 수 없다 (E-18, D2 AD-276, AD-329) ──────────
+
+    @Test
+    void 남긴_줄은_데이터베이스에서_고치거나_지울_수_없고_더하는_것은_된다() {
+        long id = log.record(new AuditEntry(T0, "guard-user", "guardAction", "t=1", null, AuditOutcome.STARTED, null,
+                null, null));
+
+        assertThatThrownBy(() -> jdbc.update("update audit_log set actor = '다른 사람' where id = ?", id))
+            .isInstanceOf(org.springframework.dao.DataAccessException.class)
+            .hasMessageContaining("audit_log");
+        assertThatThrownBy(() -> jdbc.update("delete from audit_log where id = ?", id))
+            .isInstanceOf(org.springframework.dao.DataAccessException.class);
+        assertThatThrownBy(() -> jdbc.execute("truncate audit_log"))
+            .isInstanceOf(org.springframework.dao.DataAccessException.class);
+        // 걸리는 줄이 없는 문장은 오류가 아니다. 아무것도 바뀌지 않는다.
+        assertThat(jdbc.update("delete from audit_log where id = -1")).isZero();
+
+        // 줄은 그대로이고, 그 뒤에도 더할 수 있다.
+        assertThat(log.after(id - 1)).first().satisfies(row -> {
+            assertThat(row.id()).isEqualTo(id);
+            assertThat(row.actor()).isEqualTo("guard-user");
+        });
+        long next = log.record(new AuditEntry(T0, "guard-user", "guardAction", null, null, AuditOutcome.SUCCESS, 200,
+                null, id));
+        assertThat(next).isGreaterThan(id);
+    }
 }

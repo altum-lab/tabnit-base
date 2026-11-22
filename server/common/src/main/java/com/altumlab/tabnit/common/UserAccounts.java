@@ -95,16 +95,7 @@ public class UserAccounts {
             throw new UserAccountRejectedException("아이디를 쓸 수 없습니다. 영어 소문자나 숫자로 시작하고 영어 소문자, 숫자, 점(.), 밑줄(_), 붙임표(-)만 써서"
                     + " 3자에서 50자로 정하세요.");
         }
-        if (password.codePointCount(0, password.length()) < MIN_PASSWORD_LENGTH) {
-            throw new UserAccountRejectedException("비밀번호가 너무 짧습니다. " + MIN_PASSWORD_LENGTH + "자 이상으로 정하세요.");
-        }
-        if (password.getBytes(StandardCharsets.UTF_8).length > MAX_PASSWORD_BYTES) {
-            throw new UserAccountRejectedException("비밀번호가 너무 깁니다. " + MAX_PASSWORD_BYTES
-                    + "바이트까지 받습니다 (한글은 한 글자가 3바이트입니다). 줄여서 정하세요.");
-        }
-        if (password.indexOf('\u0000') >= 0) {
-            throw new UserAccountRejectedException("비밀번호에 쓸 수 없는 글자가 있습니다. 다른 비밀번호로 정하세요.");
-        }
+        requireStorablePassword(password);
         try {
             jdbc.update("""
                     insert into app_user (login_id, password_hash, role, failed_count, locked_until, created_at)
@@ -116,6 +107,64 @@ public class UserAccounts {
             throw new UserAccountRejectedException("아이디 " + loginId + " 은(는) 이미 있습니다. 다른 아이디로 정하세요.");
         }
         return new UserAccount(loginId, role);
+    }
+
+    /** 비밀번호의 규칙: 12자 이상, 72바이트 이하, NUL 글자 없음. 만들 때와 바꿀 때가 같다. 문구에 비밀번호를 담지 않는다. */
+    private static void requireStorablePassword(String password) {
+        if (password.codePointCount(0, password.length()) < MIN_PASSWORD_LENGTH) {
+            throw new UserAccountRejectedException("비밀번호가 너무 짧습니다. " + MIN_PASSWORD_LENGTH + "자 이상으로 정하세요.");
+        }
+        if (password.getBytes(StandardCharsets.UTF_8).length > MAX_PASSWORD_BYTES) {
+            throw new UserAccountRejectedException("비밀번호가 너무 깁니다. " + MAX_PASSWORD_BYTES
+                    + "바이트까지 받습니다 (한글은 한 글자가 3바이트입니다). 줄여서 정하세요.");
+        }
+        if (password.indexOf('\u0000') >= 0) {
+            throw new UserAccountRejectedException("비밀번호에 쓸 수 없는 글자가 있습니다. 다른 비밀번호로 정하세요.");
+        }
+    }
+
+    /**
+     * 로그인 막힘을 푼다. 틀린 횟수도 처음으로 돌린다. 막혀 있지 않은 계정을 풀어도 된다 (D2 AD-320).
+     * 비밀번호와 역할은 바꾸지 않는다.
+     *
+     * @throws UserAccountRejectedException 그런 아이디의 계정이 없을 때
+     */
+    public void unlock(String loginId) {
+        Objects.requireNonNull(loginId, "아이디는 반드시 있어야 합니다");
+        int changed = LOGIN_ID.matcher(loginId).matches()
+                ? jdbc.update("update app_user set failed_count = 0, locked_until = null where login_id = ?", loginId)
+                : 0;
+        if (changed == 0) {
+            throw noSuchAccount(loginId);
+        }
+    }
+
+    /**
+     * 비밀번호를 바꾼다. 막힘도 함께 풀어 바로 로그인할 수 있게 한다 (D2 AD-320, AD-346). 역할은 바꾸지 않는다.
+     * 이미 로그인된 세션은 이 클래스가 알지 못한다: 끝내지 않는다.
+     *
+     * @param password 새 비밀번호. 만들 때와 같은 규칙이다. 해시로만 저장한다
+     * @throws UserAccountRejectedException 그런 아이디의 계정이 없거나 비밀번호가 규칙에 맞지 않을 때
+     */
+    public void changePassword(String loginId, String password) {
+        Objects.requireNonNull(loginId, "아이디는 반드시 있어야 합니다");
+        Objects.requireNonNull(password, "비밀번호는 반드시 있어야 합니다");
+        if (!LOGIN_ID.matcher(loginId).matches()) {
+            throw noSuchAccount(loginId);
+        }
+        requireStorablePassword(password);
+        int changed = jdbc.update(
+                "update app_user set password_hash = ?, failed_count = 0, locked_until = null where login_id = ?",
+                encoder.encode(password), loginId);
+        if (changed == 0) {
+            throw noSuchAccount(loginId);
+        }
+    }
+
+    private static UserAccountRejectedException noSuchAccount(String loginId) {
+        // 규칙에 맞지 않는 아이디는 그대로 되돌려 적지 않는다: 어떤 글자든 들어올 수 있다.
+        String shown = LOGIN_ID.matcher(loginId).matches() ? "아이디 " + loginId + " 의 계정이" : "그런 아이디의 계정이";
+        return new UserAccountRejectedException(shown + " 없습니다. 아이디를 확인하세요.");
     }
 
     /** 아이디로 계정을 읽는다. 없으면 비어 있다. */

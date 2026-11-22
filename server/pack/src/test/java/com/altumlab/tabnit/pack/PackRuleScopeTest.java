@@ -315,7 +315,7 @@ class PackRuleScopeTest {
     }
 
     @Test
-    void 같은_유형의_개체를_여럿_만드는_입력_자료와_개체를_여럿_만드는_입력_자료가_둘일_때의_문구() throws IOException {
+    void 같은_유형의_개체만_여럿_만드는_입력_자료는_경고에_들지_않는다() throws IOException {
         Path dir = pack("s-warn-text", impactRule("0001", "; tabnit:condition [ tabnit:subject tabnit:ChangeTarget ; "
                 + "tabnit:property ex:level ; tabnit:operator tabnit:GreaterThan ; tabnit:value 3 ]"));
         // 한 행이 Unit 둘을 잇는 입력 자료를 더한다: 유형은 하나이고 개체는 둘이다.
@@ -337,9 +337,9 @@ class PackRuleScopeTest {
 
         List<PackWarning> warnings = loader.load(dir, LOADED_AT).warnings();
 
-        // 입력 자료는 이름의 글자 코드 순으로 적는다. 유형이 하나뿐이면 여럿이라고 적는다.
+        // 유형이 다른 개체를 만드는 doc 만 적는다. pair 는 유형 조건으로 가를 수 없어 적지 않는다 (D2 AD-343).
         assertThat(warnings).singleElement()
-            .satisfies(warning -> assertThat(warning.message()).contains("doc (Doc, Unit); pair (Unit 여럿)"));
+            .satisfies(warning -> assertThat(warning.message()).contains("doc (Doc, Unit)").doesNotContain("pair"));
     }
 
     @Test

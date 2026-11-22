@@ -31,7 +31,9 @@ final class RuleWarnings {
                 add(made, types, relation.source().entityType(), relation.source().keyColumn());
                 add(made, types, relation.target().entityType(), relation.target().keyColumn());
             }
-            if (made.size() > 1) {
+            // 유형이 같은 개체만 여럿 만드는 행은 넣지 않는다: 모두 그 속성을 가진 유형이고,
+            // 유형 조건으로 가를 수도 없다 (D2 AD-343).
+            if (made.size() > 1 && types.size() > 1) {
                 manyEntities.put(mapping.inputSourceId(), types);
             }
         }
@@ -63,9 +65,7 @@ final class RuleWarnings {
             List<String> sources = new ArrayList<>();
             for (String source : manyEntities.keySet()) {
                 if (rule.inputSources().isEmpty() || rule.inputSources().contains(source)) {
-                    // 같은 유형의 개체를 여럿 만드는 입력 자료는 유형이 하나로 보인다. 여럿이라는 것을 함께 적는다.
-                    TreeSet<String> types = manyEntities.get(source);
-                    sources.add(source + " (" + String.join(", ", types) + (types.size() == 1 ? " 여럿" : "") + ")");
+                    sources.add(source + " (" + String.join(", ", manyEntities.get(source)) + ")");
                 }
             }
             if (sources.isEmpty()) {

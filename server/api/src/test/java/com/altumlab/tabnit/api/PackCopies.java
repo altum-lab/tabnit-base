@@ -23,6 +23,27 @@ final class PackCopies {
 	 * @param change 정의 파일(.ttl)의 내용을 고치는 법. 고치지 않으려면 그대로 돌려준다
 	 * @return 사본의 폴더. 자료 파일(data/)도 들어 있다
 	 */
+	/** 규칙 하나의 기한을 날짜로 담을 수 없게 고칠 때 찾는 글. 시험용 Pack 의 규칙 파일에 한 번 있어야 한다. */
+	private static final String DUE_IN_DAYS = "tabnit:dueInDays 14 .";
+
+	/**
+	 * 시험용 Pack 의 규칙 하나의 기한을 날짜로 담을 수 없게 고친다. 그 규칙에 걸리는 변동이 실패한다.
+	 * 다른 정의 파일은 그대로 둔다. 시험용 Pack 이 바뀌어 고칠 곳이 없어졌으면 조용히 지나가지 않게, 쓰는 쪽이
+	 * {@link #requireUnstorableDueDate} 로 확인한다.
+	 */
+	static String unstorableDueDate(String text) {
+		return text.replace(DUE_IN_DAYS, "tabnit:dueInDays 2147483647 .");
+	}
+
+	/** 시험용 Pack 에 고칠 곳이 있는지 본다. 없으면 실패를 만드는 시험이 엉뚱한 곳에서 깨진다. */
+	static void requireUnstorableDueDate() throws IOException {
+		String rules = Files.readString(SOURCE.resolve("rules/rules.ttl"), StandardCharsets.UTF_8);
+		if (!rules.contains(DUE_IN_DAYS)) {
+			throw new IllegalStateException("시험용 Pack 의 규칙 파일에 \"" + DUE_IN_DAYS
+					+ "\" 가 없습니다. 실패를 만드는 시험이 고칠 곳이 없어졌습니다. PackCopies 의 DUE_IN_DAYS 를 고치세요.");
+		}
+	}
+
 	static Path load(DataSource dataSource, Path temp, String packId, UnaryOperator<String> change) throws IOException {
 		// 폴더의 이름이 Pack 의 식별자와 같아야 한다.
 		Path copy = copyInto(temp.resolve(String.valueOf(System.nanoTime())), packId, change);

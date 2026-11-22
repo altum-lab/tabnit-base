@@ -396,7 +396,8 @@ class AuditApiTests {
 		// 기능의 이름은 규격의 operationId 와 같고 겹치지 않는다.
 		assertThat(actions).doesNotHaveDuplicates()
 			.containsExactlyInAnyOrder("getRelationsAsOf", "listPacks", "submitEdition", "listActions", "getAction",
-					"decideAction", "getChangeImpactScope", "loadPack", "login");
+					"decideAction", "getChangeImpactScope", "loadPack", "login", "listUnprocessedChanges",
+					"reprocessChanges");
 	}
 
 	private org.springframework.test.web.servlet.ResultActions login(String loginId, String password) throws Exception {

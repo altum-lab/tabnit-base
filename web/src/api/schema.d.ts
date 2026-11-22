@@ -109,6 +109,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/unprocessed-changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pack 의 처리되지 않은 변동(실패, 대기)을 실패한 까닭과 함께 본다
+         * @description 판을 올리면 바뀐 항목마다 영향 범위를 계산하고 규칙을 실행한다. 그 처리에 실패했거나 아직 하지 못한 변동이 여기에 나온다. 처리된 변동은 나오지 않는다. 순서는 처리하는 차례다: 판을 받은 차례, 그 안에서는 항목의 키의 글자 코드 순
+         */
+        get: operations["listUnprocessedChanges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/change-reprocessings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pack 의 처리되지 않은 변동을 지금의 자료와 지금의 규칙으로 다시 처리한다
+         * @description 관리자만 부를 수 있다. 그 Pack 의 처리되지 않은 변동(실패, 대기)을 모두, 정해진 차례로 처음부터 다시 계산한다. Pack 이나 자료를 고친 뒤에 부른다. 변동 하나가 다시 실패해도 나머지는 처리한다. 처리할 것이 없으면 빈 목록이다
+         */
+        post: operations["reprocessChanges"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/actions": {
         parameters: {
             query?: never;
@@ -527,7 +567,7 @@ export interface components {
         /** @description 변동 하나를 영향 범위 계산과 조치 생성까지 처리한 결과 */
         ChangeProcessing: {
             /**
-             * @description PROCESSED 는 조치까지 저장했다. FAILED 는 실패했고 뒤에 다시 시도된다. PENDING 은 아직 처리하지 못했다
+             * @description PROCESSED 는 조치까지 저장했다. FAILED 는 실패했고 뒤에 다시 시도된다 (다음에 받아들여진 판을 올릴 때, 또는 관리자가 다시 처리할 때). PENDING 은 아직 처리하지 못했다
              * @enum {string}
              */
             status: "PROCESSED" | "FAILED" | "PENDING";
@@ -536,10 +576,59 @@ export interface components {
              * @enum {string|null}
              */
             failedStage: "IMPACT" | "RULES" | null;
-            /** @description 실패한 이유의 코드. 아니면 null */
+            /** @description 실패한 이유의 코드. 아니면 null. 문구가 아니다. 화면이 코드마다 안내문을 보여 준다 */
             failureCode: string | null;
+            /** @description 평가에 실패한 규칙 (failureCode 가 RULE_FAILED 일 때). 규칙 번호 순이다. 그 밖의 실패와 실패가 아닌 것은 빈 목록이다 */
+            failures: components["schemas"]["ChangeFailure"][];
             /** @description 그 변동에서 만들어진 조치의 수. 처리되지 않았으면 0 */
             actionCount: number;
+        };
+        /** @description 평가에 실패한 규칙 하나와 그 까닭 */
+        ChangeFailure: {
+            /** @description 규칙 번호 */
+            ruleNo: string;
+            /** @description 까닭의 코드. 문구가 아니다 (예. VALUE_FORMAT_MISMATCH, DUE_DATE_OUT_OF_RANGE) */
+            code: string;
+            /** @description 걸린 개체의 id. 없으면 null */
+            entityId: string | null;
+            /** @description 걸린 속성의 이름. 없으면 null */
+            attributeName: string | null;
+            /** @description 걸린 값. 없으면 null */
+            value: string | null;
+        };
+        UnprocessedChangeList: {
+            packId: string;
+            /** @description 처리되지 않은 변동. 처리하는 차례다 */
+            changes: components["schemas"]["UnprocessedChange"][];
+        };
+        UnprocessedChange: {
+            changeEventId: string;
+            /** @description 그 변동이 나온 판의 id */
+            editionId: string;
+            inputSourceId: string;
+            editionNo: number;
+            /**
+             * Format: date
+             * @description 그 판의 적용일
+             */
+            effectiveDate: string;
+            itemKey: string;
+            /** @enum {string} */
+            kind: "ADDED" | "CHANGED" | "REMOVED";
+            primaryEntityId: string;
+            processing: components["schemas"]["ChangeProcessing"];
+        };
+        ChangeReprocessingRequest: {
+            packId: string;
+        };
+        ChangeReprocessing: {
+            packId: string;
+            /** @description changes 가운데 처리된 것의 수 */
+            processedCount: number;
+            /** @description changes 가운데 다시 실패한 것의 수 */
+            failedCount: number;
+            /** @description 이 요청이 다시 처리한 변동과 그 결과. 처리한 차례다. 처리할 것이 없었으면 빈 목록 */
+            changes: components["schemas"]["RetriedChange"][];
         };
         RetriedChange: {
             changeEventId: string;
@@ -814,6 +903,62 @@ export interface operations {
                     "application/problem+json": components["schemas"]["EditionRejectedProblem"];
                 };
             };
+            500: components["responses"]["Problem"];
+        };
+    };
+    listUnprocessedChanges: {
+        parameters: {
+            query: {
+                packId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 처리되지 않은 변동. 없으면 빈 목록 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnprocessedChangeList"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    reprocessChanges: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeReprocessingRequest"];
+            };
+        };
+        responses: {
+            /** @description 다시 처리한 결과 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeReprocessing"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
             500: components["responses"]["Problem"];
         };
     };

@@ -121,6 +121,8 @@
 | 적재된 Pack 과 입력 자료의 목록을 본다 (판을 올릴 때 고른다) | 변동 감지 | LINK-01 | 담당자, 관리자 | 8절과 규격 파일. 구현했다 (D-05) |
 | 새 판을 올린다 (CSV 또는 엑셀 파일과 적용일 [AD-42] [AD-84]) | 변동 감지 | LINK-01 ~ 03 | 담당자, 관리자 [AD-240] | 5절과 규격 파일. 구현했다 (D-05 의 서버 쪽) |
 | 판의 바뀐 항목(변동)을 본다 | 변동 감지 | LINK-04, LINK-05 | 담당자, 관리자 | 뒤에 |
+| 처리되지 않은 변동(실패, 대기)을 실패한 까닭과 함께 본다 | 변동 감지 | LINK-05 | 담당자, 관리자 | 5절과 규격 파일. 구현했다 (C-08) |
+| 처리되지 않은 변동을 다시 처리한다 | 변동 감지 | LINK-05 | 관리자 [AD-321] | 5절과 규격 파일. 구현했다 (C-08) |
 | 조치 목록과 근거를 본다 | 조치와 확정 | RULE-02 | 담당자, 관리자 | 6절과 규격 파일. 구현했다 (D-06 의 서버 쪽) |
 | 변동 이벤트의 저장된 영향 범위를 본다 (조치의 근거 경로) | 조치와 확정, 영향 범위 | RULE-02, CORE-04 | 담당자, 관리자 | 6절과 규격 파일. 구현했다 (D-06 의 서버 쪽) |
 | 조치 하나를 그 이력과 함께 본다 | 조치와 확정 | RULE-03 | 담당자, 관리자 | 7절과 규격 파일. 구현했다 (D-07 의 서버 쪽) |
@@ -237,7 +239,7 @@ Content-Type: multipart/form-data
       "kind": "CHANGED",
       "primaryEntityId": "p|T|ga",
       "targetEntityIds": ["p|T|ga"],
-      "processing": { "status": "PROCESSED", "failedStage": null, "failureCode": null, "actionCount": 2 }
+      "processing": { "status": "PROCESSED", "failedStage": null, "failureCode": null, "failures": [], "actionCount": 2 }
     }
   ],
   "notices": [],
@@ -250,7 +252,7 @@ Content-Type: multipart/form-data
 
 - `outcome`: `ACCEPTED` 는 새 판을 만들었다. `UNCHANGED` 는 내용이 바로 앞 판과 같아 판을 만들지 않았다 [AD-155]: 이때 `editionId`, `editionNo`, `effectiveDate` 는 그 앞 판의 것이고 `changes` 와 `notices` 는 비어 있다.
 - `changes`: 앞 판과 비교해 바뀐 항목. **순서**는 항목의 키의 글자 코드 순이다. 첫 판이면 비어 있다. [AD-148] [AD-122]
-- `changes[].processing`: 그 변동을 조치까지 처리한 결과. `PROCESSED` 는 영향 범위와 조치를 저장했다. `FAILED` 는 실패했고 (단계와 이유의 코드가 붙는다) 다음에 받아들여진 판을 올릴 때 다시 시도된다. `PENDING` 은 아직 처리하지 못했다. 변동 하나가 실패해도 나머지는 처리된다. [AD-236]
+- `changes[].processing`: 그 변동을 조치까지 처리한 결과. `PROCESSED` 는 영향 범위와 조치를 저장했다. `FAILED` 는 실패했고 (단계와 이유의 코드, 평가에 실패한 규칙의 목록 `failures` 가 붙는다) 다음에 받아들여진 판을 올릴 때, 또는 관리자가 다시 처리할 때 다시 시도된다 (아래 "처리되지 않은 변동과 다시 처리"). `PENDING` 은 아직 처리하지 못했다. 변동 하나가 실패해도 나머지는 처리된다. [AD-236]
 - `notices`: 투입의 알림 (건너뛴 행 등). 문구가 아니라 종류와 이유의 코드와 값이다. **순서**는 행 번호, 종류, 코드, 내용 순이다. [AD-153]
 - `retriedChanges`: 이 요청이 함께 다시 처리한, 앞선 판의 변동. 전에 실패해 남아 있던 것이다. **순서**는 처리한 차례다. [AD-207] [AD-234]
 - `processingNotStarted`: 판은 받아들였지만 변동의 처리를 시작하지 못했다. 드문 일이다 (저장소 오류).
@@ -276,6 +278,57 @@ Content-Type: multipart/form-data
 ### 규격
 
 `docs/api/openapi.yaml` 의 `submitEdition` 이 이 API 의 규격이다. 항목의 형식은 그 파일을 본다.
+
+### 처리되지 않은 변동과 다시 처리
+
+변동의 처리(영향 범위 계산, 규칙 실행)가 실패하면 그 변동은 실패로 남는다. 무엇이 왜 실패했는지를 보고, 고친 뒤에 관리자가 다시 처리한다. [AD-321] [AD-345]
+
+```
+GET /api/v1/unprocessed-changes?packId=p
+```
+
+```json
+{
+  "packId": "p",
+  "changes": [
+    {
+      "changeEventId": "p|guideline|2|G-1", "editionId": "p|guideline|2", "inputSourceId": "guideline",
+      "editionNo": 2, "effectiveDate": "2026-03-01", "itemKey": "G-1", "kind": "CHANGED",
+      "primaryEntityId": "p|Guideline|G-1",
+      "processing": {
+        "status": "FAILED", "failedStage": "RULES", "failureCode": "RULE_FAILED", "actionCount": 0,
+        "failures": [ { "ruleNo": "0001", "code": "DUE_DATE_OUT_OF_RANGE", "entityId": null, "attributeName": null, "value": "2147483647" } ]
+      }
+    }
+  ]
+}
+```
+
+- 그 Pack 의 처리되지 않은 변동(실패 `FAILED`, 대기 `PENDING`)만 나온다. 처리된 변동은 나오지 않는다. **순서**는 처리하는 차례다: 판을 받은 차례, 그 안에서는 항목의 키의 글자 코드 순. [AD-207] 쪽 나누기는 없다 (2절의 규칙과 같다).
+- **실패의 까닭**: `failedStage` (어느 단계), `failureCode` (이유의 코드), `failures` (평가에 실패한 규칙마다 한 줄: 규칙 번호, 코드, 걸린 개체와 속성과 값). `failures` 는 규칙이 평가에 실패했을 때(`RULE_FAILED`)만 있고 규칙 번호 순이다. 그 밖의 실패(저장소 오류, 정의와 자료가 어긋난 것 등)는 단계와 코드뿐이다: **문구는 저장하지도 내보내지도 않는다.** 화면이 코드마다 정해 둔 안내문을 보여 주고, 내부의 오류 문구는 서버의 기록에만 남는다. [AD-345]
+- 판 올리기의 응답의 `processing` 에도 같은 `failures` 가 붙는다.
+- `packId` 가 빠졌거나 빈칸뿐이면 400 `MISSING_PACK_ID`, 그런 Pack 이 없으면 404 `PACK_NOT_FOUND` 다. 다시 처리도 같다.
+- 변동 이벤트와 그 까닭은 한 시점의 것으로 함께 읽는다. 다시 처리가 도는 중에 읽어도 상태와 까닭이 서로 어긋나지 않는다. 읽기는 처리를 기다리지 않는다.
+
+```
+POST /api/v1/change-reprocessings
+Content-Type: application/json
+X-XSRF-TOKEN: (XSRF-TOKEN 쿠키의 값)
+
+{ "packId": "p" }
+```
+
+```json
+{ "packId": "p", "processedCount": 1, "failedCount": 0, "changes": [ { "changeEventId": "p|guideline|2|G-1", "editionId": "p|guideline|2", "itemKey": "G-1",
+    "processing": { "status": "PROCESSED", "failedStage": null, "failureCode": null, "failures": [], "actionCount": 2 } } ] }
+```
+
+- **관리자만 부를 수 있다.** 담당자가 부르면 403 `FORBIDDEN` 이다. [AD-321]
+- 그 Pack 의 처리되지 않은 변동을 모두, 처리하는 차례로, 지금의 자료와 지금의 규칙으로 처음부터 다시 계산한다. [AD-154] 변동을 골라서 다시 처리하지는 않는다: 차례가 결과에 닿는다. 변동 하나가 다시 실패해도 나머지는 처리한다. [AD-236]
+- `changes` 는 이 요청이 다시 처리한 것과 그 결과다. `processedCount` 와 `failedCount` 는 그 가운데 처리된 것과 다시 실패한 것의 수다 (화면이 세지 않게 서버가 준다). 처리할 것이 없었으면 빈 목록이고 200 이다. 결과를 표시하지 못한 변동(드문 일: 저장소 오류)은 넣지 않는다: 상태가 바뀌지 않았다.
+- 같은 Pack 의 판 올리기와 다시 처리는 한 번에 하나만 한다. 뒤에 온 것이 기다린다. [AD-235]
+- 감사 기록에 남는다 (`reprocessChanges`, 대상 `packId`, 다시 처리한 수와 처리된 수).
+- 규격은 `listUnprocessedChanges`, `reprocessChanges` 다.
 
 ## 6. 조치와 그 근거 보기
 

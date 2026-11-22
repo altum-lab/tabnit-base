@@ -33,8 +33,10 @@ export function RelationsPage() {
   const [asOf, setAsOf] = useState("");
   const [depth, setDepth] = useState<number>(1);
   const [view, setView] = useState<View>({ kind: "idle" });
-  // 지금 보고 있는 것 (가운데 개체와 서버가 답한 조회 시점). 막대, 깊이, 노드로 다시 받을 때 쓴다.
-  const [shown, setShown] = useState<{ entityId: string; asOf: string } | null>(null);
+  // 마지막으로 청한 것 (가운데 개체, 조회 시점, 깊이). 막대, 깊이, 노드로 다시 받을 때 여기서 하나만 바꿔 청한다.
+  // 받은 것이 아니라 청한 것을 둔다: 청한 것이 실패했어도 화면의 입력란과 막대는 청한 값을 보이고 있으므로,
+  // 그 뒤에 깊이나 막대를 바꾸면 화면에 적힌 개체와 날짜로 다시 청해야 한다 (앞서 받은 것으로 돌아가지 않는다).
+  const wanted = useRef<Query | null>(null);
   // 막대의 가운데 날짜와, 막대가 가리키는 날수 (가운데에서 며칠 앞뒤인가).
   const [barBase, setBarBase] = useState<string | null>(null);
   const [barOffset, setBarOffset] = useState(0);
@@ -45,6 +47,7 @@ export function RelationsPage() {
   // 지도와 목록이 같은 날짜를 본다.
   async function load(query: Query, rebase: boolean) {
     const turn = ++latest.current;
+    wanted.current = query;
     setView({ kind: "loading" });
     try {
       const mapAnswer = await api.GET("/api/v1/relation-map", {
@@ -69,7 +72,8 @@ export function RelationsPage() {
         setView({ kind: "failed", message: messageOf(listAnswer.error, listAnswer.response.status) });
         return;
       }
-      setShown({ entityId: map.centerEntityId, asOf: map.asOf });
+      // 조회 시점을 비워 서버가 정했으면, 그 뒤로는 서버가 답한 날짜로 청한다.
+      wanted.current = { entityId: map.centerEntityId, asOf: map.asOf, depth: query.depth };
       if (rebase) {
         setBarBase(map.asOf);
         setBarOffset(0);
@@ -109,27 +113,27 @@ export function RelationsPage() {
   }
 
   function center(nodeId: string) {
-    if (!shown) {
+    if (!wanted.current) {
       return;
     }
     setEntityId(nodeId);
-    void load({ entityId: nodeId, asOf: shown.asOf, depth }, false);
+    void load({ ...wanted.current, entityId: nodeId }, false);
   }
 
   function changeDepth(next: number) {
     setDepth(next);
-    if (shown) {
-      void load({ entityId: shown.entityId, asOf: shown.asOf, depth: next }, false);
+    if (wanted.current) {
+      void load({ ...wanted.current, depth: next }, false);
     }
   }
 
   function moveBar(offset: number) {
-    if (!shown || barBase === null) {
+    if (!wanted.current || barBase === null) {
       return;
     }
     const date = addDays(barBase, offset);
     setAsOf(date);
-    void load({ entityId: shown.entityId, asOf: date, depth }, false);
+    void load({ ...wanted.current, asOf: date }, false);
   }
 
   return (
@@ -155,7 +159,12 @@ export function RelationsPage() {
         </p>
         <p>
           <label htmlFor="map-depth">깊이</label>{" "}
-          <select id="map-depth" value={depth} onChange={(e) => changeDepth(Number(e.target.value))}>
+          <select
+            id="map-depth"
+            value={depth}
+            disabled={view.kind === "loading"}
+            onChange={(e) => changeDepth(Number(e.target.value))}
+          >
             {DEPTHS.map((value) => (
               <option key={value} value={value}>
                 {value}
@@ -173,6 +182,7 @@ export function RelationsPage() {
         <TimeBar
           base={barBase}
           offset={barOffset}
+          disabled={view.kind === "loading"}
           onSlide={setBarOffset}
           onCommit={(offset) => {
             setBarOffset(offset);
@@ -199,11 +209,14 @@ export function RelationsPage() {
 function TimeBar({
   base,
   offset,
+  disabled,
   onSlide,
   onCommit,
 }: {
   base: string;
   offset: number;
+  // 받아 오는 동안에는 옮기지 못한다: 청한 것이 끝나기 전에 다른 것을 청하지 않는다.
+  disabled: boolean;
   onSlide: (offset: number) => void;
   onCommit: (offset: number) => void;
 }) {
@@ -234,6 +247,7 @@ function TimeBar({
         max={BAR_DAYS}
         step={1}
         value={offset}
+        disabled={disabled}
         onChange={(e) => onSlide(Number(e.target.value))}
         style={{ width: "24rem", verticalAlign: "middle" }}
       />{" "}

@@ -209,3 +209,56 @@ test("막대를 옮긴 뒤 지도를 받지 못하면 이유를 보여 주고 �
   await expect(map(page)).toHaveAttribute("data-as-of", "2026-05-31");
   expect(await nodeIds(page)).toEqual(["e2e|T|ga", "e2e|T|na"]);
 });
+
+// ── 실패한 뒤에 다시 청할 때 (검토에서 찾은 것) ─────────────────────────────
+
+test("없는 개체를 조회해 실패한 뒤 깊이나 막대를 바꿔도 앞서 본 개체의 지도로 돌아가지 않는다", async ({ page }) => {
+  await search(page, "e2e|T|me", "2026-03-01");
+  await expect(map(page)).toHaveAttribute("data-center", "e2e|T|me");
+
+  await page.getByLabel("개체 id").fill("e2e|T|missing");
+  await page.getByRole("button", { name: "조회" }).click();
+  await expect(page.getByRole("alert")).toContainText("e2e|T|missing");
+
+  // 화면에 적힌 개체로 다시 청한다. 앞서 본 개체의 지도를 조용히 그리지 않는다.
+  await page.getByLabel("깊이").selectOption("2");
+  await expect(page.getByRole("alert")).toContainText("e2e|T|missing");
+  await expect(map(page)).toHaveCount(0);
+  await page.getByLabel("시점 막대").fill("10");
+  await expect(page.getByRole("alert")).toContainText("e2e|T|missing");
+  await expect(map(page)).toHaveCount(0);
+});
+
+test("막대를 옮긴 것이 실패한 뒤 깊이를 바꾸면 막대가 가리키는 날짜로 받는다", async ({ page }) => {
+  await search(page, "e2e|T|ga", "2026-03-01");
+  await expect(map(page)).toBeVisible();
+  let fail = true;
+  await page.route("**/api/v1/relation-map**", (route) => (fail ? route.abort("connectionrefused") : route.continue()));
+
+  await page.getByLabel("시점 막대").fill("92");
+  await expect(page.getByRole("alert")).toContainText("서버에 연결하지 못했습니다");
+  await expect(page.getByTestId("time-bar-date")).toHaveText("2026-06-01");
+
+  fail = false;
+  await page.getByLabel("깊이").selectOption("2");
+  // 막대와 날짜 입력이 보이는 날짜(2026-06-01)의 지도다. 앞서 받은 날짜(2026-03-01)가 아니다.
+  await expect(map(page)).toHaveAttribute("data-as-of", "2026-06-01");
+  await expect(map(page)).toHaveAttribute("data-depth", "2");
+  expect(await nodeIds(page)).toEqual(["e2e|T|ga", "e2e|T|da"]);
+});
+
+test("받아 오는 동안에는 막대와 깊이를 바꾸지 못한다", async ({ page }) => {
+  await search(page, "e2e|T|ga", "2026-03-01");
+  await expect(map(page)).toBeVisible();
+  await page.route("**/api/v1/relation-map**", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    await route.continue();
+  });
+
+  await page.getByRole("button", { name: "조회" }).click();
+  await expect(page.getByLabel("시점 막대")).toBeDisabled();
+  await expect(page.getByLabel("깊이")).toBeDisabled();
+  await expect(map(page)).toBeVisible();
+  await expect(page.getByLabel("시점 막대")).toBeEnabled();
+});
+

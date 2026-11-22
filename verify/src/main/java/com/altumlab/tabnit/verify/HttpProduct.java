@@ -89,6 +89,15 @@ final class HttpProduct implements Product {
         return whole("/api/v1/actions?packId=" + encode(packId) + "&changeEventId=" + encode(changeEventId), "actions");
     }
 
+    /** 주소 하나를 그대로 묻는다. 나눠 주는 목록의 한 쪽만 받을 때 쓴다 (재는 일). */
+    Reply get(String pathAndQuery) {
+        return send("GET", pathAndQuery, null, null);
+    }
+
+    static String encoded(String value) {
+        return encode(value);
+    }
+
     /** 한 번에 받는 수. 제품이 받는 가장 큰 값이다 (D7 2절 "나눠 주기"). */
     private static final int PAGE_SIZE = 200;
 

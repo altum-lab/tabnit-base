@@ -116,6 +116,22 @@ class LargePackTest {
     }
 
     @Test
+    void 한_개체에서_나가는_관계는_서로_겹치지_않는_아래층_개체에_닿아_영향_범위가_넓게_퍼진다() throws IOException {
+        // A-07: 층마다 100개, 위층의 개체 하나에서 관계 10개. 깊이 1 에 10개, 깊이 2 에 10 x 10 = 100개가 닿는다.
+        LargePack.Expected expected = LargePack.generate(new LargePack.Spec("large-wide", 300, 2000, 3, 4), temp);
+
+        assertThat(expected.changes()).hasSize(4)
+            .allSatisfy(change -> assertThat(change.impactTargets()).isEqualTo(110));
+        // 아래층의 개체마다 들어오는 관계의 수도 고르다.
+        TreeMap<String, Integer> incoming = new TreeMap<>();
+        for (String link : rows(temp.resolve("large-wide/data/link-01-v1.csv"))) {
+            incoming.merge(link.split(",")[1], 1, Integer::sum);
+        }
+        assertThat(incoming).hasSize(100);
+        assertThat(incoming.values()).containsOnly(10);
+    }
+
+    @Test
     void 같은_값을_주면_글자까지_같은_자료가_나온다() throws IOException {
         LargePack.Spec spec = new LargePack.Spec("large-same", 80, 200, 4, 3);
 

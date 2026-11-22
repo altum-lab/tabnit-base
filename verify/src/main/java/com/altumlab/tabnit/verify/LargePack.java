@@ -117,7 +117,7 @@ final class LargePack {
                 out.write("from,to\n");
                 for (int j = 0; j < gapSizes[gap]; j++) {
                     int source = j % layerSizes[gap];
-                    out.write(key(gap, source) + "," + key(gap + 1, target(j, layerSizes[gap], layerSizes[gap + 1])) + "\n");
+                    out.write(key(gap, source) + "," + key(gap + 1, target(j, layerSizes[gap], layerSizes[gap + 1], gapSizes[gap])) + "\n");
                 }
             }
             steps.add(new Step(linkSource(gap), file, FIRST_DATE));
@@ -187,13 +187,19 @@ final class LargePack {
 
     /**
      * 한 층 사이의 j 번째 관계의 도착 개체. 출발 개체는 j 를 위층의 수로 나눈 나머지다.
-     * 같은 출발에서 나가는 관계마다 도착이 달라, 같은 관계가 두 번 나오지 않는다.
+     *
+     * <p>출발 개체 하나에서 나가는 관계의 수만큼씩 도착을 밀어, 이웃한 출발 개체가 서로 겹치지 않는 아래층 개체에
+     * 닿게 한다. 영향이 층을 내려가며 넓게 퍼진다 (아래층을 한 바퀴 돌면 그때부터 겹친다). 같은 출발에서 나가는
+     * 관계마다 도착이 달라, 같은 관계가 두 번 나오지 않는다.
+     *
+     * @param total 이 층 사이의 관계의 수
      */
-    private static int target(int j, int upper, int lower) {
+    private static int target(int j, int upper, int lower, int total) {
         int source = j % upper;
         int round = j / upper;
-        // 출발마다 도착을 조금씩 밀어, 관계가 아래층에 고르게 닿게 한다.
-        return (int) (((long) source * Math.max(1, lower / upper) + round) % lower);
+        // 출발 개체 하나에서 나가는 관계의 수 (올림). 아래층의 수를 넘지 않는다: 관계의 수를 그렇게 받았다.
+        int perSource = Math.max(1, (total + upper - 1) / upper);
+        return (int) (((long) source * perSource + round) % lower);
     }
 
     /** 첫 층의 개체 하나에서 아래층으로 따라가 닿는 개체를 센다. 만든 관계와 같은 셈으로 따라간다. */
@@ -207,7 +213,7 @@ final class LargePack {
             int count = 0;
             for (int j = 0; j < gapSizes[gap]; j++) {
                 if (current[j % layerSizes[gap]]) {
-                    int target = target(j, layerSizes[gap], layerSizes[gap + 1]);
+                    int target = target(j, layerSizes[gap], layerSizes[gap + 1], gapSizes[gap]);
                     if (!next[target]) {
                         next[target] = true;
                         count++;

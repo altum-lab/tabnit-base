@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import {
   type Action,
@@ -11,6 +11,8 @@ import {
 } from "../api/client";
 import { CONNECTION_FAILED, isProblem, messageOf } from "../api/problem";
 import { Pager } from "./Pager";
+import { SessionContext } from "../session";
+import { formatInstant } from "../time";
 
 // 조치 화면. Pack 의 조치를 근거와 함께 보고, 그 자리에서 확정하거나 보류한다.
 // 서버의 listActions, getAction, getChangeImpactScope, decideAction (docs/api/openapi.yaml) 의 값을 그대로 보여 준다.
@@ -521,7 +523,8 @@ function Path({
   return (
     <>
       <p>
-        시작한 변동 대상 {target.path.startEntityId} 에서 관계 {target.depth}개를 건너 닿았습니다. 관계는{" "}
+        시작한 변동 대상 {target.path.startEntityId} 에서 관계 {target.depth}개를 건너 닿았습니다.{" "}
+        <strong data-testid="path-basis">{pathBasis(target.path.asOf, scope.value)}</strong>: 관계는{" "}
         <time>{target.path.asOf}</time> 에 유효한 것입니다. 이 변동의 영향 범위는 판의 적용일{" "}
         {scope.value.asOfEffective} 과 그 전날 {scope.value.asOfPrevious}, 두 날짜의 관계로 보았습니다.
       </p>
@@ -536,7 +539,22 @@ function Path({
   );
 }
 
+// 근거 경로가 어느 날짜의 관계로 닿았는지를 말로 적는다 (D1 5절의 용어, D2 AD-327).
+// 날짜는 서버가 준 값이다: 경로의 날짜가 판의 적용일이면 변동 후, 그 전날이면 변동 전이다.
+function pathBasis(asOf: string, scope: ChangeImpactScope): string {
+  if (asOf === scope.asOfEffective) {
+    return "변동 후의 관계";
+  }
+  if (asOf === scope.asOfPrevious) {
+    return "변동 전의 관계";
+  }
+  // 두 날짜 가운데 어느 것도 아니면 말을 붙이지 않는다. 날짜는 옆에 그대로 보인다.
+  return "관계의 날짜";
+}
+
 function History({ history }: { history: ActionDecision[] }) {
+  // 시각은 설치 설정의 시간대로 보인다 (내 정보의 timeZone).
+  const timeZone = useContext(SessionContext)?.timeZone;
   if (history.length === 0) {
     return <p>아직 확정하거나 보류한 적이 없습니다.</p>;
   }
@@ -560,7 +578,12 @@ function History({ history }: { history: ActionDecision[] }) {
               {STATUS_LABEL[decision.fromStatus] ?? decision.fromStatus} → {STATUS_LABEL[decision.toStatus] ?? decision.toStatus}
             </td>
             <td>{decision.decidedBy}</td>
-            <td>{decision.decidedAt}</td>
+            <td>
+              {/* 설치 설정의 시간대로 바꿔 보인다. 서버가 준 값은 그대로 남겨 둔다. */}
+              <time dateTime={decision.decidedAt} title={`협정 세계시 ${decision.decidedAt}`}>
+                {formatInstant(decision.decidedAt, timeZone)}
+              </time>
+            </td>
             <td>{decision.note ?? ""}</td>
           </tr>
         ))}

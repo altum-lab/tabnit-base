@@ -250,6 +250,25 @@ class EditionsApiTests {
 
 	// ── 도우미 ──────────────────────────────────────────────────
 
+	@Test
+	void 건너뛴_행의_알림에는_코드와_값과_함께_풀어_쓴_문구가_온다() throws Exception {
+		String packId = "up-notice";
+		PackCopies.load(this.dataSource, this.temp, packId, text -> text);
+
+		// 첫 행은 받고, 둘째 행은 지침번호가 비었다.
+		ResultActions result = upload(packId, "guideline", "2026-01-01", "g.csv",
+				"지침번호,제목,점검주기일\nG-91,지어낸 지침,30\n,번호가 없는 지침,30\n"
+					.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+		result.andExpect(status().isOk())
+			.andExpect(jsonPath("$.notices", hasSize(1)))
+			.andExpect(jsonPath("$.notices[0].kind").value("SKIPPED_ROW"))
+			.andExpect(jsonPath("$.notices[0].code").value("BLANK_KEY"))
+			.andExpect(jsonPath("$.notices[0].rowNo").value(3))
+			.andExpect(jsonPath("$.notices[0].message", org.hamcrest.Matchers.startsWith("3번째 행")))
+			.andExpect(jsonPath("$.notices[0].message", org.hamcrest.Matchers.containsString("지침번호")));
+	}
+
 	private ResultActions upload(String packId, String inputSourceId, String effectiveDate, String fileName, Path file)
 			throws Exception {
 		return upload(packId, inputSourceId, effectiveDate, fileName, Files.readAllBytes(file));

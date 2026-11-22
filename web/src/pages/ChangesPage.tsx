@@ -303,10 +303,8 @@ function Result({ result }: { result: EditionSubmission }) {
           <thead>
             <tr>
               <th scope="col">행</th>
-              <th scope="col">종류</th>
+              <th scope="col">알림</th>
               <th scope="col">코드</th>
-              <th scope="col">대상</th>
-              <th scope="col">값</th>
             </tr>
           </thead>
           <tbody>
@@ -314,10 +312,13 @@ function Result({ result }: { result: EditionSubmission }) {
               // 알림에는 식별자가 없다. 서버가 준 차례가 곧 자리다.
               <tr key={index}>
                 <td>{notice.rowNo}</td>
-                <td>{notice.kind}</td>
-                <td>{notice.code}</td>
-                <td>{notice.subject ?? ""}</td>
-                <td>{notice.detail ?? ""}</td>
+                {/* 문구는 서버가 풀어 쓴 것이다. 어느 행의 무엇이 왜 걸렸고 무엇을 하면 되는지가 들어 있다. */}
+                <td>{notice.message}</td>
+                <td>
+                  <small>
+                    {notice.kind}, {notice.code}
+                  </small>
+                </td>
               </tr>
             ))}
           </tbody>

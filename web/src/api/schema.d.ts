@@ -286,6 +286,8 @@ export interface components {
              * @enum {string}
              */
             role: "ADMIN" | "OFFICER";
+            /** @description 설치 설정의 시간대 (예. Asia/Seoul). 화면은 시각을 이 시간대로 바꿔 보여 준다. API 의 시각은 모두 협정 세계시 그대로다. 서버가 조회 시점의 "오늘"을 정할 때 쓰는 시간대와 같다 */
+            timeZone: string;
         };
         LoginRequest: {
             loginId: string;
@@ -651,7 +653,7 @@ export interface components {
             itemKey: string;
             processing: components["schemas"]["ChangeProcessing"];
         };
-        /** @description 투입의 알림 하나. 문구가 아니라 종류와 이유의 코드와 값이다 */
+        /** @description 투입의 알림 하나. 종류와 이유의 코드와 값, 그리고 그것을 풀어 쓴 문구다 */
         EditionNotice: {
             /** @description 종류. SKIPPED_ROW, REFERENCE_ONLY_ENTITY, ATTRIBUTE_CONFLICT, RELATION_CONFLICT, PERIOD_ADJUSTED */
             kind: string;
@@ -663,6 +665,8 @@ export interface components {
             subject: string | null;
             /** @description 걸린 값. 없으면 null */
             detail: string | null;
+            /** @description 사용자에게 보이는 한국어 문구. 몇 번째 행의 어느 열(또는 어느 개체의 어느 속성)이 왜 걸렸는지와 무엇을 하면 되는지를 적는다. 화면이 가르는 데는 kind 와 code 를 쓴다: 문구는 바뀔 수 있다 */
+            message: string;
         };
         /** @description 공통 오류 형식에 거부한 이유를 더했다 */
         EditionRejectedProblem: components["schemas"]["Problem"] & {

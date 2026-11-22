@@ -158,6 +158,13 @@ test("조치를 펼치면 근거 경로가 서버가 준 단계 그대로 나오
 
   await page.goto(`/actions?packId=${READ_PACK}&status=ALL`);
   await open(page, reached.id);
+  // 경로가 어느 날짜의 관계로 닿았는지를 말로 적는다: 판의 적용일이면 변동 후, 그 전날이면 변동 전.
+  const dates = (await (
+    await request.get("/api/v1/impact-scopes", { params: { changeEventId: reached.changeEventId, limit: "1" } })
+  ).json()) as { asOfPrevious: string; asOfEffective: string };
+  const basis = target.path.asOf === dates.asOfEffective ? "변동 후의 관계" : "변동 전의 관계";
+  expect([dates.asOfEffective, dates.asOfPrevious]).toContain(target.path.asOf);
+  await expect(detail(page, reached.id).getByTestId("path-basis")).toHaveText(basis);
 
   // 근거 경로: 시작한 변동 대상, 닿은 날짜, 따라간 관계가 서버가 준 차례대로.
   const path = detail(page, reached.id).getByRole("region", { name: "근거 경로" });
@@ -198,6 +205,15 @@ test("보류하고 확정하면 상태와 이력이 바뀐다", async ({ page, r
   await expect(history.locator("tbody tr").first()).toContainText("담당 부서의 답을 기다린다");
   // 누가 했는지는 서버가 채운 값이다 (로그인 전에는 임시 아이디).
   await expect(history.locator("tbody tr").first()).toContainText(E2E_USER.loginId);
+  // 언제 했는지는 서버가 준 시각(협정 세계시)을 설치 설정의 시간대로 바꿔 보인다. 서버가 준 값은 그대로 남아 있다.
+  const session = (await (await request.get("/api/v1/session")).json()) as { timeZone: string };
+  expect(session.timeZone).toBe("Asia/Seoul");
+  const decidedAt = history.locator("tbody tr").first().locator("time");
+  const instant = (await decidedAt.getAttribute("datetime")) ?? "";
+  expect(instant).toMatch(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/);
+  // 한국 시간은 협정 세계시보다 아홉 시간 앞선다 (서머타임이 없다). 화면과 따로 셈한다.
+  const expectedLocal = new Date(new Date(instant).getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 19).replace("T", " ");
+  await expect(decidedAt).toHaveText(expectedLocal);
 
   await panel.getByRole("button", { name: "확정" }).click();
 

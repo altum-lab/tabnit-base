@@ -36,7 +36,12 @@ class SessionController {
 
 	private final UserAccounts accounts;
 
-	SessionController(AuthenticationManager authentications, SecurityContextRepository contexts, UserAccounts accounts) {
+	/** 설치 설정의 시간대 (tabnit.time-zone). 조회 시점의 "오늘"을 정하는 것과 같은 값이다. */
+	private final java.time.ZoneId installationZone;
+
+	SessionController(AuthenticationManager authentications, SecurityContextRepository contexts, UserAccounts accounts,
+			java.time.ZoneId installationZone) {
+		this.installationZone = installationZone;
 		this.accounts = accounts;
 		this.authentications = authentications;
 		this.contexts = contexts;
@@ -88,7 +93,7 @@ class SessionController {
 		return response(authentication);
 	}
 
-	private static SessionResponse response(Authentication authentication) {
+	private SessionResponse response(Authentication authentication) {
 		String role = authentication.getAuthorities()
 			.stream()
 			.map(GrantedAuthority::getAuthority)
@@ -97,7 +102,7 @@ class SessionController {
 			.sorted()
 			.findFirst()
 			.orElseThrow(() -> new IllegalStateException("로그인한 사람에게 역할이 없습니다"));
-		return new SessionResponse(authentication.getName(), role);
+		return new SessionResponse(authentication.getName(), role, this.installationZone.getId());
 	}
 
 }

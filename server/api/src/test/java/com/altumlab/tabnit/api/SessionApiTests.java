@@ -2,6 +2,7 @@ package com.altumlab.tabnit.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -214,13 +215,13 @@ class SessionApiTests {
 
 	@Test
 	void 명령으로_만든_사용자로_로그인할_수_있고_비밀번호는_환경_변수에서만_온다() throws Exception {
-		new UserCreationCommand(this.accounts, this.clock, "ses-cmd", "ADMIN", name -> PASSWORD).run(null);
+		new UserCreationCommand(this.accounts, this.audit, this.clock, "ses-cmd", "ADMIN", name -> PASSWORD).run(null);
 
 		login("ses-cmd", PASSWORD, new MockHttpSession()).andExpect(status().isOk())
 			.andExpect(jsonPath("$.role").value("ADMIN"));
 		// 읽는 환경 변수의 이름.
 		List<String> asked = new java.util.ArrayList<>();
-		new UserCreationCommand(this.accounts, this.clock, "ses-cmd-2", "OFFICER", name -> {
+		new UserCreationCommand(this.accounts, this.audit, this.clock, "ses-cmd-2", "OFFICER", name -> {
 			asked.add(name);
 			return PASSWORD;
 		}).run(null);
@@ -228,25 +229,25 @@ class SessionApiTests {
 		// 비밀번호가 없으면 만들지 않고, 무엇을 하면 되는지 알린다.
 		for (String missing : new String[] { null, "" }) {
 			assertThatThrownBy(
-					() -> new UserCreationCommand(this.accounts, this.clock, "ses-cmd-3", "OFFICER", name -> missing).run(null))
+					() -> new UserCreationCommand(this.accounts, this.audit, this.clock, "ses-cmd-3", "OFFICER", name -> missing).run(null))
 				.isInstanceOf(IllegalStateException.class)
 				.hasMessageContaining("TABNIT_NEW_USER_PASSWORD");
 		}
 		assertThat(this.accounts.find("ses-cmd-3")).isEmpty();
 		// 역할이 틀리면 만들지 않는다.
 		assertThatThrownBy(
-				() -> new UserCreationCommand(this.accounts, this.clock, "ses-cmd-4", "MANAGER", name -> PASSWORD).run(null))
+				() -> new UserCreationCommand(this.accounts, this.audit, this.clock, "ses-cmd-4", "MANAGER", name -> PASSWORD).run(null))
 			.isInstanceOf(IllegalStateException.class)
 			.hasMessageContaining("ADMIN")
 			.hasMessageContaining("OFFICER");
 		assertThat(this.accounts.find("ses-cmd-4")).isEmpty();
 		// 규칙에 맞지 않는 비밀번호나 이미 있는 아이디는 common 이 거부한 그대로 알린다. 문구에 비밀번호가 없다.
 		assertThatThrownBy(
-				() -> new UserCreationCommand(this.accounts, this.clock, "ses-cmd-5", "OFFICER", name -> "짧은-비밀").run(null))
+				() -> new UserCreationCommand(this.accounts, this.audit, this.clock, "ses-cmd-5", "OFFICER", name -> "짧은-비밀").run(null))
 			.isInstanceOf(UserAccountRejectedException.class)
 			.satisfies(e -> assertThat(e.getMessage()).doesNotContain("짧은-비밀"));
 		assertThatThrownBy(
-				() -> new UserCreationCommand(this.accounts, this.clock, "ses-cmd", "OFFICER", name -> PASSWORD).run(null))
+				() -> new UserCreationCommand(this.accounts, this.audit, this.clock, "ses-cmd", "OFFICER", name -> PASSWORD).run(null))
 			.isInstanceOf(UserAccountRejectedException.class);
 	}
 
@@ -318,4 +319,132 @@ class SessionApiTests {
 		return out.append('"').toString();
 	}
 
+
+	// ── 계정 관리 명령과 그 감사 기록 (E-18, D2 AD-320, AD-329, AD-346) ───────────────
+
+	@Autowired
+	com.altumlab.tabnit.common.AuditLog audit;
+
+	@Test
+	void 막힌_사람을_명령으로_풀면_바로_로그인되고_명령이_감사_기록에_남는다() throws Exception {
+		this.accounts.create("ses-unlock", PASSWORD, com.altumlab.tabnit.common.Role.OFFICER, this.clock.instant());
+		for (int i = 0; i < 5; i++) {
+			login("ses-unlock", "틀린-시험용-비밀번호-9", new MockHttpSession()).andExpect(status().isUnauthorized());
+		}
+		login("ses-unlock", PASSWORD, new MockHttpSession()).andExpect(status().isUnauthorized());
+		long before = this.audit.lastId();
+
+		new UserUnlockCommand(this.accounts, this.audit, this.clock, "ses-unlock").run(null);
+
+		login("ses-unlock", PASSWORD, new MockHttpSession()).andExpect(status().isOk());
+		// 하기 전의 줄과 결과의 줄. 누가는 비어 있고 명령으로 했다고 적는다.
+		List<com.altumlab.tabnit.common.AuditRecord> rows = this.audit.after(before)
+			.stream()
+			.filter(row -> "unlockUser".equals(row.action()))
+			.toList();
+		assertThat(rows).hasSize(2);
+		assertThat(rows.get(0).outcome()).isEqualTo(com.altumlab.tabnit.common.AuditOutcome.STARTED);
+		assertThat(rows.get(1).outcome()).isEqualTo(com.altumlab.tabnit.common.AuditOutcome.SUCCESS);
+		assertThat(rows.get(1).startedId()).isEqualTo(rows.get(0).id());
+		assertThat(rows).allSatisfy(row -> {
+			assertThat(row.actor()).isNull();
+			assertThat(row.target()).isEqualTo("loginId=ses-unlock");
+			assertThat(row.detail()).contains("via=command");
+			assertThat(row.httpStatus()).isNull();
+		});
+	}
+
+	@Test
+	void 명령으로_비밀번호를_바꾸면_새_비밀번호로만_로그인되고_감사_기록에_비밀번호는_남지_않는다() throws Exception {
+		String next = "지어낸-화면-시험-새-비밀번호-7";
+		this.accounts.create("ses-change", PASSWORD, com.altumlab.tabnit.common.Role.OFFICER, this.clock.instant());
+		long before = this.audit.lastId();
+		List<String> asked = new java.util.ArrayList<>();
+
+		new PasswordChangeCommand(this.accounts, this.audit, this.clock, "ses-change", name -> {
+			asked.add(name);
+			return next;
+		}).run(null);
+
+		assertThat(asked).containsExactly("TABNIT_NEW_USER_PASSWORD");
+		login("ses-change", PASSWORD, new MockHttpSession()).andExpect(status().isUnauthorized());
+		login("ses-change", next, new MockHttpSession()).andExpect(status().isOk());
+		List<com.altumlab.tabnit.common.AuditRecord> rows = this.audit.after(before)
+			.stream()
+			.filter(row -> "changeUserPassword".equals(row.action()))
+			.toList();
+		assertThat(rows).extracting(com.altumlab.tabnit.common.AuditRecord::outcome)
+			.containsExactly(com.altumlab.tabnit.common.AuditOutcome.STARTED, com.altumlab.tabnit.common.AuditOutcome.SUCCESS);
+		assertThat(rows).allSatisfy(row -> {
+			assertThat(row.actor()).isNull();
+			assertThat(row.target()).isEqualTo("loginId=ses-change");
+			assertThat(String.valueOf(row.detail())).doesNotContain(next).doesNotContain(PASSWORD);
+		});
+	}
+
+	@Test
+	void 사용자를_만드는_명령도_감사_기록에_남고_실패한_명령은_실패로_남는다() throws Exception {
+		long before = this.audit.lastId();
+
+		new UserCreationCommand(this.accounts, this.audit, this.clock, "ses-audited", "OFFICER", name -> PASSWORD).run(null);
+		// 실패하는 명령들: 이미 있는 아이디, 없는 아이디의 막힘 풀기, 비밀번호가 없는 바꾸기, 규칙에 맞지 않는 새 비밀번호.
+		assertThatThrownBy(() -> new UserCreationCommand(this.accounts, this.audit, this.clock, "ses-audited", "OFFICER",
+				name -> PASSWORD).run(null)).isInstanceOf(UserAccountRejectedException.class);
+		assertThatThrownBy(() -> new UserUnlockCommand(this.accounts, this.audit, this.clock, "ses-no-such").run(null))
+			.isInstanceOf(UserAccountRejectedException.class);
+		assertThatThrownBy(
+				() -> new PasswordChangeCommand(this.accounts, this.audit, this.clock, "ses-audited", name -> null).run(null))
+			.isInstanceOf(IllegalStateException.class)
+			.hasMessageContaining("TABNIT_NEW_USER_PASSWORD");
+		assertThatThrownBy(() -> new PasswordChangeCommand(this.accounts, this.audit, this.clock, "ses-audited",
+				name -> "짧은-비밀").run(null)).isInstanceOf(UserAccountRejectedException.class);
+
+		List<com.altumlab.tabnit.common.AuditRecord> rows = this.audit.after(before)
+			.stream()
+			.filter(row -> row.target() != null && (row.target().equals("loginId=ses-audited")
+					|| row.target().equals("loginId=ses-no-such")))
+			.toList();
+		assertThat(rows).extracting(com.altumlab.tabnit.common.AuditRecord::action,
+				com.altumlab.tabnit.common.AuditRecord::outcome)
+			.containsExactly(tuple("createUser", com.altumlab.tabnit.common.AuditOutcome.STARTED),
+					tuple("createUser", com.altumlab.tabnit.common.AuditOutcome.SUCCESS),
+					tuple("createUser", com.altumlab.tabnit.common.AuditOutcome.STARTED),
+					tuple("createUser", com.altumlab.tabnit.common.AuditOutcome.FAILED),
+					tuple("unlockUser", com.altumlab.tabnit.common.AuditOutcome.STARTED),
+					tuple("unlockUser", com.altumlab.tabnit.common.AuditOutcome.FAILED),
+					tuple("changeUserPassword", com.altumlab.tabnit.common.AuditOutcome.STARTED),
+					tuple("changeUserPassword", com.altumlab.tabnit.common.AuditOutcome.FAILED),
+					tuple("changeUserPassword", com.altumlab.tabnit.common.AuditOutcome.STARTED),
+					tuple("changeUserPassword", com.altumlab.tabnit.common.AuditOutcome.FAILED));
+		// 만든 사용자의 역할이 남는다. 비밀번호는 어디에도 없다.
+		assertThat(rows.get(0).detail()).contains("role=OFFICER");
+		assertThat(rows).allSatisfy(row -> assertThat(String.valueOf(row.detail())).doesNotContain(PASSWORD)
+			.doesNotContain("짧은-비밀"));
+		// 실패한 명령은 아무것도 바꾸지 않았다.
+		login("ses-audited", PASSWORD, new MockHttpSession()).andExpect(status().isOk());
+	}
+
+	@Test
+	void 어느_명령으로_띄웠는지를_실행_인자에서_가린다() {
+		assertThat(AccountCommands.requested(new String[] { "--tabnit.create-user.login-id=a", "--x=y" })).isTrue();
+		assertThat(AccountCommands.requested(new String[] { "--tabnit.unlock-user.login-id=a" })).isTrue();
+		assertThat(AccountCommands.requested(new String[] { "--tabnit.change-password.login-id=a" })).isTrue();
+		assertThat(AccountCommands.requested(new String[] { "--server.port=8080" })).isFalse();
+		assertThat(AccountCommands.requested(new String[] {})).isFalse();
+	}
+
+	@Test
+	void 명령으로_띄웠는데_일을_한_명령이_없으면_성공으로_끝내지_않는다() {
+		// 아이디로 false 를 주면 설정이 그 명령을 끈 것으로 읽어 명령이 만들어지지 않는다.
+		org.springframework.context.support.StaticApplicationContext none =
+				new org.springframework.context.support.StaticApplicationContext();
+		assertThatThrownBy(() -> AccountCommands.requireRan(none)).isInstanceOf(IllegalStateException.class)
+			.hasMessageContaining("false");
+
+		org.springframework.context.support.StaticApplicationContext ran =
+				new org.springframework.context.support.StaticApplicationContext();
+		ran.getBeanFactory()
+			.registerSingleton("unlock", new UserUnlockCommand(this.accounts, this.audit, this.clock, "ses-any"));
+		AccountCommands.requireRan(ran);
+	}
 }

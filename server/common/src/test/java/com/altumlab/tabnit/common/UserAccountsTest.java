@@ -263,4 +263,74 @@ class UserAccountsTest {
         assertThatThrownBy(() -> strict.authenticate("u-config", null, T0)).isInstanceOf(NullPointerException.class);
         assertThatThrownBy(() -> strict.authenticate("u-config", PASSWORD, null)).isInstanceOf(NullPointerException.class);
     }
+
+    // ── 계정 관리: 막힘 풀기와 비밀번호 바꾸기 (E-18, D2 AD-320, AD-346) ─────────────
+
+    @Test
+    void 막힌_계정을_풀면_바로_로그인할_수_있고_틀린_횟수도_처음으로_돌아간다() {
+        accounts.create("u-unlock", PASSWORD, Role.OFFICER, T0);
+        for (int i = 0; i < 5; i++) {
+            accounts.authenticate("u-unlock", WRONG, T0.plusSeconds(i));
+        }
+        assertThat(accounts.authenticate("u-unlock", PASSWORD, T0.plusSeconds(10)).outcome())
+            .isEqualTo(LoginAttempt.Outcome.LOCKED);
+
+        accounts.unlock("u-unlock");
+
+        assertThat(accounts.authenticate("u-unlock", PASSWORD, T0.plusSeconds(11)).outcome())
+            .isEqualTo(LoginAttempt.Outcome.SUCCEEDED);
+        // 막히지 않았고 몇 번 틀리기만 한 계정도 처음부터 다시 센다. 풀려 있는 계정을 풀어도 된다.
+        for (int i = 0; i < 4; i++) {
+            accounts.authenticate("u-unlock", WRONG, T0.plusSeconds(20 + i));
+        }
+        accounts.unlock("u-unlock");
+        accounts.unlock("u-unlock");
+        for (int i = 0; i < 4; i++) {
+            accounts.authenticate("u-unlock", WRONG, T0.plusSeconds(30 + i));
+        }
+        assertThat(accounts.authenticate("u-unlock", PASSWORD, T0.plusSeconds(40)).outcome())
+            .isEqualTo(LoginAttempt.Outcome.SUCCEEDED);
+        // 비밀번호와 역할은 그대로다.
+        assertThat(accounts.find("u-unlock")).contains(new UserAccount("u-unlock", Role.OFFICER));
+    }
+
+    @Test
+    void 비밀번호를_바꾸면_새_비밀번호만_받고_막힘도_함께_풀린다() {
+        String next = "지어낸-새-비밀번호-2";
+        accounts.create("u-change", PASSWORD, Role.ADMIN, T0);
+        for (int i = 0; i < 5; i++) {
+            accounts.authenticate("u-change", WRONG, T0.plusSeconds(i));
+        }
+
+        accounts.changePassword("u-change", next);
+
+        assertThat(accounts.authenticate("u-change", PASSWORD, T0.plusSeconds(10)).outcome())
+            .isEqualTo(LoginAttempt.Outcome.FAILED);
+        assertThat(accounts.authenticate("u-change", next, T0.plusSeconds(11)).outcome())
+            .isEqualTo(LoginAttempt.Outcome.SUCCEEDED);
+        // 해시로만 저장되고 역할은 그대로다.
+        String stored = jdbc.queryForObject("select password_hash from app_user where login_id = ?", String.class, "u-change");
+        assertThat(stored).startsWith("{bcrypt}").doesNotContain(next);
+        assertThat(accounts.find("u-change")).contains(new UserAccount("u-change", Role.ADMIN));
+    }
+
+    @Test
+    void 없는_아이디와_규칙에_맞지_않는_비밀번호는_거부하고_아무것도_바꾸지_않는다() {
+        accounts.create("u-keep", PASSWORD, Role.OFFICER, T0);
+
+        assertThatThrownBy(() -> accounts.unlock("u-없는-아이디")).isInstanceOf(UserAccountRejectedException.class);
+        assertThatThrownBy(() -> accounts.unlock("u-none")).isInstanceOf(UserAccountRejectedException.class)
+            .hasMessageContaining("u-none");
+        assertThatThrownBy(() -> accounts.changePassword("u-none", PASSWORD)).isInstanceOf(UserAccountRejectedException.class);
+        // 만들 때와 같은 규칙이다: 너무 짧은 것, 너무 긴 것, 쓸 수 없는 글자. 문구에 비밀번호가 없다.
+        for (String bad : new String[] { "짧은-비밀", "가".repeat(25), "지어낸-비밀번호\u0000-123" }) {
+            assertThatThrownBy(() -> accounts.changePassword("u-keep", bad)).isInstanceOf(UserAccountRejectedException.class)
+                .satisfies(e -> assertThat(e.getMessage()).doesNotContain(bad));
+        }
+        assertThatThrownBy(() -> accounts.changePassword("u-keep", null)).isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> accounts.unlock(null)).isInstanceOf(NullPointerException.class);
+
+        assertThat(accounts.authenticate("u-keep", PASSWORD, T0.plusSeconds(1)).outcome())
+            .isEqualTo(LoginAttempt.Outcome.SUCCEEDED);
+    }
 }

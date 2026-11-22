@@ -1,5 +1,6 @@
 package com.altumlab.tabnit.api;
 
+import com.altumlab.tabnit.common.AuditLog;
 import com.altumlab.tabnit.common.Role;
 import com.altumlab.tabnit.common.UserAccount;
 import com.altumlab.tabnit.common.UserAccounts;
@@ -17,15 +18,17 @@ import org.springframework.boot.ApplicationRunner;
  * 비밀번호는 환경 변수 {@value #PASSWORD_VARIABLE} 로만 받는다: 실행 인자와 설정 파일은 기록에 남는다.
  * 비밀번호를 로그에 적지 않는다.
  */
-class UserCreationCommand implements ApplicationRunner {
+class UserCreationCommand implements ApplicationRunner, AccountCommands.Command {
 
-	static final String LOGIN_ID_PROPERTY = "tabnit.create-user.login-id";
+	static final String LOGIN_ID_PROPERTY = AccountCommands.CREATE_USER_PROPERTY;
 
-	static final String PASSWORD_VARIABLE = "TABNIT_NEW_USER_PASSWORD";
+	static final String PASSWORD_VARIABLE = AccountCommands.PASSWORD_VARIABLE;
 
 	private static final Logger log = LoggerFactory.getLogger(UserCreationCommand.class);
 
 	private final UserAccounts accounts;
+
+	private final AuditLog audit;
 
 	private final Clock clock;
 
@@ -39,16 +42,17 @@ class UserCreationCommand implements ApplicationRunner {
 	 * @param role 역할의 이름. ADMIN 또는 OFFICER
 	 * @param environment 환경 변수를 읽는 곳
 	 */
-	UserCreationCommand(UserAccounts accounts, Clock clock, String loginId, String role,
+	UserCreationCommand(UserAccounts accounts, AuditLog audit, Clock clock, String loginId, String role,
 			UnaryOperator<String> environment) {
 		this.accounts = accounts;
+		this.audit = audit;
 		this.clock = clock;
 		this.loginId = loginId;
 		this.role = role;
 		this.environment = environment;
 	}
 
-	/** 실행 인자가 사용자를 만들라는 것인가. 그러면 서버를 HTTP 없이 띄웠다가 끝낸다. */
+	/** 실행 인자가 사용자를 만들라는 것인가. 계정 관리 명령 모두를 가리는 것은 {@link AccountCommands#requested} 다. */
 	static boolean requested(String[] args) {
 		for (String arg : args) {
 			if (arg.startsWith("--" + LOGIN_ID_PROPERTY + "=")) {
@@ -76,7 +80,9 @@ class UserCreationCommand implements ApplicationRunner {
 			throw new IllegalStateException("사용자를 만들지 못했습니다. 비밀번호가 없습니다. 환경 변수 " + PASSWORD_VARIABLE
 					+ " 에 비밀번호를 넣어 다시 실행하세요. 실행 인자나 설정 파일에는 적지 마세요.");
 		}
-		UserAccount created = this.accounts.create(this.loginId, password, parsed, this.clock.instant());
+		// 명령은 감사 기록에 남는다 (D2 AD-329). 역할을 함께 적는다. 비밀번호는 적지 않는다.
+		UserAccount created = AccountCommands.audited(this.audit, this.clock, "createUser", this.loginId,
+				"role=" + parsed.name(), () -> this.accounts.create(this.loginId, password, parsed, this.clock.instant()));
 		log.info("사용자를 만들었습니다: 아이디 {}, 역할 {}", created.loginId(), created.role());
 	}
 

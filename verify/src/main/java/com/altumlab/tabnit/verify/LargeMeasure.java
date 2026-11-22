@@ -185,7 +185,7 @@ final class LargeMeasure {
         return result;
     }
 
-    /** 가운데 값과 가장 큰 값 (마이크로초로 재어 밀리초로 적는다). */
+    /** 가운데 값과 가장 큰 값 (마이크로초로 재어 밀리초로 적는다). 잰 횟수가 짝수이면 가운데 둘 가운데 큰 쪽을 적는다. */
     private static String summary(String what, List<Long> micros) {
         long[] sorted = micros.stream().mapToLong(Long::longValue).sorted().toArray();
         return String.format("  %-42s 가운데 %8.1f ms   가장 큼 %8.1f ms   (%d번)", what, sorted[sorted.length / 2] / 1000.0,

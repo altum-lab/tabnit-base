@@ -145,6 +145,12 @@ final class LargeMeasure {
                         actionsPath + "&offset=0&limit=" + LARGEST_PAGE);
                 String relations = "/api/v1/relations?asOf=" + LargePack.CHANGED_DATE + "&offset=0&limit=" + PAGE + "&entityId=";
                 failed |= get(samples, lines, http, "관계 조회: 변동 대상 (첫 쪽 " + PAGE + "개)", relations + HttpProduct.encoded(start));
+                // 관계 지도 (A-06): 변동 대상을 가운데 두고 깊이마다. 방향을 보지 않으므로 깊이 3 은 위층으로도 퍼진다.
+                for (int depth = 1; depth <= 3; depth++) {
+                    failed |= get(samples, lines, http, "관계 지도: 변동 대상을 가운데로 깊이 " + depth,
+                            "/api/v1/relation-map?asOf=" + LargePack.CHANGED_DATE + "&depth=" + depth + "&entityId="
+                                    + HttpProduct.encoded(start));
+                }
                 // 깊이 1 의 대상: 들어오는 관계와 나가는 관계가 모두 있다.
                 failed |= get(samples, lines, http, "관계 조회: 가운데 층의 개체 (첫 쪽 " + PAGE + "개)",
                         relations + HttpProduct.encoded(String.valueOf(first.get("entityId"))));

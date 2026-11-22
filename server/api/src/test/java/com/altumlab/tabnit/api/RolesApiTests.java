@@ -117,6 +117,34 @@ class RolesApiTests {
 	}
 
 	@Test
+	void 적재는_되지만_뜻대로_걸리지_않을_수_있는_규칙은_경고로_알린다() throws Exception {
+		// 규칙 하나를 더한다: 영향 대상에 걸면서 변동 대상의 속성을 보는데 변동 대상의 유형을 정하지 않았다.
+		// 이 Pack 에는 한 행이 개체를 여럿 만드는 입력 자료가 있다 (D2 AD-323).
+		String more = """
+
+				ex:규칙-0009 a tabnit:Rule ; tabnit:ruleNo "0009" ; rdfs:label "경고가 나오는 규칙" ; tabnit:priority 9 ;
+				    tabnit:appliesTo tabnit:ImpactTarget ; tabnit:targetType ex:의료사업 ;
+				    tabnit:condition [ tabnit:subject tabnit:ChangeTarget ; tabnit:property ex:점검주기일 ;
+				                       tabnit:operator tabnit:LessThanOrEqual ; tabnit:value 30 ] ;
+				    tabnit:actionText "할 일" ; tabnit:dueInDays 1 .
+				""";
+		PackCopies.copyInto(PACKS, "role-warn-pack", text -> text.contains("a tabnit:Rule") ? text + more : text);
+
+		this.mvc.perform(load("role-warn-pack").with(ADMIN))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.outcome").value("LOADED"))
+			.andExpect(jsonPath("$.warnings.length()").value(1))
+			.andExpect(jsonPath("$.warnings[0].file").value("rules"))
+			.andExpect(jsonPath("$.warnings[0].item").value("0009"))
+			.andExpect(jsonPath("$.warnings[0].message", org.hamcrest.Matchers.containsString("점검주기일")));
+		assertThat(this.definitions.find("role-warn-pack")).isPresent();
+		// 다시 적재해도 같은 경고가 나온다.
+		this.mvc.perform(load("role-warn-pack").with(ADMIN))
+			.andExpect(jsonPath("$.outcome").value("UNCHANGED"))
+			.andExpect(jsonPath("$.warnings[0].item").value("0009"));
+	}
+
+	@Test
 	void 관리자는_Pack_을_적재하고_담당자의_일도_모두_한다() throws Exception {
 		PackCopies.copyInto(PACKS, "role-admin-pack", text -> text);
 
@@ -124,7 +152,10 @@ class RolesApiTests {
 			.andExpect(status().isOk())
 			.andExpect(content().contentTypeCompatibleWith("application/json"))
 			.andExpect(jsonPath("$.packId").value("role-admin-pack"))
-			.andExpect(jsonPath("$.outcome").value("LOADED"));
+			.andExpect(jsonPath("$.outcome").value("LOADED"))
+			// 경고할 것이 없으면 빈 목록이다 (항목이 빠지지 않는다).
+			.andExpect(jsonPath("$.warnings").isArray())
+			.andExpect(jsonPath("$.warnings.length()").value(0));
 		assertThat(this.definitions.find("role-admin-pack")).isPresent();
 		// 적재한 Pack 이 목록에 나온다.
 		this.mvc.perform(get("/api/v1/packs").with(ADMIN))

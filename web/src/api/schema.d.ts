@@ -257,6 +257,17 @@ export interface components {
              * @enum {string}
              */
             outcome: "LOADED" | "UPDATED" | "UNCHANGED";
+            /** @description 경고. 적재를 막지 않는다: Pack 은 적재됐다. 뜻대로 동작하지 않을 수 있는 곳을 알린다. pack 이 준 순서 그대로다 (규칙의 경고는 규칙 번호 순). 없으면 빈 목록이다. 같은 Pack 을 다시 적재해 바뀐 것이 없어도 같은 경고가 나온다 */
+            warnings: components["schemas"]["PackWarning"][];
+        };
+        /** @description Pack 을 적재하면서 알리는 경고 하나 */
+        PackWarning: {
+            /** @description Pack 폴더 안에서의 자리. 규칙의 경고는 rules 다 */
+            file: string;
+            /** @description 경고의 대상. 규칙의 경고는 규칙 번호다 */
+            item: string;
+            /** @description 사용자에게 보이는 문구. 무엇이 왜 걸리는지와 무엇을 하면 되는지를 담는다 */
+            message: string;
         };
         /** @description Pack 에서 찾은 문제 하나 */
         PackProblem: {

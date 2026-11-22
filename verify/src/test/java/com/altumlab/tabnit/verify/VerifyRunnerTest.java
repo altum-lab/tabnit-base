@@ -557,6 +557,68 @@ class VerifyRunnerTest {
     }
 
     @Test
+    void 시점_조회의_조회_시점은_서로_다른_날짜가_셋_이상이어야_한다() {
+        // 현재와 과거 두 시점을 묻는다 (D4 4절, D2 AD-112, AD-332).
+        List<QuestionFile.Question> three = List.of(asOf("Q-1", "2026-01-01"), asOf("Q-2", "2026-03-01"),
+                asOf("Q-3", "2026-07-01"), question("Q-4", "changes"));
+        assertThat(Report.timePointShortfalls(three)).isEmpty();
+
+        // 질문은 셋이어도 날짜가 둘이면 모자라다. 같은 날짜는 한 시점이다.
+        List<QuestionFile.Question> two = List.of(asOf("Q-1", "2026-01-01"), asOf("Q-2", "2026-03-01"),
+                asOf("Q-3", "2026-03-01"));
+        assertThat(Report.timePointShortfalls(two)).singleElement().asString().contains("2개").contains("3개");
+        // 날짜로 읽을 수 없는 값과 적지 않은 것은 세지 않는다. 다른 종류의 질문에 적힌 날짜도 세지 않는다.
+        List<QuestionFile.Question> unreadable = List.of(asOf("Q-1", "2026-01-01"), asOf("Q-2", "2026-03-01"),
+                asOf("Q-3", "삼월 초하루"), question("Q-4", "relations-as-of"),
+                new QuestionFile.Question("Q-5", "impact", "t", Map.of("asOf", "2026-07-01")));
+        assertThat(Report.timePointShortfalls(unreadable)).singleElement().asString().contains("2개");
+        assertThat(Report.timePointShortfalls(List.of())).singleElement().asString().contains("0개");
+    }
+
+    @Test
+    void 시나리오에는_같은_입력_자료에_판이_둘_이상_들어오는_단계가_있어야_한다() throws IOException {
+        // 판이 한 번씩만 들어오면 변동이 하나도 없다: 변동, 영향 범위, 조치를 물을 수 없다 (D2 AD-332).
+        QuestionFile once = QuestionFile.read(write("once.yaml", """
+                scenario:
+                  id: S
+                  title: 지어낸 시나리오
+                  steps:
+                    - { step: 1, inputSource: src-a, file: data/a-v1.csv, effectiveDate: 2026-01-01 }
+                    - { step: 2, inputSource: src-b, file: data/b-v1.csv, effectiveDate: 2026-01-01 }
+                    - { step: 3, inputSource: src-c, file: data/c-v1.csv, effectiveDate: 2026-03-01 }
+                questions: []
+                """));
+        QuestionFile twice = QuestionFile.read(write("twice.yaml", SCENARIO + "questions: []\n"));
+
+        assertThat(Report.editionShortfalls(once)).singleElement().asString().contains("once.yaml").contains("둘 이상");
+        assertThat(Report.editionShortfalls(twice)).isEmpty();
+    }
+
+    @Test
+    void Pack_을_읽을_때_시점의_수와_다시_들어오는_판도_확인한다() throws IOException {
+        Path packs = Files.createDirectories(this.temp.resolve("packs-time"));
+        Path questions = Files.createDirectories(packs.resolve("p/questions"));
+        Files.writeString(packs.resolve("p/pack.ttl"), "# 지어낸 Pack\n");
+        Files.writeString(questions.resolve("S-01.yaml"), """
+                scenario:
+                  id: S
+                  title: 지어낸 시나리오
+                  steps:
+                    - { step: 1, inputSource: src-a, file: data/a-v1.csv, effectiveDate: 2026-01-01 }
+                    - { step: 2, inputSource: src-b, file: data/b-v1.csv, effectiveDate: 2026-01-01 }
+                    - { step: 3, inputSource: src-c, file: data/c-v1.csv, effectiveDate: 2026-03-01 }
+                questions:
+                  - { id: Q-01, kind: relations-as-of, title: t, asOf: 2026-01-01, entity: { type: A, key: a }, expect: { relations: [] } }
+                  - { id: Q-02, kind: relations-as-of, title: t, asOf: 2026-01-01, entity: { type: A, key: b }, expect: { relations: [] } }
+                """);
+
+        VerifyMain.PackQuestions read = VerifyMain.readPack(packs.resolve("p"));
+
+        assertThat(read.problems()).anyMatch(problem -> problem.contains("조회 시점") && problem.contains("1개"));
+        assertThat(read.problems()).anyMatch(problem -> problem.contains("S-01.yaml") && problem.contains("둘 이상"));
+    }
+
+    @Test
     void 두_번_돌린_결과가_다르면_어느_질문이_달랐는지_알린다() {
         List<Evaluator.Result> first = List.of(result("Q-01", true, "[a]"), result("Q-02", true, "[b]"), result("Q-03", false, "[c]"));
 
@@ -614,6 +676,10 @@ class VerifyRunnerTest {
     private static String actions(String id, String action) {
         return "  - { id: " + id + ", kind: actions, title: 조치, change: { step: 2, itemKey: [k-1] }, expect: { actions: [ " + action
                 + " ] } }\n";
+    }
+
+    private static QuestionFile.Question asOf(String id, String date) {
+        return new QuestionFile.Question(id, "relations-as-of", "t", Map.of("asOf", date));
     }
 
     private static QuestionFile.Question question(String id, String kind) {

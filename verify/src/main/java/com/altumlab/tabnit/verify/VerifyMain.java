@@ -218,6 +218,7 @@ public final class VerifyMain {
                 problems.add(file.fileName() + ": 시나리오의 단계가 " + file.steps().size() + "개입니다. " + MIN_STEPS
                         + "개 이상이어야 합니다.");
             }
+            problems.addAll(Report.editionShortfalls(file));
             for (QuestionFile.Question question : file.questions()) {
                 if (!ids.add(question.id())) {
                     problems.add("질문 번호 " + question.id() + " 이(가) 이 Pack 의 여러 파일에 있습니다 (" + file.fileName()
@@ -228,6 +229,8 @@ public final class VerifyMain {
         }
         // 질문이 없거나 최소 수에 모자란 Pack 은 실패다 (D2 AD-113, AD-281).
         problems.addAll(Report.shortfalls(all));
+        // 시점 조회는 현재와 과거 두 시점, 셋 이상의 날짜를 묻는다 (D2 AD-112, AD-332). Pack 의 모든 파일을 합쳐 센다.
+        problems.addAll(Report.timePointShortfalls(all));
         return new PackQuestions(true, List.copyOf(files), List.copyOf(problems));
     }
 

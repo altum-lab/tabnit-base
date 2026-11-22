@@ -10,6 +10,7 @@ import {
   type PackSummary,
 } from "../api/client";
 import { CONNECTION_FAILED, isProblem, messageOf } from "../api/problem";
+import { EntityName } from "./EntityName";
 import { Pager } from "./Pager";
 import { SessionContext } from "../session";
 import { formatInstant } from "../time";
@@ -293,11 +294,11 @@ export function ActionsPage() {
                         </small>
                       </td>
                       <td>
-                        {action.target.entityId}
-                        <br />
-                        <small>{action.target.entityType}</small>
+                        <EntityName entity={action.target} />
                       </td>
-                      <td>{action.basis.entity.entityId}</td>
+                      <td>
+                        <EntityName entity={action.basis.entity} />
+                      </td>
                       <td>
                         {action.basis.inputSourceId} {action.basis.editionNo}판
                         <br />
@@ -439,7 +440,9 @@ function Detail({ action, onAction }: { action: Action; onAction: (changed: Acti
       <section aria-label="근거 경로">
         <h2>근거 경로</h2>
         {action.appliesTo === "CHANGE_TARGET" ? (
-          <p>대상이 바뀐 개체 자신이라 근거 경로가 없습니다. 근거 조항은 {action.basis.entity.entityId} 입니다.</p>
+          <p>
+            대상이 바뀐 개체 자신이라 근거 경로가 없습니다. 근거 조항은 <EntityName entity={action.basis.entity} /> 입니다.
+          </p>
         ) : (
           <Path scope={scope} entityId={action.target.entityId} onRetry={() => void loadScope()} />
         )}
@@ -523,7 +526,7 @@ function Path({
   return (
     <>
       <p>
-        시작한 변동 대상 {target.path.startEntityId} 에서 관계 {target.depth}개를 건너 닿았습니다.{" "}
+        시작한 변동 대상 <EntityName entity={target.path.start} /> 에서 관계 {target.depth}개를 건너 닿았습니다.{" "}
         <strong data-testid="path-basis">{pathBasis(target.path.asOf, scope.value)}</strong>: 관계는{" "}
         <time>{target.path.asOf}</time> 에 유효한 것입니다. 이 변동의 영향 범위는 판의 적용일{" "}
         {scope.value.asOfEffective} 과 그 전날 {scope.value.asOfPrevious}, 두 날짜의 관계로 보았습니다.
@@ -531,7 +534,7 @@ function Path({
       <ol>
         {target.path.steps.map((step) => (
           <li key={step.stepNo} data-relation-id={step.relationId}>
-            {step.relationType}: {step.sourceEntityId} → {step.targetEntityId}
+            {step.relationType}: <EntityName entity={step.source} /> → <EntityName entity={step.target} />
           </li>
         ))}
       </ol>

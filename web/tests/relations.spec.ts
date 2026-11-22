@@ -171,3 +171,34 @@ test("관계가 한 쪽에 다 들어오면 넘길 곳이 없다", async ({ page
   await expect(page.getByRole("button", { name: "이전" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "다음" })).toBeDisabled();
 });
+
+// ── 개체의 표시 (D-09, D7 2절 "개체") ───────────────────────────────────
+
+test("관계의 개체를 조회 시점의 표시 이름과 유형의 이름표와 키로 보여 준다", async ({ page }) => {
+  // 조치 화면의 시험이 읽는 Pack 의 자료다 (시험용 Pack 의 사본). 운영지침 G-01 이 의료사업 둘에 닿는다.
+  const entityId = "e2e-actions|운영지침|G-01";
+  const answer = await (
+    await page.request.get("/api/v1/relations", { params: { entityId, asOf: "2026-02-01" } })
+  ).json();
+  const first = answer.relations[0];
+  expect(first.target.displayName).not.toBeNull();
+
+  await search(page, entityId, "2026-02-01");
+
+  const row = page.locator(`tr[data-relation-id="${first.id}"]`);
+  const target = row.locator(`[data-entity-id="${first.target.entityId}"]`);
+  // 표시 이름, 유형의 이름표, 키는 서버가 준 값 그대로다. id 도 함께 보인다 (찾을 때 쓴다).
+  await expect(target.getByTestId("entity-name")).toHaveText(first.target.displayName);
+  await expect(target.getByTestId("entity-type")).toHaveText(`(${first.target.entityTypeLabel} ${first.target.entityKey})`);
+  await expect(target).toContainText(first.target.entityId);
+  await expect(row.locator(`[data-entity-id="${entityId}"]`).getByTestId("entity-name")).toHaveText(first.source.displayName);
+});
+
+test("표시 이름이 없는 개체는 키를 보여 준다", async ({ page }) => {
+  // Pack 의 정의 없이 넣은 자료다: 표시 이름이 없고 유형의 이름표는 유형의 이름이다.
+  await search(page, "e2e|T|ga", "2026-03-01");
+
+  const target = page.locator('[data-entity-id="e2e|T|na"]');
+  await expect(target.getByTestId("entity-name")).toHaveText("na");
+  await expect(target.getByTestId("entity-type")).toHaveText("(T na)");
+});

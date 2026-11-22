@@ -48,7 +48,16 @@ public class AttributeValueQuery {
               and (valid_to is null or ? < valid_to)
             order by id collate "C\"""";
 
-    /** 어느 날부터 유효한 값을 한 번에 묻는 개체의 수. */
+    private static final String VALUES_OF_MANY_AS_OF = """
+            select id, pack_id, entity_id, attribute_name, value,
+                   valid_from, valid_to, input_source_id, edition_no, recorded_at
+            from attribute_value
+            where entity_id = any(?)
+              and valid_from <= ?
+              and (valid_to is null or ? < valid_to)
+            order by entity_id collate "C", attribute_name collate "C", id collate "C\"""";
+
+    /** 개체 여럿을 한 번에 묻는 수. */
     private static final int IN_EFFECT_BATCH = 1000;
 
     private static final String VALUES_IN_EFFECT_FROM = """
@@ -104,6 +113,62 @@ public class AttributeValueQuery {
         catch (DataAccessException e) {
             throw failed(entityId, asOf, e);
         }
+    }
+
+    /**
+     * 개체 여럿의 속성 값 가운데 기준 날짜에 유효한 것을 한 번에 돌려준다 (D2 AD-349). 개체 하나를 읽는
+     * {@link #valuesAsOf(String, LocalDate)} 와 같은 시점 조회다: 시작일 포함, 종료일 제외.
+     * 같은 개체의 같은 속성은 많아야 한 줄이다 (D2 AD-53).
+     *
+     * @param entityIds 개체의 식별자. 차례와 겹침은 결과에 닿지 않는다. 값이 없는 개체는 줄이 없다
+     * @param asOf 기준 날짜
+     * @return 유효한 값. 개체의 식별자, 속성의 이름, 값의 식별자 순 (글자 코드 순). 없으면 빈 목록
+     * @throws EntityNotFoundException 그런 개체가 없을 때. 개체 하나를 읽는 조회와 같다 (D3 2절). 없는 것이
+     *         여럿이면 식별자의 글자 코드 순으로 첫째를 알린다
+     * @throws CoreStorageException 저장소에서 읽지 못했을 때
+     */
+    public List<AttributeValue> valuesAsOf(Collection<String> entityIds, LocalDate asOf) {
+        Objects.requireNonNull(entityIds, "개체의 식별자 목록은 반드시 있어야 합니다");
+        requireStorable(asOf);
+        TreeSet<String> ids = new TreeSet<>(CodePointOrder.STRINGS);
+        for (String entityId : entityIds) {
+            Identifiers.requireNotBlank(entityId, "개체의 식별자");
+            ids.add(entityId);
+        }
+        List<String> ordered = List.copyOf(ids);
+        List<AttributeValue> found = new ArrayList<>();
+        try {
+            for (int start = 0; start < ordered.size(); start += IN_EFFECT_BATCH) {
+                List<String> batch = ordered.subList(start, Math.min(start + IN_EFFECT_BATCH, ordered.size()));
+                // 없는 개체의 값을 묻는 것은 "값 없음"이 아니라 잘못 물은 것이다. 조용히 넘기지 않는다.
+                TreeSet<String> known = new TreeSet<>(CodePointOrder.STRINGS);
+                jdbc.query("select id from entity where id = any(?)",
+                        ps -> ps.setArray(1, ps.getConnection().createArrayOf("text", batch.toArray())),
+                        rs -> {
+                            known.add(rs.getString("id"));
+                        });
+                for (String entityId : batch) {
+                    if (!known.contains(entityId)) {
+                        throw new EntityNotFoundException(entityId);
+                    }
+                }
+                found.addAll(jdbc.query(VALUES_OF_MANY_AS_OF, ps -> {
+                    ps.setArray(1, ps.getConnection().createArrayOf("text", batch.toArray()));
+                    ps.setObject(2, asOf);
+                    ps.setObject(3, asOf);
+                }, AttributeValueQuery::toValue));
+            }
+        }
+        catch (DataAccessException e) {
+            throw new CoreStorageException("속성 값을 조회하지 못했습니다. 개체 " + ordered.size() + "개, 기준 날짜: " + asOf
+                    + ". 저장소의 상태를 확인한 뒤 다시 시도하세요.", e);
+        }
+        // 묶음은 개체의 식별자 순이고 묶음 안은 저장소가 같은 순서로 준다. 그래도 순서를 저장소의 정렬 규칙에
+        // 맡겨 두지 않고 여기서 한 번 더 정한다. 같은 개체의 같은 속성은 많아야 하나지만 값의 식별자까지 견준다.
+        found.sort(Comparator.comparing(AttributeValue::entityId, CodePointOrder.STRINGS)
+            .thenComparing(AttributeValue::attributeName, CodePointOrder.STRINGS)
+            .thenComparing(AttributeValue::id, CodePointOrder.STRINGS));
+        return List.copyOf(found);
     }
 
     /**

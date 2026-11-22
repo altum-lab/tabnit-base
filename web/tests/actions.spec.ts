@@ -24,8 +24,13 @@ type Action = {
   dueDate: string;
   status: string;
   appliesTo: string;
-  target: { entityId: string; entityType: string };
-  basis: { entity: { entityId: string }; inputSourceId: string; editionNo: number; effectiveDate: string };
+  target: { entityId: string; entityType: string; entityTypeLabel: string; entityKey: string; displayName: string | null };
+  basis: {
+    entity: { entityId: string; entityTypeLabel: string; entityKey: string; displayName: string | null };
+    inputSourceId: string;
+    editionNo: number;
+    effectiveDate: string;
+  };
 };
 
 async function listActions(request: APIRequestContext, params: Record<string, string>) {
@@ -388,4 +393,50 @@ test("조치의 근거 경로는 그 조치의 대상 하나만 물어 받는다
   for (const url of asked) {
     expect(new URL(url).searchParams.get("entityId")).toBe(onImpactTarget.target.entityId);
   }
+});
+
+// ── 개체의 표시 (D-09, D7 2절 "개체") ───────────────────────────────────
+
+test("조치의 대상과 근거 조항과 근거 경로의 개체를 표시 이름과 유형의 이름표와 키로 보여 준다", async ({ page, request }) => {
+  const expected = await listActions(request, { packId: READ_PACK, status: "PENDING" });
+  const action = expected.actions.find((candidate) => candidate.appliesTo === "IMPACT_TARGET" && candidate.target.displayName);
+  if (!action) {
+    throw new Error("시험 자료에 표시 이름이 있는 영향 대상에 거는 조치가 없습니다.");
+  }
+  await page.goto(`/actions?packId=${READ_PACK}&status=PENDING`);
+
+  // 목록: 대상과 근거 조항. 서버가 준 값 그대로다.
+  const line = row(page, action.id);
+  const target = line.locator(`[data-entity-id="${action.target.entityId}"]`);
+  await expect(target.getByTestId("entity-name")).toHaveText(action.target.displayName ?? action.target.entityKey);
+  await expect(target.getByTestId("entity-type")).toHaveText(`(${action.target.entityTypeLabel} ${action.target.entityKey})`);
+  const basis = line.locator(`[data-entity-id="${action.basis.entity.entityId}"]`);
+  await expect(basis.getByTestId("entity-name")).toHaveText(action.basis.entity.displayName ?? action.basis.entity.entityKey);
+
+  // 근거 경로: 시작한 변동 대상과 단계의 개체.
+  await open(page, action.id);
+  const scope = (await (
+    await request.get("/api/v1/impact-scopes", { params: { changeEventId: action.changeEventId, entityId: action.target.entityId } })
+  ).json()) as {
+    targets: {
+      path: {
+        start: { entityId: string; entityKey: string; displayName: string | null };
+        steps: { source: { entityId: string; entityKey: string; displayName: string | null } }[];
+      };
+    }[];
+  };
+  const reached = scope.targets[0];
+  if (!reached) {
+    throw new Error("조치의 대상이 그 변동의 영향 범위에 없습니다.");
+  }
+  const path = detail(page, action.id).getByRole("region", { name: "근거 경로" });
+  const start = path.locator("p").locator(`[data-entity-id="${reached.path.start.entityId}"]`);
+  await expect(start.getByTestId("entity-name")).toHaveText(reached.path.start.displayName ?? reached.path.start.entityKey);
+  const firstStep = reached.path.steps[0];
+  if (!firstStep) {
+    throw new Error("근거 경로에 단계가 없습니다.");
+  }
+  await expect(path.locator("ol > li").first().getByTestId("entity-name").first()).toHaveText(
+    firstStep.source.displayName ?? firstStep.source.entityKey,
+  );
 });

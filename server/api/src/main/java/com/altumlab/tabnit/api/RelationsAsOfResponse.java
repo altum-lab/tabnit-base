@@ -3,6 +3,7 @@ package com.altumlab.tabnit.api;
 import com.altumlab.tabnit.core.Relation;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 시점 조회의 응답. 규격의 RelationsAsOf 와 같은 모양이다.
@@ -23,11 +24,12 @@ record RelationsAsOfResponse(String asOf, String entityId, int total, int offset
 	 * @param total 나누기 전의 전체 수. core 가 센 값이다
 	 * @param page 답에 쓴 건너뛴 수와 한 번에 주는 수
 	 * @param relations 이 쪽의 관계
+	 * @param entities 이 쪽의 관계의 출발과 도착 개체. 식별자로 찾는다. 표시 이름은 조회 시점의 값이다
 	 */
 	static RelationsAsOfResponse of(LocalDate asOf, String entityId, int total, PageRequest page,
-			List<Relation> relations) {
+			List<Relation> relations, Map<String, EntityViews.Item> entities) {
 		return new RelationsAsOfResponse(asOf.toString(), entityId, total, page.offset(), page.limit(),
-				relations.stream().map(RelationItem::of).toList());
+				relations.stream().map(relation -> RelationItem.of(relation, entities)).toList());
 	}
 
 	/**
@@ -36,12 +38,15 @@ record RelationsAsOfResponse(String asOf, String entityId, int total, int offset
 	 * @param validTo 종료일. 없으면 null 로 적는다. 항목을 빼지 않는다
 	 */
 	record RelationItem(String id, String relationType, String sourceEntityId, String targetEntityId,
-			String validFrom, String validTo, ProvenanceItem provenance, String recordedAt) {
+			EntityViews.Item source, EntityViews.Item target, String validFrom, String validTo, ProvenanceItem provenance, String recordedAt) {
 
-		static RelationItem of(Relation relation) {
+		static RelationItem of(Relation relation, Map<String, EntityViews.Item> entities) {
 			LocalDate to = relation.period().to();
 			return new RelationItem(relation.id(), relation.relationType(), relation.sourceEntityId(),
-					relation.targetEntityId(), relation.period().from().toString(), to == null ? null : to.toString(),
+					relation.targetEntityId(),
+					EntityViews.require(entities, relation.sourceEntityId(), "관계 " + relation.id() + " 의 출발 개체"),
+					EntityViews.require(entities, relation.targetEntityId(), "관계 " + relation.id() + " 의 도착 개체"),
+					relation.period().from().toString(), to == null ? null : to.toString(),
 					new ProvenanceItem(relation.provenance().inputSourceId(), relation.provenance().editionNo()),
 					relation.recordedAt().toString());
 		}

@@ -1,11 +1,13 @@
 package com.altumlab.tabnit.api;
 
+import com.altumlab.tabnit.core.Relation;
 import com.altumlab.tabnit.core.RelationPage;
 import com.altumlab.tabnit.core.RelationQuery;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
+import java.util.TreeSet;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,12 +25,15 @@ class RelationsController {
 
 	private final RelationQuery relationQuery;
 
+	private final EntityViews entityViews;
+
 	private final Clock clock;
 
 	private final ZoneId installationZone;
 
-	RelationsController(RelationQuery relationQuery, Clock clock, ZoneId installationZone) {
+	RelationsController(RelationQuery relationQuery, EntityViews entityViews, Clock clock, ZoneId installationZone) {
 		this.relationQuery = relationQuery;
+		this.entityViews = entityViews;
 		this.clock = clock;
 		this.installationZone = installationZone;
 	}
@@ -47,7 +52,14 @@ class RelationsController {
 		AuditTrail.asOf(date);
 		// 나누는 일은 core 가 한다 (D2 AD-347). 여기서는 값을 확인해 넘긴다.
 		RelationPage found = relationQuery.relationsAsOf(entityId, date, page.offset(), page.limit());
-		return RelationsAsOfResponse.of(date, entityId, found.total(), page, found.relations());
+		// 이 쪽의 관계의 개체를 한 번에 읽어 유형, 키, 조회 시점의 표시 이름을 붙인다 (D2 AD-349).
+		TreeSet<String> ids = new TreeSet<>();
+		for (Relation relation : found.relations()) {
+			ids.add(relation.sourceEntityId());
+			ids.add(relation.targetEntityId());
+		}
+		return RelationsAsOfResponse.of(date, entityId, found.total(), page, found.relations(),
+				this.entityViews.items(ids, date));
 	}
 
 	/**

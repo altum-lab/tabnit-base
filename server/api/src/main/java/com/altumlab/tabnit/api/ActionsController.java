@@ -7,7 +7,10 @@ import com.altumlab.tabnit.rules.ActionRecords;
 import com.altumlab.tabnit.rules.ActionStatus;
 import com.altumlab.tabnit.rules.StoredImpactScope;
 import com.altumlab.tabnit.rules.StoredImpactScopePage;
+import com.altumlab.tabnit.rules.StoredPathStep;
+import com.altumlab.tabnit.rules.StoredImpactTarget;
 import java.util.List;
+import java.util.TreeSet;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -28,7 +31,10 @@ class ActionsController {
 
 	private final ActionViews views;
 
-	ActionsController(ActionRecords actions, PackDefinitions packs, ActionViews views) {
+	private final EntityViews entityViews;
+
+	ActionsController(ActionRecords actions, PackDefinitions packs, ActionViews views, EntityViews entityViews) {
+		this.entityViews = entityViews;
 		this.actions = actions;
 		this.packs = packs;
 		this.views = views;
@@ -87,7 +93,17 @@ class ActionsController {
 			.orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND, "IMPACT_SCOPE_NOT_FOUND", "changeEventId",
 					"그 변동 이벤트의 저장된 영향 범위가 없습니다. 변동 이벤트의 id 를 확인하세요."
 							+ " 아직 처리되지 않았거나 처리에 실패한 변동에는 영향 범위가 없습니다."));
-		return ChangeImpactScopeResponse.of(scope, page);
+		// 이 쪽의 영향 대상과 그 근거 경로에 나오는 개체를 한 번에 읽는다. 표시 이름은 판의 적용일의 값이다 (D2 AD-349).
+		TreeSet<String> ids = new TreeSet<>();
+		for (StoredImpactTarget target : scope.scope().targets()) {
+			ids.add(target.entityId());
+			ids.add(target.pathStartEntityId());
+			for (StoredPathStep step : target.steps()) {
+				ids.add(step.sourceEntityId());
+				ids.add(step.targetEntityId());
+			}
+		}
+		return ChangeImpactScopeResponse.of(scope, page, this.entityViews.items(ids, scope.scope().asOfEffective()));
 	}
 
 	private static ActionStatus status(String value) {

@@ -351,6 +351,34 @@ class PackLoaderTest {
     // ── 표시 이름 속성 (D2 AD-132) ──────────────────────────────────
 
     @Test
+    void 유형의_표시_이름_속성과_이름표를_묻는다_스스로_적지_않았으면_상위_유형의_것을_받는다() throws IOException {
+        loader.load(pack("p-display-ask", 1, """
+                ex:Top a owl:Class ; rdfs:label "위" ; tabnit:displayNameProperty ex:topName .
+                ex:Mid a owl:Class ; rdfs:label "가운데" ; rdfs:subClassOf ex:Top .
+                ex:Low a owl:Class ; rdfs:label "아래" ; rdfs:subClassOf ex:Mid .
+                ex:Own a owl:Class ; rdfs:label "제 것" ; rdfs:subClassOf ex:Top ; tabnit:displayNameProperty ex:ownName .
+                ex:Plain a owl:Class ; rdfs:label "없는 것" .
+                ex:topName a owl:DatatypeProperty ; rdfs:label "위 이름" ; rdfs:domain ex:Top ; rdfs:range xsd:string .
+                ex:ownName a owl:DatatypeProperty ; rdfs:label "제 이름" ; rdfs:domain ex:Own ; rdfs:range xsd:string .
+                """), LOADED_AT);
+        PackDefinition found = definitions.find("p-display-ask").orElseThrow();
+
+        assertThat(found.displayNameAttributeOf("Top")).contains("topName");
+        // 여러 단계 위의 것도 받는다. 스스로 적은 것이 있으면 그것이다.
+        assertThat(found.displayNameAttributeOf("Mid")).contains("topName");
+        assertThat(found.displayNameAttributeOf("Low")).contains("topName");
+        assertThat(found.displayNameAttributeOf("Own")).contains("ownName");
+        // 어디에도 적지 않았으면 없다. 없는 유형도 없다.
+        assertThat(found.displayNameAttributeOf("Plain")).isEmpty();
+        assertThat(found.displayNameAttributeOf("NoSuchType")).isEmpty();
+        assertThat(found.entityTypeLabelOf("Low")).contains("아래");
+        assertThat(found.entityTypeLabelOf("NoSuchType")).isEmpty();
+        // 두 번 물어도 같다.
+        assertThat(found.displayNameAttributeOf("Low")).isEqualTo(found.displayNameAttributeOf("Low"));
+        assertThatThrownBy(() -> found.displayNameAttributeOf(null)).isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
     void 표시_이름_속성은_그_유형이나_상위_유형의_속성이어야_한다() throws IOException {
         String common = """
                 ex:Top a owl:Class ; rdfs:label "위" .

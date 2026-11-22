@@ -36,6 +36,7 @@ api.use({
 });
 
 export type Session = components["schemas"]["Session"];
+export type EntityRef = components["schemas"]["EntityRef"];
 
 export type RelationsAsOf = components["schemas"]["RelationsAsOf"];
 export type Relation = components["schemas"]["Relation"];

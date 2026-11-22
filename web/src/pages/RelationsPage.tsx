@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { api, type RelationsAsOf } from "../api/client";
 import { CONNECTION_FAILED, messageOf } from "../api/problem";
+import { EntityName } from "./EntityName";
 import { Pager } from "./Pager";
 
 // 관계 조회 화면. 시점 조회 API (docs/api/openapi.yaml 의 getRelationsAsOf) 의 값을 그대로 보여 준다.
@@ -123,8 +124,12 @@ function Result({ result, onMove }: { result: RelationsAsOf; onMove: (offset: nu
             {result.relations.map((relation) => (
               <tr key={relation.id} data-relation-id={relation.id}>
                 <td>{relation.relationType}</td>
-                <td>{relation.sourceEntityId}</td>
-                <td>{relation.targetEntityId}</td>
+                <td>
+                  <EntityName entity={relation.source} />
+                </td>
+                <td>
+                  <EntityName entity={relation.target} />
+                </td>
                 <td>{relation.validFrom}</td>
                 <td>{relation.validTo ?? "종료일 없음"}</td>
                 <td>

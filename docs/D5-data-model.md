@@ -374,6 +374,7 @@ Pack 적재는 정의(온톨로지, 제약, 매핑, 규칙, 검증 질문)만 �
 | `pack_rule_changed_attribute` (`pack_id`, `rule_no`, `attribute_name`) | 규칙이 걸리는 바뀐 속성. `pack_attribute` 를 가리킨다 | [AD-291] |
 | `pack_rule_changed_relation_type` (`pack_id`, `rule_no`, `relation_type`) | 규칙이 걸리는 바뀐 관계 유형. `pack_relation_type` 을 가리킨다. 두 테이블 모두에 행이 없는 규칙은 무엇이 바뀌든 걸린다 | [AD-291] |
 | `pack_rule_condition.compare_to` | 조건이 값을 견주는 상대: `VALUE` (고정 값, 기본), `EFFECTIVE_DATE` (판의 적용일), `ATTRIBUTE` (다른 대상의 속성) | [AD-292] |
+| `pack_rule_condition.linked_relation_type` (변경 파일 `V15__rule_linked_target.sql`) | 이어진 대상을 보는 조건(`subject` 가 `LINKED_TARGET`)에만, 그리고 반드시 있다. 규칙의 대상과 그 대상을 잇는 관계 유형. `pack_relation_type` 을 가리킨다. `subject` 가 받는 값에 `LINKED_TARGET` 이 더해졌다 | [AD-338] |
 | `pack_rule_condition.compare_subject`, `compare_attribute_name` | `ATTRIBUTE` 일 때만 있다. 견줄 대상(`CHANGE_TARGET`, `IMPACT_TARGET`)과 그 속성 | [AD-292] |
 
 - V14 전에 적재된 규칙의 조건은 모두 `VALUE` 다 (열의 기본값). 뜻이 달라지지 않는다.

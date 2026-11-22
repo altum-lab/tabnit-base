@@ -62,7 +62,8 @@ final class RuleReader {
         .thenComparing((RuleCondition c) -> String.join("\u0000", c.values()), PackOrder.STRINGS)
         .thenComparing(RuleCondition::compareTo)
         .thenComparing(RuleCondition::compareSubject, Comparator.nullsFirst(Comparator.naturalOrder()))
-        .thenComparing(RuleCondition::compareAttributeName, Comparator.nullsFirst(PackOrder.STRINGS));
+        .thenComparing(RuleCondition::compareAttributeName, Comparator.nullsFirst(PackOrder.STRINGS))
+        .thenComparing(RuleCondition::linkedBy, Comparator.nullsFirst(PackOrder.STRINGS));
 
     private final Path directory;
 
@@ -75,7 +76,7 @@ final class RuleReader {
     private final List<PackProblem> problems;
 
     /** 그 Pack 의 관계 유형의 이름. 규칙이 "바뀐 것"으로 가리킬 수 있다. */
-    private final Set<String> relationTypes;
+    private final Map<String, RelationTypeDefinition> relationTypes;
 
     /** 그 Pack 의 매핑이 받는 입력 자료의 식별자. 규칙이 "걸리는 입력 자료"로 가리킬 수 있다. */
     private final Set<String> inputSources;
@@ -98,8 +99,8 @@ final class RuleReader {
     private String ruleNo;
 
     private RuleReader(Path directory, String prefix, Map<String, EntityTypeDefinition> entityTypes,
-            Map<String, AttributeDefinition> attributes, Set<String> relationTypes, Set<String> inputSources,
-            List<PackProblem> problems) {
+            Map<String, AttributeDefinition> attributes, Map<String, RelationTypeDefinition> relationTypes,
+            Set<String> inputSources, List<PackProblem> problems) {
         this.relationTypes = relationTypes;
         this.inputSources = inputSources;
         this.directory = directory;
@@ -111,8 +112,8 @@ final class RuleReader {
 
     /** 규칙을 모두 읽는다. 문제는 problems 에 더한다. 돌려주는 목록은 규칙 번호의 글자 코드 순이다. */
     static List<RuleDefinition> read(Path directory, String prefix, Map<String, EntityTypeDefinition> entityTypes,
-            Map<String, AttributeDefinition> attributes, Set<String> relationTypes, Set<String> inputSources,
-            List<PackProblem> problems) {
+            Map<String, AttributeDefinition> attributes, Map<String, RelationTypeDefinition> relationTypes,
+            Set<String> inputSources, List<PackProblem> problems) {
         return new RuleReader(directory, prefix, entityTypes, attributes, relationTypes, inputSources, problems).readAll();
     }
 
@@ -300,7 +301,7 @@ final class RuleReader {
             if (attributes.containsKey(name)) {
                 changedAttributes.add(name);
             }
-            else if (relationTypes.contains(name)) {
+            else if (relationTypes.containsKey(name)) {
                 changedRelationTypes.add(name);
             }
             else {
@@ -308,7 +309,7 @@ final class RuleReader {
                         + " 은(는) 이 Pack 의 속성도 관계 유형도 아닙니다. 속성이나 관계 유형의 이름을 적으세요.");
             }
         }
-        RuleSubject appliesTo = subject(top, V + "appliesTo", "tabnit:appliesTo", item);
+        RuleSubject appliesTo = subject(top, V + "appliesTo", "tabnit:appliesTo", item, false);
         String targetType = name(top, V + "targetType", "tabnit:targetType", item);
         if (targetType != null && !entityTypes.containsKey(targetType)) {
             problem(item, "tabnit:targetType 의 개체 유형 " + targetType + " 이(가) 정의되지 않았습니다. 그 유형을 정의하거나 이름을 고치세요.");
@@ -333,6 +334,9 @@ final class RuleReader {
                 && conditions.stream().anyMatch(c -> c.subject() == RuleSubject.IMPACT_TARGET)) {
             problem(item, "대상이 변동 대상인 규칙(tabnit:appliesTo tabnit:ChangeTarget)의 조건이 영향 대상을 봅니다 "
                     + "(tabnit:subject tabnit:ImpactTarget). 그 조건을 빼거나 규칙의 대상을 영향 대상으로 바꾸세요.");
+        }
+        if (targetType != null && entityTypes.containsKey(targetType)) {
+            checkLinked(item, targetType, conditions);
         }
         // 규칙의 대상을 보는 조건의 속성은 그 대상에 값이 있을 수 있는 것이어야 한다: 대상 유형에도 해당하고 속성의
         // 유형에도 해당하는 유형이 하나는 있어야 한다 (같은 유형, 위아래인 유형, 둘 모두의 하위인 유형이 있는 경우).
@@ -385,7 +389,29 @@ final class RuleReader {
         if (block == null) {
             return null;
         }
-        RuleSubject subject = subject(block, V + "subject", "조건의 tabnit:subject", item);
+        RuleSubject subject = subject(block, V + "subject", "조건의 tabnit:subject", item, true);
+        // 이어진 대상을 볼 때, 규칙의 대상과 그 대상을 잇는 관계 유형 (D2 AD-338).
+        List<Node> linkedNodes = block.take(V + "linkedBy");
+        String linkedBy = null;
+        if (subject == RuleSubject.LINKED_TARGET) {
+            if (linkedNodes.size() != 1) {
+                problem(item, "이어진 대상을 보는 조건(tabnit:subject tabnit:LinkedTarget)에는 tabnit:linkedBy 를 반드시 하나 적습니다 (지금 "
+                        + linkedNodes.size() + "개). 규칙의 대상과 그 대상을 잇는 관계 유형을 적으세요.");
+            }
+            else {
+                String name = localName(linkedNodes.get(0), "조건의 tabnit:linkedBy", item);
+                if (name != null && !relationTypes.containsKey(name)) {
+                    problem(item, "조건의 tabnit:linkedBy 의 " + name + " 은(는) 이 Pack 의 관계 유형이 아닙니다. 관계 유형의 이름을 적으세요.");
+                }
+                else {
+                    linkedBy = name;
+                }
+            }
+        }
+        else if (subject != null && !linkedNodes.isEmpty()) {
+            problem(item, "tabnit:linkedBy 는 이어진 대상을 보는 조건(tabnit:subject tabnit:LinkedTarget)에만 적습니다. "
+                    + "빼거나 조건의 대상을 tabnit:LinkedTarget 으로 바꾸세요.");
+        }
         List<Node> types = block.take(V + "typeIs");
         List<Node> properties = block.take(V + "property");
         List<Node> operators = block.take(V + "operator");
@@ -421,6 +447,11 @@ final class RuleReader {
             // 이 조건은 이미 틀렸다고 알렸다. 값의 자리에 겹쳐 적은 안쪽 정의는 따로 알리지 않는다.
             values.stream().filter(Node::isBlank).forEach(this::discard);
             return null;
+        }
+        if (condition != null && linkedBy != null) {
+            return new RuleCondition(condition.subject(), condition.typeIs(), condition.attributeName(), condition.operator(),
+                    condition.values(), condition.compareTo(), condition.compareSubject(), condition.compareAttributeName(),
+                    linkedBy);
         }
         return condition;
     }
@@ -714,12 +745,21 @@ final class RuleReader {
     // ── 값 읽기 ─────────────────────────────────────────────────
 
     /** 변동 대상인가 영향 대상인가를 읽는다. 반드시 하나다. */
-    private RuleSubject subject(Block block, String predicate, String shown, String item) {
+    /**
+     * 대상을 가리키는 값을 읽는다.
+     *
+     * @param allowLinked 이어진 대상(tabnit:LinkedTarget)도 받는가. 조건이 보는 것에만 받는다
+     */
+    private RuleSubject subject(Block block, String predicate, String shown, String item, boolean allowLinked) {
         List<Node> nodes = block.take(predicate);
+        String choices = allowLinked ? "tabnit:ChangeTarget, tabnit:ImpactTarget, tabnit:LinkedTarget 가운데 하나를"
+                : "tabnit:ChangeTarget 또는 tabnit:ImpactTarget 을";
         if (nodes.size() != 1) {
-            problem(item, shown + " 은(는) 반드시 하나 적습니다 (지금 " + nodes.size()
-                    + "개). tabnit:ChangeTarget 또는 tabnit:ImpactTarget 을 적으세요.");
+            problem(item, shown + " 은(는) 반드시 하나 적습니다 (지금 " + nodes.size() + "개). " + choices + " 적으세요.");
             return null;
+        }
+        if (allowLinked && isUri(nodes.get(0), V + "LinkedTarget")) {
+            return RuleSubject.LINKED_TARGET;
         }
         if (isUri(nodes.get(0), V + "ChangeTarget")) {
             return RuleSubject.CHANGE_TARGET;
@@ -727,9 +767,55 @@ final class RuleReader {
         if (isUri(nodes.get(0), V + "ImpactTarget")) {
             return RuleSubject.IMPACT_TARGET;
         }
-        problem(item, shown + " 의 값 " + PackReader.show(nodes.get(0))
-                + " 을(를) 모릅니다. tabnit:ChangeTarget 또는 tabnit:ImpactTarget 을 적으세요.");
+        problem(item, shown + " 의 값 " + PackReader.show(nodes.get(0)) + " 을(를) 모릅니다. " + choices + " 적으세요.");
         return null;
+    }
+
+    /** 두 유형 모두에 해당하는 유형이 하나는 있는가 (같은 유형, 위아래인 유형, 둘 모두의 하위인 유형이 있는 경우). */
+    private boolean compatible(String one, String other) {
+        for (String type : entityTypes.keySet()) {
+            if (PackReader.isSameOrAncestor(one, type, entityTypes) && PackReader.isSameOrAncestor(other, type, entityTypes)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 이어진 대상을 보는 조건을 확인한다 (D2 AD-338). 규칙의 대상이 그 관계의 한쪽 끝일 수 있어야 하고, 조건이 보는 유형과
+     * 속성은 반대쪽 끝에 있을 수 있는 것이어야 한다. 아니면 규칙이 조용히 아무 데도 걸리지 않는다 (D2 AD-223 과 같은 뜻).
+     */
+    private void checkLinked(String item, String targetType, Set<RuleCondition> conditions) {
+        for (RuleCondition condition : conditions) {
+            if (condition.subject() != RuleSubject.LINKED_TARGET) {
+                continue;
+            }
+            RelationTypeDefinition relation = relationTypes.get(condition.linkedBy());
+            TreeSet<String> otherEnds = new TreeSet<>(PackOrder.STRINGS);
+            if (compatible(targetType, relation.sourceType())) {
+                otherEnds.add(relation.targetType());
+            }
+            if (compatible(targetType, relation.targetType())) {
+                otherEnds.add(relation.sourceType());
+            }
+            if (otherEnds.isEmpty()) {
+                problem(item, "조건의 tabnit:linkedBy 의 관계 유형 " + relation.name() + " 은(는) " + relation.sourceType() + " 와(과) "
+                        + relation.targetType() + " 를 잇습니다. 이 규칙의 대상 유형 " + targetType
+                        + " 은(는) 어느 쪽도 아니라 이어진 대상이 있을 수 없습니다. 대상 유형에 닿는 관계 유형을 적으세요.");
+                continue;
+            }
+            String shownEnds = String.join(", ", otherEnds);
+            if (condition.typeIs() != null && otherEnds.stream().noneMatch(end -> compatible(end, condition.typeIs()))) {
+                problem(item, "조건의 tabnit:typeIs 의 유형 " + condition.typeIs() + " 은(는) 관계 유형 " + relation.name()
+                        + " 로 이어진 대상(" + shownEnds + ")의 유형일 수 없습니다. 그 유형이나 그 하위 유형을 적으세요.");
+            }
+            AttributeDefinition attribute = condition.attributeName() == null ? null : attributes.get(condition.attributeName());
+            if (attribute != null && otherEnds.stream().noneMatch(end -> compatible(end, attribute.entityType()))) {
+                problem(item, "조건의 속성 " + condition.attributeName() + " 은(는) 유형 " + attribute.entityType() + " 의 속성인데, 관계 유형 "
+                        + relation.name() + " 로 이어진 대상은 " + shownEnds + " 입니다. 그 대상에는 이 속성의 값이 있을 수 없습니다. "
+                        + "이어진 대상의 속성을 적으세요.");
+            }
+        }
     }
 
     /** 이 Pack 의 정의를 가리키는 값 하나를 읽어 이름을 돌려준다. */

@@ -2,7 +2,8 @@
 # 모든 이름은 지어낸 것이다. 실제 기관, 사업장, 사람, 규정과 관계가 없다.
 # 규칙. 형식은 D8 2절 ~ 3절이다. 한도와 기한의 수치는 시연 자료의 것을 따랐다 (D2 AD-296).
 #
-# 0001, 0002 요건의 위험자산 한도가 바뀌면, 비중이 그 한도를 넘는 계좌에 건다 (영향 대상의 속성을 변동 대상의 속성과 견준다).
+# 0001 요건의 위험자산 한도가 바뀌면, 비중이 그 한도를 넘는 계좌에 건다 (영향 대상의 속성을 변동 대상의 속성과 견준다).
+# 0002 그런 계좌를 가진 가입자에게 건다 (대상과 이어진 대상을 보는 조건, D2 AD-338): 계좌가 여럿이면 하나라도 넘으면 건다.
 # 0003 ~ 0005 금융기관의 등급 점수가 기준(10) 미만으로 바뀌면, 그 기관의 원리금보장 상품(예금, 이율보증)과 거기에 닿은 가입자와 사업장에 건다 (D2 AD-306).
 # 0006 퇴직일이 들어온 가입자 가운데 퇴직일이 판의 적용일 이하인 사람에게 건다 (속성을 판의 적용일과 견준다).
 # 0007, 0008 제도의 적립 비율이 기준(0.95) 미만으로 바뀌면, 그 사업장과 담당자에게 건다.
@@ -11,8 +12,8 @@
 # - 집계와 산술: 계좌의 위험자산 비중, 기관별 예금 합계와 보호한도, 부족분과 지연이자. 비중과 점수는 받은 속성 값으로 본다.
 # - 순서가 있는 값의 비교: 신용등급을 글자로 견주지 못해 등급 점수(정수)를 따로 받는다.
 # - 기준 값을 요건에서 읽는 것: 0003 ~ 0005 와 0007, 0008 의 기준(10, 0.95)은 규칙에 적은 고정 값이다. 요건이 근거 경로 위에 없어 견줄 수 없다.
-# - 근거 경로의 가운데 대상의 조건: 0002 는 한도를 넘는 계좌의 가입자에게 걸어야 하지만, 가입자에 거는 규칙은 그 계좌의 비중을 보지 못한다. 계좌에 건다.
-#   0004, 0005 도 예금을 거쳐 닿았는지를 보지 못한다.
+# - 두 단계 떨어진 대상의 조건: 0004, 0005 는 가입자와 사업장이 예금을 거쳐 닿았는지를 보지 못한다. 이어진 대상을 보는 조건은
+#   한 단계 이웃까지만 본다 (D2 AD-338). 0002 는 그 조건으로 가입자에게 건다: 가입자의 계좌 가운데 영향 범위 안의 것을 본다.
 # - 앞 판의 값과 견주기 (적립 비율이 한 해 사이에 얼마나 나아졌는가), 영업일로 세는 기한, 확정된 조치가 다른 규칙을 깨우는 연쇄.
 @prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix tabnit: <urn:tabnit:vocab:> .
@@ -49,19 +50,21 @@ ex:규칙-0002 a tabnit:Rule ;
     tabnit:whenInputSource "requirement" ;
     tabnit:whenChanged ex:위험자산한도 ;
     tabnit:appliesTo tabnit:ImpactTarget ;
-    tabnit:targetType ex:연금계좌 ;
+    tabnit:targetType ex:연금가입자 ;
     tabnit:condition [
         tabnit:subject tabnit:ChangeTarget ;
         tabnit:typeIs ex:운영요건
     ] ;
+    # 가입자의 계좌(계좌소유로 이어진 것) 가운데 이 변동의 영향 범위에 든 것이 하나라도 한도를 넘는가.
     tabnit:condition [
-        tabnit:subject tabnit:ImpactTarget ;
+        tabnit:subject tabnit:LinkedTarget ;
+        tabnit:linkedBy ex:계좌소유 ;
         tabnit:property ex:위험자산비중 ;
         tabnit:operator tabnit:GreaterThan ;
         tabnit:compareToSubject tabnit:ChangeTarget ;
         tabnit:compareToProperty ex:위험자산한도
     ] ;
-    tabnit:actionText "계좌의 가입자에게 위험자산 한도 초과를 알린다" ;
+    tabnit:actionText "가입자에게 계좌의 위험자산 한도 초과를 알린다" ;
     tabnit:dueInDays 14 .
 
 ex:규칙-0003 a tabnit:Rule ;

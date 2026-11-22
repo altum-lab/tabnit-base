@@ -220,7 +220,7 @@ final class PackTables {
 
     private record ConditionRow(String ruleNo, int position, RuleSubject subject, String typeName,
             String attributeName, RuleOperator operator, RuleCompareTo compareTo, RuleSubject compareSubject,
-            String compareAttributeName) {
+            String compareAttributeName, String linkedBy) {
     }
 
     private List<RuleDefinition> readRules(String packId) {
@@ -235,7 +235,7 @@ final class PackTables {
                 packId);
         List<ConditionRow> conditionRows = jdbc.query("""
                 select rule_no, position, subject, type_name, attribute_name, operator, compare_to, compare_subject,
-                       compare_attribute_name
+                       compare_attribute_name, linked_relation_type
                 from pack_rule_condition where pack_id = ? order by rule_no, position""",
                 (rs, n) -> new ConditionRow(rs.getString("rule_no"), rs.getInt("position"),
                         RuleSubject.valueOf(rs.getString("subject")), rs.getString("type_name"),
@@ -244,7 +244,7 @@ final class PackTables {
                         RuleCompareTo.valueOf(rs.getString("compare_to")),
                         rs.getString("compare_subject") == null ? null
                                 : RuleSubject.valueOf(rs.getString("compare_subject")),
-                        rs.getString("compare_attribute_name")),
+                        rs.getString("compare_attribute_name"), rs.getString("linked_relation_type")),
                 packId);
         Map<String, List<String>> sources = names("pack_rule_input_source", "input_source_id", packId);
         Map<String, List<String>> changedAttributes = names("pack_rule_changed_attribute", "attribute_name", packId);
@@ -264,7 +264,7 @@ final class PackTables {
             conditions.computeIfAbsent(row.ruleNo(), k -> new ArrayList<>())
                 .add(new RuleCondition(row.subject(), row.typeName(), row.attributeName(), row.operator(),
                         values.getOrDefault(row.ruleNo(), Map.of()).getOrDefault(row.position(), List.of()),
-                        row.compareTo(), row.compareSubject(), row.compareAttributeName()));
+                        row.compareTo(), row.compareSubject(), row.compareAttributeName(), row.linkedBy()));
         }
         List<RuleDefinition> rules = new ArrayList<>();
         for (RuleRow row : rows) {
@@ -309,12 +309,13 @@ final class PackTables {
             RuleCondition condition = rule.conditions().get(i);
             jdbc.update("""
                     insert into pack_rule_condition (pack_id, rule_no, position, subject, type_name, attribute_name,
-                                                     operator, compare_to, compare_subject, compare_attribute_name)
-                    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", packId, rule.ruleNo(),
+                                                     operator, compare_to, compare_subject, compare_attribute_name,
+                                                     linked_relation_type)
+                    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", packId, rule.ruleNo(),
                     i + 1, condition.subject().name(), condition.typeIs(), condition.attributeName(),
                     condition.operator() == null ? null : condition.operator().name(), condition.compareTo().name(),
                     condition.compareSubject() == null ? null : condition.compareSubject().name(),
-                    condition.compareAttributeName());
+                    condition.compareAttributeName(), condition.linkedBy());
             for (int j = 0; j < condition.values().size(); j++) {
                 jdbc.update("""
                         insert into pack_rule_condition_value (pack_id, rule_no, position, value_position, value)

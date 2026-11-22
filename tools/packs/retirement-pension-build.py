@@ -101,6 +101,12 @@ def acc(kind, owner, plan):
     ACCS.append([f"A-{k:03d}", kind, str(1_000_000 * (3 + (k * 13) % 60)), num(((k * 37) % 90) / 100), owner, plan, option])
 for p in PTCS[:89]: acc("확정기여", p[0], "L-" + p[4][2:])
 for p in PTCS[101:] + PTCS[89:101] + PTCS[0:84:6]: acc("개인형", p[0], "L-16")
+# 가입자 N-001 의 개인형 계좌 A-116 은 위험자산 한도가 바뀌는 변동의 영향 범위 밖이다 (그 요건이 걸린 펀드를 보유하지도,
+# 그 펀드로 구성된 기본운용방법을 지정하지도 않는다). 비중을 한도 위로 둔다: 영향 범위 안의 계좌 A-001 (0.37)만 보는
+# 규칙 0002 는 N-001 에 걸리지 않아야 한다 (D2 AD-340). 아래에서 그 전제를 확인한다.
+OUT_OF_SCOPE_OVER = ("N-001", "A-001", "A-116")
+for a in ACCS:
+    if a[0] == OUT_OF_SCOPE_OVER[2]: a[3] = "0.9"
 # 보유: 계좌마다 상품 셋 (겹치면 그만큼 적다)
 HOLD = []
 for k in range(1, len(ACCS) + 1):
@@ -236,12 +242,15 @@ MAPPING = {
 # 번호 → (우선순위, 변동의 종류, 걸리는 입력 자료, 바뀐 것(속성이나 관계 유형), 대상 쪽, 대상 유형, 조건들, 기한 일수)
 # 조건: (보는 쪽, "type", 유형) / (보는 쪽, 속성, "=", 값) / (보는 쪽, 속성, "<", 수) /
 #       (보는 쪽, 속성, ">attr", (다른 쪽, 다른 속성)) / (보는 쪽, 속성, "<=effective") / (보는 쪽, 속성, "in", [값들])
+#       보는 쪽이 "LINKED:관계 유형"이면 대상과 그 관계로 이어진, 영향 범위 안의 개체를 본다: 하나라도 만족하면 된다.
 LOW_RATING = [("CHANGE", "type", T_INS), ("CHANGE", "등급점수", "<", "10")]
 LOW_FUNDING = [("CHANGE", "type", T_PLN), ("CHANGE", "적립비율", "<", "0.95")]
 OVER_LIMIT = [("CHANGE", "type", T_REQ), ("IMPACT", "위험자산비중", ">attr", ("CHANGE", "위험자산한도"))]
+# 대상(가입자)과 계좌소유로 이어진, 영향 범위 안의 계좌 가운데 하나라도 한도를 넘는다 (D2 AD-338 ~ AD-340).
+OWNS_OVER_LIMIT = [("CHANGE", "type", T_REQ), ("LINKED:계좌소유", "위험자산비중", ">attr", ("CHANGE", "위험자산한도"))]
 RULES = {
     "0001": (1, {"CHANGED"}, {"requirement"}, {"위험자산한도"}, "IMPACT", T_ACC, OVER_LIMIT, 0),
-    "0002": (2, {"CHANGED"}, {"requirement"}, {"위험자산한도"}, "IMPACT", T_ACC, OVER_LIMIT, 14),
+    "0002": (2, {"CHANGED"}, {"requirement"}, {"위험자산한도"}, "IMPACT", T_PTC, OWNS_OVER_LIMIT, 14),
     "0003": (1, {"CHANGED"}, {"institution"}, {"등급점수"}, "IMPACT", T_PRD, LOW_RATING + [("IMPACT", "상품구분", "in", ["예금", "이율보증"])], 0),
     "0004": (2, {"CHANGED"}, {"institution"}, {"등급점수"}, "IMPACT", T_PTC, LOW_RATING, 14),
     "0005": (3, {"CHANGED"}, {"institution"}, {"등급점수"}, "IMPACT", T_EMP, LOW_RATING, 7),
@@ -386,28 +395,43 @@ def actions(event):
         for target, start in candidates:
             if type_of(target) != target_type: continue
             ok = True
+            in_scope = set(targets) | {o for o, _ in ordered}
+            by_relation = {}
             for cond in conds:
-                who = start if cond[0] == "CHANGE" else target
-                if cond[1] == "type":
-                    ok &= type_of(who) == cond[2]
+                if cond[0].startswith("LINKED:"):
+                    by_relation.setdefault(cond[0][7:], []).append(cond)
                     continue
-                mine = attr(who, cond[1], day, prev)
-                if cond[2] == "=": ok &= mine == cond[3]
-                elif cond[2] == "in": ok &= mine in cond[3]
-                elif cond[2] == "<": ok &= mine is not None and Decimal(mine) < Decimal(cond[3])
-                elif cond[2] == ">attr":
-                    # 다른 대상의 속성과 견준다. 어느 한쪽에 값이 없으면 만족하지 않는다 (D2 AD-292).
-                    other = attr(start if cond[3][0] == "CHANGE" else target, cond[3][1], day, prev)
-                    ok &= mine is not None and other is not None and Decimal(mine) > Decimal(other)
-                elif cond[2] == "<=effective":
-                    # 판의 적용일과 견준다 (D2 AD-292). 날짜는 2026-09-30 의 꼴이라 글자로 견줘도 날짜 순이다.
-                    ok &= mine is not None and mine <= date
-                else: raise SystemExit(f"모르는 조건: {cond}")
+                who = start if cond[0] == "CHANGE" else target
+                ok &= holds(cond, who, start, target, day, prev, date)
+            # 이어진 대상: 적용일 전날이나 적용일에 유효한 그 관계의 반대쪽 끝 가운데 영향 범위 안의 것.
+            # 같은 관계 유형으로 적은 조건들은 한 개체가 모두 만족해야 하고, 그런 개체가 하나라도 있으면 된다 (D8 3절).
+            for relation, linked_conds in sorted(by_relation.items()):
+                linked = {r[2] if r[1] == target else r[1] for r in REL
+                          if r[0] == relation and target in (r[1], r[2]) and (valid(r[3], r[4], day) or valid(r[3], r[4], prev))}
+                ok &= any(all(holds(c, who, start, target, day, prev, date) for c in linked_conds)
+                          for who in sorted(linked & in_scope))
             if ok:
                 due_date = (D(date) + datetime.timedelta(days=due)).isoformat()
                 out.append((due_date, priority, no, target, prim, source, edition_no))
     # 제품이 내놓는 순서: 기한, 우선순위, 규칙 번호, 대상의 식별자 (D2 AD-243)
     return sorted(out)
+
+def holds(cond, who, start, target, day, prev, date):
+    """조건 하나가 개체 who 에서 만족되는가. start 는 변동 대상, target 은 조치의 대상이다."""
+    if cond[1] == "type":
+        return type_of(who) == cond[2]
+    mine = attr(who, cond[1], day, prev)
+    if cond[2] == "=": return mine == cond[3]
+    if cond[2] == "in": return mine in cond[3]
+    if cond[2] == "<": return mine is not None and Decimal(mine) < Decimal(cond[3])
+    if cond[2] == ">attr":
+        # 다른 대상의 속성과 견준다. 어느 한쪽에 값이 없으면 만족하지 않는다 (D2 AD-292).
+        other = attr(start if cond[3][0] == "CHANGE" else target, cond[3][1], day, prev)
+        return mine is not None and other is not None and Decimal(mine) > Decimal(other)
+    if cond[2] == "<=effective":
+        # 판의 적용일과 견준다 (D2 AD-292). 날짜는 2026-09-30 의 꼴이라 글자로 견줘도 날짜 순이다.
+        return mine is not None and mine <= date
+    raise SystemExit(f"모르는 조건: {cond}")
 
 def relations_as_of(entity, day):
     rows = []
@@ -449,7 +473,8 @@ y = []
 y.append("""# 퇴직연금 Pack 의 검증 질문. 형식은 D4 3절이다.
 #
 # 상태: 확정 (2026-11-22, D2 AD-315). 자료나 규칙을 바꿔 정답이 달라지면 다시 확정한다 (D4 4절: 정답은 대표가 정한다).
-# 다시 확정하기 전인 것 (B-09 에서 금융기관의 둘째 판에 보험 바의 등급 하락을 더했다): Q-08 (변동이 하나 늘었다), Q-31 (새 질문).
+# 다시 확정하기 전인 것: Q-08 (변동이 하나 늘었다), Q-31 (새 질문) — B-09 에서 금융기관의 둘째 판에 보험 바의 등급 하락을 더했다.
+# Q-16 (규칙 0002 의 대상이 계좌에서 가입자로 바뀌었다) — B-14.
 # 모든 이름은 지어낸 것이다. 실제 기관, 사업장, 사람, 규정과 관계가 없다.
 #
 # 정답을 만든 방법: 자료가 커서 (개체 362개) 손으로 적지 않았다. 예시 입력 파일에서 문서의 규칙
@@ -557,7 +582,14 @@ i27, t27 = q_impact("Q-27", "규약 RG-05 의 이름이 바뀐 것의 영향 범
                     "변동 대상은 규약 RG-05 하나다. 이 규약이 부과한 요건이 깊이 1, 요건이 걸린 상품이 깊이 2, 그 상품을 보유한 계좌가 깊이 3, 가입자가 깊이 4, 사업장이 깊이 5 다. 담당자는 깊이 6 이라 들지 않고, 그래서 한계에서 멈췄다는 표시가 켜진다. 계좌 %s 가 상품 %s 를 보유한 관계는 같은 날(2026-11-01) 먼저 들어온 판에서 끝났다: 적용일에는 유효하지 않고 전날(2026-10-31)에는 유효하다. 그 계좌는 전날의 관계로만 닿고 근거 경로의 날짜가 2026-10-31 이다." % LEFT)
 y.append("  # ── 조치 ───────────────────────────────────────────────────\n  # 순서는 제품이 내놓는 순서다: 기한이 이른 것부터, 같으면 우선순위, 규칙 번호, 대상 식별자 (D2 AD-243, AD-282).\n  # 근거는 변동이 생긴 행의 주 개체와, 그 변동이 나온 입력 자료의 판이다 (D2 AD-120).\n")
 a16 = q_actions("Q-16", "위험자산 한도가 내려가 생긴 조치 (계좌의 비중을 요건의 한도와 견준다)", STEP_REQ, "RQ-01",
-                "규칙 0001 (매수 제한, 당일)과 0002 (가입자 통지, 14일)는 요건의 입력 자료에서 한도가 바뀐 변동에 걸리고, 영향 대상인 계좌의 위험자산 비중이 변동 대상인 요건의 한도(새 값 0.7)보다 클 때만 건다. 비중이 꼭 0.7 인 계좌 A-070 은 넘지 않아 빠진다 (영향 범위에는 있다). 규약 RG-01 에서 시작한 길로 닿은 대상은 변동 대상이 요건이 아니라 빠진다.")
+                "규칙 0001 (매수 제한, 당일)은 요건의 입력 자료에서 한도가 바뀐 변동에 걸리고, 영향 대상인 계좌의 위험자산 비중이 변동 대상인 요건의 한도(새 값 0.7)보다 클 때만 건다. 규칙 0002 (가입자 통지, 14일)는 그런 계좌를 가진 가입자에게 건다: 가입자와 계좌소유로 이어진 계좌 가운데 영향 범위 안의 것이 하나라도 한도를 넘으면 된다 (D2 AD-338). 가입자 N-001 은 영향 범위 안의 계좌 A-001 (0.37)과 밖의 계좌 A-116 (0.9)을 가진다: 밖의 계좌는 보지 않으므로 걸리지 않는다 (D2 AD-340). N-007 은 두 계좌 가운데 하나만 넘어도 걸린다. 비중이 꼭 0.7 인 계좌 A-070 은 넘지 않아 빠진다 (영향 범위에는 있다). 규약 RG-01 에서 시작한 길로 닿은 대상은 변동 대상이 요건이 아니라 빠진다.")
+# Q-16 이 "영향 범위 밖의 계좌는 보지 않는다"를 정말 지나는지 확인한다. 자료가 달라져 전제가 깨지면 멈춘다.
+_scope16 = {o for o, _ in IMPACTS[(STEP_REQ, "RQ-01")][0]}
+_owner, _inside, _outside = (eid(T_PTC, OUT_OF_SCOPE_OVER[0]), eid(T_ACC, OUT_OF_SCOPE_OVER[1]), eid(T_ACC, OUT_OF_SCOPE_OVER[2]))
+if not (_owner in _scope16 and _inside in _scope16 and _outside not in _scope16):
+    raise SystemExit("Q-16 의 전제가 깨졌다: N-001 과 A-001 은 영향 범위 안, A-116 은 밖이어야 한다")
+if any(a[2] == "0002" and a[3] == _owner for a in a16):
+    raise SystemExit("Q-16 의 전제가 깨졌다: N-001 에 규칙 0002 가 걸리면 안 된다")
 a17 = q_actions("Q-17", "요건 RQ-05 의 이름만 바뀌어 생긴 조치 (없다)", STEP_REQ, "RQ-05",
                 "요건의 입력 자료에서 나온 변경이지만 그 행에서 바뀐 것은 이름뿐이다. 규칙 0001 과 0002 는 한도가 바뀐 변동에만 걸린다. 조치가 없다.")
 a18 = q_actions("Q-18", "저축은행 다의 등급이 내려가 생긴 조치", STEP_INS, "I-03",

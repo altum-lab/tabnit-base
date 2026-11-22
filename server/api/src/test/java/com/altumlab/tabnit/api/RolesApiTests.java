@@ -77,6 +77,9 @@ class RolesApiTests {
 	@Autowired
 	Clock clock;
 
+	@Autowired
+	EditionProcessing processing;
+
 	MockMvc mvc;
 
 	@DynamicPropertySource
@@ -306,7 +309,7 @@ class RolesApiTests {
 
 	@Test
 	void Pack_폴더를_정하지_않은_설치에서는_적재할_수_없고_무엇을_하면_되는지_알린다() {
-		PackLoading unconfigured = new PackLoading(this.dataSource, this.clock, "");
+		PackLoading unconfigured = new PackLoading(this.dataSource, this.clock, "", this.processing);
 
 		assertThatThrownBy(() -> unconfigured.load("role-admin-pack")).isInstanceOfSatisfying(ApiProblemException.class, e -> {
 			assertThat(e.status()).isEqualTo(HttpStatus.NOT_FOUND);
@@ -314,7 +317,8 @@ class RolesApiTests {
 			assertThat(e.getMessage()).contains("tabnit.packs-dir");
 		});
 		// 없는 폴더를 Pack 폴더로 정해도 같다.
-		PackLoading missing = new PackLoading(this.dataSource, this.clock, PACKS.resolve("no-such-directory").toString());
+		PackLoading missing = new PackLoading(this.dataSource, this.clock, PACKS.resolve("no-such-directory").toString(),
+				this.processing);
 		assertThatThrownBy(() -> missing.load("role-admin-pack")).isInstanceOf(ApiProblemException.class);
 	}
 

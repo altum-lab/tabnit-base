@@ -44,10 +44,14 @@ class PackLoading {
 	/** 적재는 한 번에 하나씩 한다. */
 	private final ReentrantLock oneAtATime = new ReentrantLock();
 
-	PackLoading(DataSource dataSource, Clock clock, String packsDirectory) {
+	/** 판 처리. 같은 Pack 의 판 처리와 재적재가 한 번에 하나만 되게 그 차례를 함께 쓴다 (D2 AD-331). */
+	private final EditionProcessing processing;
+
+	PackLoading(DataSource dataSource, Clock clock, String packsDirectory, EditionProcessing processing) {
 		this.loader = new PackLoader(dataSource);
 		this.clock = clock;
 		this.packsDirectory = packsDirectory == null ? "" : packsDirectory;
+		this.processing = java.util.Objects.requireNonNull(processing, "판 처리는 반드시 있어야 합니다");
 	}
 
 	/** 폴더의 이름으로 받을 수 있는 글자인가. */
@@ -66,9 +70,20 @@ class PackLoading {
 					"Pack 의 이름에 쓸 수 없는 글자가 있거나 너무 깁니다. 영어 소문자, 숫자, 붙임표(-)만 써서 100자 이하로 적어 다시 보내세요.");
 		}
 		Path folder = folderOf(packId);
-		this.oneAtATime.lock();
 		try {
-			return this.loader.load(folder, this.clock.instant());
+			// 그 Pack 의 판 처리가 끝나기를 기다린 뒤에 적재한다: 판을 처리하는 도중에 정의가 바뀌지 않는다 (D2 AD-331).
+			// 그 Pack 의 차례를 먼저 잡고 적재의 차례를 잡는다. 거꾸로 하면 한 Pack 의 판 처리를 기다리는 적재가
+			// 다른 Pack 의 적재까지 막는다. 판 처리는 적재의 차례를 잡지 않으므로 서로 기다리는 일이 없다.
+			return this.processing.inTurn(packId, () -> {
+				this.oneAtATime.lock();
+				try {
+					// 적재한 때는 차례를 잡은 뒤에 읽는다.
+					return this.loader.load(folder, this.clock.instant());
+				}
+				finally {
+					this.oneAtATime.unlock();
+				}
+			});
 		}
 		catch (PackInvalidException e) {
 			List<PackProblem> problems = new ArrayList<>();
@@ -81,9 +96,6 @@ class PackLoading {
 		catch (PackChangeRejectedException e) {
 			throw PackLoadRejectedException
 				.changeRejected(e.reasons().stream().map(reason -> withoutServerPath(reason, folder)).toList());
-		}
-		finally {
-			this.oneAtATime.unlock();
 		}
 	}
 

@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import javax.sql.DataSource;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -47,8 +48,18 @@ final class LargePackRun {
      * @param packsDir 만든 Pack 폴더가 든 폴더
      */
     static Result run(LargePack.Expected expected, Path packsDir) {
+        return run(expected, packsDir, null);
+    }
+
+    /**
+     * @param measure 수를 견준 뒤에 이어서 잴 것 (A-07). 없으면 재지 않는다
+     */
+    static Result run(LargePack.Expected expected, Path packsDir, LargeMeasure measure) {
         List<String> lines = new ArrayList<>();
         try (PostgreSQLContainer database = new PostgreSQLContainer(DockerImageName.parse("postgres:latest"))) {
+            if (measure != null) {
+                database.withCommand(LargeMeasure.databaseCommand());
+            }
             database.start();
             Map<String, Object> settings = new LinkedHashMap<>();
             settings.put("spring.datasource.url", database.getJdbcUrl());
@@ -58,12 +69,11 @@ final class LargePackRun {
             settings.put("tabnit.packs-dir", packsDir.toString());
             settings.put("spring.main.banner-mode", "off");
             settings.put("logging.level.root", "WARN");
-            // 큰 파일을 올린다. 한도는 이 실행에서만 넉넉히 둔다.
-            settings.put("spring.servlet.multipart.max-file-size", "512MB");
-            settings.put("spring.servlet.multipart.max-request-size", "512MB");
             try (ConfigurableApplicationContext product = new SpringApplicationBuilder(TabnitApiApplication.class)
                 .properties(settings)
-                .run()) {
+                // 큰 파일을 올린다. 파일 크기의 한도(기본 20MB)는 이 실행에서만 넉넉히 둔다. 제품의 설정 파일에 적힌 값을
+                // 이기도록 실행 인자로 넘긴다.
+                .run("--spring.servlet.multipart.max-file-size=512MB", "--spring.servlet.multipart.max-request-size=513MB")) {
                 // 첫 관리자는 common 의 공개 API 로 만든다. 이 계정은 이 실행의 저장소와 함께 사라진다.
                 String loginId = "large-admin";
                 String password = UUID.randomUUID().toString();
@@ -73,7 +83,15 @@ final class LargePackRun {
                 if (http.login(loginId, password).status() != 200) {
                     return failed(lines, "제품에 로그인하지 못했습니다.");
                 }
-                return check(expected, packsDir.resolve(expected.packId()), http, lines);
+                Map<String, String> eventByKey = new LinkedHashMap<>();
+                boolean failed = check(expected, packsDir.resolve(expected.packId()), http, lines, eventByKey);
+                if (!failed && measure != null) {
+                    failed = measure.after(lines, expected, eventByKey, http, product.getBean(DataSource.class),
+                            database.getJdbcUrl(), database.getUsername(), database.getPassword());
+                    measure.keepSlowStatements(database.getLogs());
+                }
+                lines.add(failed ? "결과: 실패" : "결과: 통과 (넣은 뒤의 수가 셈한 수와 같습니다)");
+                return new Result(lines, failed);
             }
         }
         catch (IOException | RuntimeException e) {
@@ -81,13 +99,14 @@ final class LargePackRun {
         }
     }
 
-    private static Result check(LargePack.Expected expected, Path pack, HttpProduct http, List<String> lines)
-            throws IOException {
+    private static boolean check(LargePack.Expected expected, Path pack, HttpProduct http, List<String> lines,
+            Map<String, String> eventByKey) throws IOException {
         long started = System.nanoTime();
         Product.Reply loaded = http.loadPack(expected.packId());
         lines.add(String.format("%8d ms  Pack 적재", millisSince(started)));
         if (loaded.status() != 200) {
-            return failed(lines, "Pack 을 적재하지 못했습니다: HTTP " + loaded.status() + " " + loaded.body());
+            lines.add("  실패  Pack 을 적재하지 못했습니다: HTTP " + loaded.status() + " " + loaded.body());
+            return true;
         }
         boolean failed = false;
         long entities = 0;
@@ -100,7 +119,8 @@ final class LargePackRun {
                     pack.resolve(step.file()).getFileName().toString(), content);
             long took = millisSince(started);
             if (reply.status() != 200 || !(reply.body() instanceof Map<?, ?> body)) {
-                return failed(lines, "판을 올리지 못했습니다: " + step.file() + " HTTP " + reply.status() + " " + reply.body());
+                lines.add("  실패  판을 올리지 못했습니다: " + step.file() + " HTTP " + reply.status() + " " + reply.body());
+                return true;
             }
             long items = body.get("itemCount") instanceof Number count ? count.longValue() : -1;
             int notices = body.get("notices") instanceof List<?> list ? list.size() : -1;
@@ -111,6 +131,9 @@ final class LargePackRun {
             }
             if (step.effectiveDate().equals(LargePack.CHANGED_DATE)) {
                 changed = body;
+                // 바뀐 판을 올리는 요청 하나가 판 비교, 변동마다의 영향 범위 계산과 저장, 규칙 실행을 모두 한다.
+                lines.add(String.format("%8.1f ms  변동 하나에 (바뀐 판 올리기 %d ms 를 변동 %d개로 나눈 값. 판 비교가 들어 있다)",
+                        took / (double) expected.changes().size(), took, expected.changes().size()));
             }
             else if (step.inputSource().startsWith("layer-")) {
                 entities += items;
@@ -122,7 +145,6 @@ final class LargePackRun {
         failed |= differs(lines, "개체의 수", expected.entities(), entities);
         failed |= differs(lines, "관계의 수", expected.relations(), relations);
         // 변동마다: 항목의 키로 찾아 영향 대상의 수와 조치의 수를 견준다.
-        Map<String, String> eventByKey = new LinkedHashMap<>();
         if (changed != null && changed.get("changes") instanceof List<?> changes) {
             for (Object change : changes) {
                 if (change instanceof Map<?, ?> one) {
@@ -153,8 +175,7 @@ final class LargePackRun {
             failed |= differs(lines, change.itemKey() + " 의 영향 대상의 수", change.impactTargets(), total(scope));
             failed |= differs(lines, change.itemKey() + " 의 조치의 수", change.actions(), total(actions));
         }
-        lines.add(failed ? "결과: 실패" : "결과: 통과 (넣은 뒤의 수가 셈한 수와 같습니다)");
-        return new Result(lines, failed);
+        return failed;
     }
 
     private static long total(Product.Reply reply) {

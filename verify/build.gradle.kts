@@ -28,6 +28,8 @@ dependencies {
     implementation(project(":api"))
     // 띄운 제품에 첫 관리자를 만들 때 common 의 공개 API 를 쓴다.
     implementation(project(":common"))
+    // 영향 범위 계산만 따로 잴 때 core 의 공개 API 를 부른다 (A-07)
+    implementation(project(":core"))
     implementation("org.springframework.boot:spring-boot")
     // 질문과 정답은 YAML 이다 (D2 AD-107). Spring Boot 에 들어 있는 것을 쓴다.
     implementation("org.yaml:snakeyaml")

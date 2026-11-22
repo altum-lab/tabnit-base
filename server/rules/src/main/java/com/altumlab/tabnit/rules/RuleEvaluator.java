@@ -6,6 +6,8 @@ import com.altumlab.tabnit.core.EntityQuery;
 import com.altumlab.tabnit.core.EntityRef;
 import com.altumlab.tabnit.core.ImpactScope;
 import com.altumlab.tabnit.core.ImpactTarget;
+import com.altumlab.tabnit.core.Relation;
+import com.altumlab.tabnit.core.RelationQuery;
 import com.altumlab.tabnit.pack.AttributeDefinition;
 import com.altumlab.tabnit.pack.EntityTypeDefinition;
 import com.altumlab.tabnit.pack.PackDefinition;
@@ -41,6 +43,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  *
  * <p>고르기까지다. 조치를 만들거나 저장하지 않는다 (D2 AD-219). 규칙의 내용은 Pack 의 정의에서만 온다.
  * 특정 규칙의 조건을 알지 못한다. 대상의 속성 값과 변동 대상의 유형은 core 의 공개 조회로 읽는다 (D2 AD-220).
+ * 조건이 규칙의 대상과 이어진 대상을 보면 그 대상의 관계도 core 의 공개 조회로 읽는다 (D2 AD-338).
  * 영향 범위를 계산하지 않는다: 계산된 것을 받는다.
  *
  * <p>같은 입력에는 같은 결과가 같은 차례로 나온다. 현재 시각을 읽지 않는다. 날짜는 판의 적용일에서만 온다.
@@ -65,6 +68,8 @@ public class RuleEvaluator {
 
     private final AttributeValueQuery attributeValues;
 
+    private final RelationQuery relationQuery;
+
     /**
      * 읽기는 한 시점의 것으로 한다. 평가하는 사이에 새 판이 들어와도 값이 섞이지 않는다.
      * 부르는 쪽이 이미 트랜잭션 안이면 그 트랜잭션에 든다: 그때의 "한 시점"은 부르는 쪽의 격리 수준이 정한다.
@@ -76,6 +81,7 @@ public class RuleEvaluator {
         Objects.requireNonNull(dataSource, "데이터 원본은 반드시 있어야 합니다");
         this.entities = new EntityQuery(dataSource);
         this.attributeValues = new AttributeValueQuery(dataSource);
+        this.relationQuery = new RelationQuery(dataSource);
         this.snapshot = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
         this.snapshot.setReadOnly(true);
         this.snapshot.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
@@ -151,12 +157,22 @@ public class RuleEvaluator {
         /** 읽은 속성 값. (개체, 속성)마다 한 번만 읽는다. */
         private final TreeMap<String, Optional<String>> read = new TreeMap<>(RulesOrder.STRINGS);
 
+        /** 이 변동의 영향 범위 안의 개체와 그 유형: 변동 대상과 영향 대상 (D2 AD-340). */
+        private final TreeMap<String, String> scopeTypes = new TreeMap<>(RulesOrder.STRINGS);
+
+        /** 읽은 관계. 개체마다 한 번만 읽는다. 적용일 전날과 적용일에 유효한 것이다. */
+        private final TreeMap<String, List<Relation>> relationsRead = new TreeMap<>(RulesOrder.STRINGS);
+
+        /** 이 Pack 의 관계 유형의 이름. */
+        private final TreeSet<String> relationTypes = new TreeSet<>(RulesOrder.STRINGS);
+
         Run(PackDefinition pack, RuleChange change, ImpactScope scope) {
             this.pack = pack;
             this.change = change;
             this.scope = scope;
             pack.entityTypes().forEach(type -> entityTypes.put(type.name(), type));
             pack.attributes().forEach(attribute -> attributes.put(attribute.name(), attribute));
+            pack.relationTypes().forEach(relation -> relationTypes.add(relation.name()));
         }
 
         RuleSelection select() {
@@ -169,6 +185,8 @@ public class RuleEvaluator {
                             + startId + " 에서 시작합니다. 이 변동의 변동 대상에서 계산한 영향 범위를 넘기세요.");
                 }
             }
+            changeTargets.values().forEach(entity -> scopeTypes.put(entity.id(), entity.entityType()));
+            scope.targets().forEach(target -> scopeTypes.put(target.entityId(), target.entityType()));
             List<RuleDefinition> rules = new ArrayList<>(pack.rules());
             rules.sort(RULES);
             List<RuleMatch> matches = new ArrayList<>();
@@ -283,6 +301,10 @@ public class RuleEvaluator {
                 if (condition.typeIs() == null && condition.attributeName() == null) {
                     throw invalid(rule, null);
                 }
+                if (condition.subject() == RuleSubject.LINKED_TARGET) {
+                    // 이어진 대상을 보는 조건은 아래에서 따로 본다.
+                    continue;
+                }
                 boolean impactSide = condition.subject() == RuleSubject.IMPACT_TARGET;
                 if (condition.typeIs() != null
                         && !isA(impactSide ? targetType : changeTarget.entityType(), condition.typeIs())) {
@@ -291,7 +313,7 @@ public class RuleEvaluator {
             }
             boolean all = true;
             for (RuleCondition condition : rule.conditions()) {
-                if (condition.typeIs() == null) {
+                if (condition.typeIs() == null && condition.subject() != RuleSubject.LINKED_TARGET) {
                     boolean impactSide = condition.subject() == RuleSubject.IMPACT_TARGET;
                     String entityId = impactSide ? targetId : changeTarget.id();
                     if (condition.compareTo() == RuleCompareTo.VALUE) {
@@ -309,7 +331,93 @@ public class RuleEvaluator {
                     }
                 }
             }
+            // 이어진 대상을 보는 조건도 하나가 거짓이어도 끝까지 평가한다: 틀린 값이 있으면 그 규칙은 실패다.
+            all &= linkedSatisfied(rule, targetId, changeTarget);
             return all;
+        }
+
+        /**
+         * 이어진 대상을 보는 조건 (D2 AD-338 ~ AD-340).
+         *
+         * <p>규칙의 대상과 조건이 적은 관계 유형으로 이어진 개체 가운데, 이 변동의 영향 범위 안의 것(변동 대상과 영향 대상)을 본다.
+         * 이어진 것은 적용일 전날이나 적용일에 유효한 관계로 가린다. 같은 관계 유형으로 적은 조건들은 한 개체가 모두 만족해야
+         * 하고, 그런 개체가 하나라도 있으면 그 관계 유형의 조건들은 만족이다. 관계 유형이 여럿이면 모두 만족해야 한다.
+         * 후보는 식별자 순으로 모두 본다: 하나가 만족해도 나머지의 틀린 값은 실패로 알린다.
+         */
+        private boolean linkedSatisfied(RuleDefinition rule, String targetId, EntityRef changeTarget) {
+            TreeMap<String, List<RuleCondition>> byRelation = new TreeMap<>(RulesOrder.STRINGS);
+            for (RuleCondition condition : rule.conditions()) {
+                if (condition.subject() != RuleSubject.LINKED_TARGET) {
+                    continue;
+                }
+                if (condition.linkedBy() == null || !relationTypes.contains(condition.linkedBy())) {
+                    // Pack 을 읽을 때 걸러진다. 여기 오면 넘겨받은 정의가 검증을 거치지 않은 것이다.
+                    throw invalid(rule, condition.attributeName());
+                }
+                byRelation.computeIfAbsent(condition.linkedBy(), k -> new ArrayList<>()).add(condition);
+            }
+            boolean all = true;
+            for (Map.Entry<String, List<RuleCondition>> group : byRelation.entrySet()) {
+                boolean any = false;
+                for (String linkedId : linkedInScope(targetId, group.getKey())) {
+                    String linkedType = scopeTypes.get(linkedId);
+                    boolean typed = true;
+                    for (RuleCondition condition : group.getValue()) {
+                        typed &= condition.typeIs() == null || isA(linkedType, condition.typeIs());
+                    }
+                    if (!typed) {
+                        // 유형으로 걸러진 개체의 값은 읽지 않는다 (D2 AD-224).
+                        continue;
+                    }
+                    boolean one = true;
+                    for (RuleCondition condition : group.getValue()) {
+                        if (condition.typeIs() != null) {
+                            continue;
+                        }
+                        if (condition.compareTo() == RuleCompareTo.VALUE) {
+                            one &= compare(rule, condition, linkedId);
+                        }
+                        else {
+                            if (condition.compareSubject() == RuleSubject.LINKED_TARGET
+                                    || (condition.compareSubject() == RuleSubject.IMPACT_TARGET
+                                            && rule.appliesTo() != RuleSubject.IMPACT_TARGET)) {
+                                throw invalid(rule, condition.attributeName());
+                            }
+                            String otherId = condition.compareSubject() == RuleSubject.IMPACT_TARGET ? targetId
+                                    : changeTarget.id();
+                            one &= compareOther(rule, condition, linkedId, otherId);
+                        }
+                    }
+                    any |= one;
+                }
+                all &= any;
+            }
+            return all;
+        }
+
+        /** 대상과 그 관계 유형으로 이어진 개체 가운데 영향 범위 안의 것. 식별자 순. */
+        private TreeSet<String> linkedInScope(String targetId, String relationType) {
+            List<Relation> relations = relationsRead.get(targetId);
+            if (relations == null) {
+                LocalDate date = change.effectiveDate();
+                relations = new ArrayList<>(relationQuery.relationsAsOf(targetId, date));
+                if (date.isAfter(EARLIEST)) {
+                    relations.addAll(relationQuery.relationsAsOf(targetId, date.minusDays(1)));
+                }
+                relationsRead.put(targetId, relations);
+            }
+            TreeSet<String> linked = new TreeSet<>(RulesOrder.STRINGS);
+            for (Relation relation : relations) {
+                if (!relation.relationType().equals(relationType)) {
+                    continue;
+                }
+                String other = relation.sourceEntityId().equals(targetId) ? relation.targetEntityId()
+                        : relation.sourceEntityId();
+                if (scopeTypes.containsKey(other)) {
+                    linked.add(other);
+                }
+            }
+            return linked;
         }
 
         /** 속성 값을 보는 조건 하나. 비교는 속성의 형식에 맞춰 한다 (D2 AD-71). */

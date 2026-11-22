@@ -134,7 +134,7 @@ final class PackReader {
 
         // 규칙도 온톨로지를 읽었을 때만 본다 (D8 2절).
         List<RuleDefinition> rules = ontologyRead ? RuleReader.read(directory, prefix, entityTypes, attributes,
-                new TreeSet<>(relationTypes.keySet()), inputSourceIds(mappings), problems) : List.of();
+                relationTypes, inputSourceIds(mappings), problems) : List.of();
 
         if (!problems.isEmpty()) {
             // 같은 문제를 두 번 알리지 않고, 차례를 정해 둔다.

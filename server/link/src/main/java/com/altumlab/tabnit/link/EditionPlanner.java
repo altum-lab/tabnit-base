@@ -1,5 +1,6 @@
 package com.altumlab.tabnit.link;
 
+import com.altumlab.tabnit.core.AttributeValue;
 import com.altumlab.tabnit.core.EntityRef;
 import com.altumlab.tabnit.core.NewAttributeValue;
 import com.altumlab.tabnit.core.NewRelation;
@@ -19,6 +20,7 @@ import com.altumlab.tabnit.pack.ValueFormat;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -76,12 +78,23 @@ final class EditionPlanner {
 
     private final EditionPlan plan;
 
+    /** 저장소에 이미 있는 속성 값을 읽는 길. 계획기는 저장소를 직접 알지 않는다. */
+    @FunctionalInterface
+    interface StoredValues {
+
+        /** 개체들의 속성 값 가운데 그날부터 하루라도 유효한 것. 식별자 순이다. */
+        List<AttributeValue> inEffectFrom(Collection<String> entityIds, LocalDate from);
+    }
+
+    private final StoredValues storedValues;
+
     /** 끝내야 하는데 끝낼 수 없는 것의 식별자. 하나라도 있으면 판을 거부한다 (D2 AD-198). */
     private final TreeSet<String> cannotEnd = new TreeSet<>(LinkOrder.STRINGS);
 
     EditionPlanner(PackDefinition pack, MappingDefinition mapping, TableFile file, Provenance provenance,
-            LocalDate effectiveDate, List<PreviousItem> previousItems) {
+            LocalDate effectiveDate, List<PreviousItem> previousItems, StoredValues storedValues) {
         this.pack = pack;
+        this.storedValues = storedValues;
         this.mapping = mapping;
         this.file = file;
         this.provenance = provenance;
@@ -284,19 +297,55 @@ final class EditionPlanner {
                 statedBySubject.computeIfAbsent(statement.subject(), k -> new ArrayList<>()).add(statement);
             }
         }
+        TreeMap<String, List<AttributeValue>> storedBySubject = storedBySubject(statedBySubject);
         TreeSet<String> subjects = new TreeSet<>(LinkOrder.STRINGS);
         subjects.addAll(liveBySubject.keySet());
         subjects.addAll(statedBySubject.keySet());
         for (String subject : subjects) {
             settleSubject(statedBySubject.getOrDefault(subject, List.of()),
                     liveBySubject.getOrDefault(subject, new TreeMap<>(LinkOrder.STRINGS)),
-                    factsBySubject.getOrDefault(subject, new TreeMap<>(LinkOrder.STRINGS)), held);
+                    factsBySubject.getOrDefault(subject, new TreeMap<>(LinkOrder.STRINGS)), held,
+                    storedBySubject.getOrDefault(subject, List.of()));
         }
+    }
+
+    /**
+     * 행이 적은 속성 값의 대상마다, 저장소에 이미 있는 그 개체의 그 속성의 값. 식별자 순이다.
+     * 겹침은 출처를 보지 않으므로 (D2 AD-53) 다른 입력 자료가 넣은 값도 든다. 한 번만 읽는다.
+     */
+    private TreeMap<String, List<AttributeValue>> storedBySubject(TreeMap<String, List<Statement>> statedBySubject) {
+        TreeMap<String, List<AttributeValue>> bySubject = new TreeMap<>(LinkOrder.STRINGS);
+        // 개체와 속성에서 대상으로 가는 길, 물을 개체, 넣을 기간 가운데 가장 이른 시작일.
+        TreeMap<String, String> subjectByOwner = new TreeMap<>(LinkOrder.STRINGS);
+        TreeSet<String> entityIds = new TreeSet<>(LinkOrder.STRINGS);
+        LocalDate earliest = null;
+        for (List<Statement> statements : statedBySubject.values()) {
+            for (Statement statement : statements) {
+                if (statement.kind() != ItemOutput.Kind.ATTRIBUTE_VALUE || alreadyPast(statement)) {
+                    continue;
+                }
+                subjectByOwner.put(LinkOrder.join(List.of(statement.first().id(), statement.name())),
+                        statement.subject());
+                entityIds.add(statement.first().id());
+                LocalDate from = fresh(statement).from();
+                earliest = earliest == null || from.isBefore(earliest) ? from : earliest;
+            }
+        }
+        if (entityIds.isEmpty()) {
+            return bySubject;
+        }
+        for (AttributeValue value : storedValues.inEffectFrom(entityIds, earliest)) {
+            String subject = subjectByOwner.get(LinkOrder.join(List.of(value.entityId(), value.attributeName())));
+            if (subject != null) {
+                bySubject.computeIfAbsent(subject, k -> new ArrayList<>()).add(value);
+            }
+        }
+        return bySubject;
     }
 
     /** 대상 하나: 한 개체의 한 속성, 또는 한 관계(출발, 도착, 유형). */
     private void settleSubject(List<Statement> stated, TreeMap<String, OutputDetail> live,
-            TreeMap<String, String> liveByFact, TreeSet<String> held) {
+            TreeMap<String, String> liveByFact, TreeSet<String> held, List<AttributeValue> stored) {
         // 행이 적은 것마다: 앞 판의 어느 행이 적은 줄과 같으면 그 줄이 가리키던 것을 잇고, 아니면 새로 넣을 것이다.
         // 적은 것마다 이을 것. 적힌 차례 그대로 둔다 (행의 키 순, 행 안에서는 매핑의 차례). 새것이면 null 이다.
         List<OutputDetail> continued = new ArrayList<>();
@@ -401,6 +450,28 @@ final class EditionPlanner {
                 }
             }
             if (past) {
+                continue;
+            }
+            // 저장소에 이미 있는 값 가운데 이 입력 자료의 앞 판이 넣은 것이 아닌 것 (다른 입력 자료가 넣었거나 앞앞 판에서
+            // 끝난 것)과 기간이 겹치면 넣지 않고 알린다. 판의 나머지는 받는다. 이 행이 만든 것으로 적지 않으므로
+            // 다음 판이 다시 가린다 (D2 AD-322, AD-344).
+            // 넣으려는 것과 값, 기간, 출처가 모두 같은 것은 겹침이 아니다: 같은 판을 다시 넣은 것이고 core 가 그대로 둔다.
+            List<String> overlapping = new ArrayList<>();
+            for (AttributeValue value : stored) {
+                Period there = new Period(value.period().from(), value.period().to());
+                boolean sameAsNew = head.kind() == ItemOutput.Kind.ATTRIBUTE_VALUE && value.value().equals(head.value())
+                        && there.equals(period) && value.provenance().equals(provenance);
+                if (!live.containsKey(value.id()) && !sameAsNew && period.overlaps(there)) {
+                    overlapping.add(value.value() + " (" + there.shown() + ", 입력 자료 "
+                            + value.provenance().inputSourceId() + " 의 " + value.provenance().editionNo() + "번째 판)");
+                }
+            }
+            if (!overlapping.isEmpty()) {
+                for (Statement statement : same) {
+                    notices.add(new IngestNotice("ATTRIBUTE_CONFLICT", statement.row().rowNo, "OVERLAPS_STORED_VALUE",
+                            statement.noticeSubject(), statement.value() + " (" + period.shown() + "). 이미 있는 값: "
+                                    + String.join(", ", overlapping)));
+                }
                 continue;
             }
             ValidityPeriod validity = new ValidityPeriod(period.from(), period.to());

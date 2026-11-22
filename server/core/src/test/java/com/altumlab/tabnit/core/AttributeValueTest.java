@@ -521,6 +521,64 @@ class AttributeValueTest {
         return ref;
     }
 
+    // ── 어느 날부터 유효한 값 (C-08, D2 AD-344) ─────────────────────────
+
+    @Test
+    void 어느_날부터_유효한_값은_그날_뒤로_하루라도_유효한_것이고_개체_여럿을_한_번에_묻는다() {
+        EntityRef a = entity("av-from", "a");
+        EntityRef b = entity("av-from", "b");
+        String past = store.saveAttributeValue(value(a, "name", "지난 값", "2026-01-01", "2026-03-01"), RECORDED_AT);
+        String ending = store.saveAttributeValue(value(a, "name", "끝날 값", "2026-03-01", "2026-03-02"), RECORDED_AT);
+        String later = store.saveAttributeValue(value(a, "size", "뒤에 시작하는 값", "2026-09-01", null), RECORDED_AT);
+        String open = store.saveAttributeValue(value(b, "name", "열린 값", "2026-02-01", null), RECORDED_AT);
+        LocalDate from = LocalDate.parse("2026-03-01");
+
+        // 종료일이 그날인 것은 그날부터 유효하지 않다 (종료일 제외). 그날 뒤에 시작하는 것도 든다. 식별자 순이다.
+        assertThat(query.valuesInEffectFrom(List.of(b.id(), a.id(), a.id()), from)).extracting(AttributeValue::id)
+            .containsExactly(ending, later, open)
+            .doesNotContain(past);
+        assertThat(query.valuesInEffectFrom(List.of(a.id()), LocalDate.parse("2026-03-02")))
+            .extracting(AttributeValue::id)
+            .containsExactly(later);
+        // 두 번 물어도 같다.
+        assertThat(query.valuesInEffectFrom(List.of(a.id(), b.id()), from))
+            .isEqualTo(query.valuesInEffectFrom(List.of(b.id(), a.id()), from));
+    }
+
+    @Test
+    void 어느_날부터_유효한_값을_물을_때_없는_개체와_빈_목록은_빈_답이고_틀린_인자는_받지_않는다() {
+        EntityRef a = entity("av-from-none", "a");
+
+        // 아직 없는 개체는 값도 없다. 새 판이 만들 개체를 미리 물을 수 있어야 한다.
+        assertThat(query.valuesInEffectFrom(List.of("av-from-none|T|없는 것"), LocalDate.parse("2026-03-01"))).isEmpty();
+        assertThat(query.valuesInEffectFrom(List.of(), LocalDate.parse("2026-03-01"))).isEmpty();
+        assertThat(query.valuesInEffectFrom(List.of(a.id()), LocalDate.parse("2026-03-01"))).isEmpty();
+        assertThatThrownBy(() -> query.valuesInEffectFrom(List.of(a.id()), null))
+            .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> query.valuesInEffectFrom(List.of(""), LocalDate.parse("2026-03-01")))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> query.valuesInEffectFrom(List.of(a.id()), LocalDate.MAX))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void 개체가_많아도_어느_날부터_유효한_값을_모두_돌려준다() {
+        List<String> ids = new java.util.ArrayList<>();
+        for (int i = 0; i < 2500; i++) {
+            ids.add("av-from-many|T|k" + i);
+        }
+        EntityRef first = entity("av-from-many", "k0");
+        EntityRef last = entity("av-from-many", "k2499");
+        store.saveAttributeValue(value(first, "name", "처음", "2026-03-01", null), RECORDED_AT);
+        store.saveAttributeValue(value(last, "name", "끝", "2026-03-01", null), RECORDED_AT);
+        // 글자 코드 순으로 맨 끝인 개체. 마지막의 덜 찬 묶음에 든다.
+        EntityRef tail = entity("av-from-many", "k999");
+        store.saveAttributeValue(value(tail, "name", "맨 끝 묶음", "2026-03-01", null), RECORDED_AT);
+
+        assertThat(query.valuesInEffectFrom(ids, LocalDate.parse("2026-03-01"))).extracting(AttributeValue::value)
+            .containsExactly("처음", "끝", "맨 끝 묶음");
+    }
+
     private static NewAttributeValue value(EntityRef entity, String name, String value, String from, String to) {
         return new NewAttributeValue(entity, name, value,
                 new ValidityPeriod(LocalDate.parse(from), to == null ? null : LocalDate.parse(to)), SRC_1);

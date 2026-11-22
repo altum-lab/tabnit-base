@@ -3,9 +3,13 @@ package com.altumlab.tabnit.core;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.TreeSet;
 import javax.sql.DataSource;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -15,6 +19,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
  *
  * <p>기준 날짜는 반드시 받는다. 이 클래스에는 "오늘"이라는 기본값이 없다.
  * 기준 날짜에 유효한 값이 없으면 값이 없는 것이다. 앞의 값을 끌어다 쓰지 않는다 (D2 AD-55).
+ *
+ * <p>하나만 다르다: {@link #valuesInEffectFrom} 은 한 날짜에 유효한 값이 아니라 어느 날부터 유효한 값을 모두 준다.
+ * 넣기 전에 기간이 겹치는지 가리는 데만 쓴다. 화면, API, 규칙의 조건은 쓰지 않는다 (D2 AD-344).
  */
 public class AttributeValueQuery {
 
@@ -38,6 +45,17 @@ public class AttributeValueQuery {
             from attribute_value
             where entity_id = ? and attribute_name = ?
               and valid_from <= ?
+              and (valid_to is null or ? < valid_to)
+            order by id collate "C\"""";
+
+    /** 어느 날부터 유효한 값을 한 번에 묻는 개체의 수. */
+    private static final int IN_EFFECT_BATCH = 1000;
+
+    private static final String VALUES_IN_EFFECT_FROM = """
+            select id, pack_id, entity_id, attribute_name, value,
+                   valid_from, valid_to, input_source_id, edition_no, recorded_at
+            from attribute_value
+            where entity_id = any(?)
               and (valid_to is null or ? < valid_to)
             order by id collate "C\"""";
 
@@ -86,6 +104,45 @@ public class AttributeValueQuery {
         catch (DataAccessException e) {
             throw failed(entityId, asOf, e);
         }
+    }
+
+    /**
+     * 개체들의 속성 값 가운데 어느 날부터 하루라도 유효한 것을 돌려준다: 종료일이 없거나 그날보다 뒤인 것이다.
+     * 그날 뒤에 시작하는 것도 든다. 새로 넣을 값이 이미 있는 값과 기간이 겹치는지 넣기 전에 가리는 데 쓴다
+     * (D2 AD-344). 겹침은 출처를 보지 않으므로 (D2 AD-53) 출처를 가리지 않고 돌려준다.
+     *
+     * @param entityIds 개체의 식별자. 차례와 겹침은 결과에 닿지 않는다. 아직 없는 개체는 값도 없다
+     * @param from 이날부터 본다. 시점 조회의 기준 날짜와 달리 기간의 시작이다. 반드시 받는다
+     * @return 값. 식별자의 글자 코드 순. 없으면 빈 목록
+     * @throws CoreStorageException 저장소에서 읽지 못했을 때
+     */
+    public List<AttributeValue> valuesInEffectFrom(Collection<String> entityIds, LocalDate from) {
+        Objects.requireNonNull(entityIds, "개체의 식별자 목록은 반드시 있어야 합니다");
+        requireStorable(from);
+        TreeSet<String> ids = new TreeSet<>(CodePointOrder.STRINGS);
+        for (String entityId : entityIds) {
+            Identifiers.requireNotBlank(entityId, "개체의 식별자");
+            ids.add(entityId);
+        }
+        // 한 번에 묻는 개체의 수를 정해 둔다. 묶음은 개체의 식별자 순이고 답은 값의 식별자 순이라, 이은 것이
+        // 값의 식별자 순이라는 보장이 없다. 마지막에 값의 식별자로 다시 정렬한다.
+        List<String> ordered = List.copyOf(ids);
+        List<AttributeValue> found = new ArrayList<>();
+        try {
+            for (int start = 0; start < ordered.size(); start += IN_EFFECT_BATCH) {
+                List<String> batch = ordered.subList(start, Math.min(start + IN_EFFECT_BATCH, ordered.size()));
+                found.addAll(jdbc.query(VALUES_IN_EFFECT_FROM, ps -> {
+                    ps.setArray(1, ps.getConnection().createArrayOf("text", batch.toArray()));
+                    ps.setObject(2, from);
+                }, AttributeValueQuery::toValue));
+            }
+        }
+        catch (DataAccessException e) {
+            throw new CoreStorageException("속성 값을 조회하지 못했습니다. 개체 " + ordered.size() + "개, 기준 날짜: " + from
+                    + ". 저장소의 상태를 확인한 뒤 다시 시도하세요.", e);
+        }
+        found.sort(Comparator.comparing(AttributeValue::id, CodePointOrder.STRINGS));
+        return List.copyOf(found);
     }
 
     /** 기준 날짜는 저장소가 담을 수 있는 날짜여야 한다. 끝없는 날짜로는 묻지 않는다. */

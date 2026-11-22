@@ -596,19 +596,38 @@ class MappingExecutorTest {
     }
 
     @Test
-    void 저장소가_거부하면_그_실행에서_넣은_것이_하나도_남지_않는다() {
-        PackDefinition pack = pack("x-rollback", full("src"));
+    void 같은_판_번호로_값을_바꿔_다시_넣으면_먼저_넣은_값과_겹쳐_넣지_않고_알린다() {
+        PackDefinition pack = pack("x-rerun", full("src"));
         run(pack, "src", 1, "code,title,other\nB-1,첫째,O-1\n");
 
-        // 판 비교(C-05)가 없으므로, 같은 입력 자료의 다음 판을 그대로 넣으면 B-1 의 이름이 앞 값과 겹친다.
-        assertThatThrownBy(() -> executor.execute(pack, "src",
-                "code,title,other\nA-0,새 개체,O-7\nB-1,바뀐 이름,O-1\n".getBytes(StandardCharsets.UTF_8), 2,
+        MappingOutcome again = run(pack, "src", 1, "code,title,other\nB-1,고친 이름,O-1\n");
+
+        assertThat(again.notices()).extracting(IngestNotice::code).containsExactly("OVERLAPS_STORED_VALUE");
+        assertThat(valuesOf("x-rerun|Base|B-1")).containsExactly(Map.entry("title", "첫째"));
+    }
+
+    @Test
+    void 저장소가_거부하면_그_실행에서_넣은_것이_하나도_남지_않는다() {
+        // 저장소가 한 값을 받지 않게 해 둔다 (다른 시험과 섞이지 않게 빈 데이터베이스에서).
+        // 이미 있는 값과 겹치는 것은 이제 저장 실패가 아니라 알림이다 (D2 AD-344).
+        javax.sql.DataSource broken = LinkTestDatabase.fresh();
+        new org.springframework.jdbc.core.JdbcTemplate(broken)
+            .execute("alter table attribute_value add constraint test_refuse check (value <> '받지 않는 값')");
+        MappingExecutor failing = new MappingExecutor(broken);
+        AttributeValueQuery stored = new AttributeValueQuery(broken);
+        PackDefinition pack = pack("x-rollback", full("src"));
+        failing.execute(pack, "src", "code,title,other\nB-1,첫째,O-1\n".getBytes(StandardCharsets.UTF_8), 1, EFFECTIVE,
+                RECORDED_AT);
+
+        assertThatThrownBy(() -> failing.execute(pack, "src",
+                "code,title,other\nA-0,새 개체,O-7\nB-2,받지 않는 값,O-1\n".getBytes(StandardCharsets.UTF_8), 2,
                 LocalDate.parse("2026-04-01"), RECORDED_AT)).isInstanceOf(MappingExecutionException.class);
 
         // 먼저 처리된 A-0 도 남지 않는다.
-        assertThatThrownBy(() -> values.valuesAsOf("x-rollback|Base|A-0", EFFECTIVE))
+        assertThatThrownBy(() -> stored.valuesAsOf("x-rollback|Base|A-0", EFFECTIVE))
             .isInstanceOf(EntityNotFoundException.class);
-        assertThat(valuesOf("x-rollback|Base|B-1")).containsExactly(Map.entry("title", "첫째"));
+        assertThat(stored.valuesAsOf("x-rollback|Base|B-1", EFFECTIVE)).extracting(AttributeValue::value)
+            .containsExactly("첫째");
     }
 
     @Test

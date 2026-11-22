@@ -15,6 +15,9 @@ final class Report {
     /** 종류마다 질문은 이만큼 이상이다 (D2 AD-113). */
     static final int MIN_PER_KIND = 2;
 
+    /** 시점 조회 질문이 묻는 서로 다른 조회 시점은 이만큼 이상이다: 현재와 과거 두 시점 (D2 AD-112, AD-332). */
+    static final int MIN_TIME_POINTS = 3;
+
     private static final Map<String, String> KIND_LABELS = kindLabels();
 
     private Report() {
@@ -33,6 +36,45 @@ final class Report {
             }
         }
         return problems;
+    }
+
+    /**
+     * 시점 조회 질문의 조회 시점이 모자란 곳. 서로 다른 날짜를 센다. 날짜로 읽을 수 없는 값은 세지 않는다
+     * (그 질문은 돌릴 때 실패로 나온다). 모자라지 않으면 비어 있다.
+     */
+    static List<String> timePointShortfalls(List<QuestionFile.Question> questions) {
+        TreeSet<java.time.LocalDate> dates = new TreeSet<>();
+        for (QuestionFile.Question question : questions) {
+            if (!Evaluator.RELATIONS.equals(question.kind()) || question.body().get("asOf") == null) {
+                continue;
+            }
+            try {
+                dates.add(QuestionFile.date(question.body().get("asOf"), "질문 " + question.id() + " 의 asOf"));
+            }
+            catch (QuestionFileException e) {
+                // 읽을 수 없는 날짜는 시점으로 세지 않는다.
+            }
+        }
+        if (dates.size() >= MIN_TIME_POINTS) {
+            return List.of();
+        }
+        return List.of("시점 조회 질문의 서로 다른 조회 시점이 " + dates.size() + "개입니다. " + MIN_TIME_POINTS
+                + "개 이상이어야 합니다 (현재와 과거 두 시점). 시점 조회 질문에 다른 날짜의 asOf 를 더하세요.");
+    }
+
+    /**
+     * 시나리오에 같은 입력 자료의 판이 둘 이상 들어오는 단계가 없으면 알린다. 판이 한 번씩만 들어오면 변동이 없어
+     * 변동, 영향 범위, 조치를 물을 수 없다 (D2 AD-332).
+     */
+    static List<String> editionShortfalls(QuestionFile file) {
+        TreeSet<String> seen = new TreeSet<>(Evaluator.CODE_POINT_ORDER);
+        for (QuestionFile.Step step : file.steps()) {
+            if (!seen.add(step.inputSource())) {
+                return List.of();
+            }
+        }
+        return List.of(file.fileName() + ": 시나리오에 같은 입력 자료의 판이 둘 이상 들어오는 단계가 없습니다. "
+                + "앞 판과 견줄 둘째 판의 단계를 더하세요.");
     }
 
     /** 두 번 돌린 결과가 다른 질문의 번호. 통과 여부나 제품의 답이 다르면 다른 것이다. 번호의 글자 코드 순이다. */

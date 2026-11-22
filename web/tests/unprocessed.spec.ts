@@ -133,3 +133,29 @@ baseTest("관리자가 다시 처리하면 결과를 알리고 목록을 다시 
   await baseExpect(rows).toHaveCount(before);
   await baseExpect(rows.first()).toContainText("실패 (규칙 실행)");
 });
+
+baseTest("다시 처리가 도는 동안 Pack 을 바꾸면 앞의 Pack 의 결과와 목록이 새 Pack 에 나오지 않는다", async ({ page, context }) => {
+  await login(context, E2E_OTHER_USER);
+  // 다시 처리의 답을 붙잡아 둔다. Pack 을 바꾼 뒤에 놓는다.
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/v1/change-reprocessings", async (route) => {
+    await held;
+    await route.continue();
+  });
+  await page.goto("/changes");
+  await page.getByLabel("Pack").selectOption(FAILED_PACK);
+  await page.getByRole("button", { name: "다시 처리" }).click();
+
+  await page.getByLabel("Pack").selectOption(CLEAN_PACK);
+  await baseExpect(page.getByTestId("unprocessed-empty")).toBeVisible();
+  const answered = page.waitForResponse("**/api/v1/change-reprocessings");
+  release();
+  await answered;
+
+  await baseExpect(page.getByTestId("unprocessed-empty")).toBeVisible();
+  await baseExpect(page.getByTestId("reprocess-result")).toHaveCount(0);
+  await baseExpect(page.getByRole("table", { name: "처리되지 않은 변동" })).toHaveCount(0);
+});

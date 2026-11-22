@@ -218,8 +218,9 @@ export function ChangesPage() {
 
       {upload.kind === "done" && <Result result={upload.result} />}
 
-      {/* 고른 Pack 의 처리되지 않은 변동. 판을 올릴 때마다 다시 받는다. */}
-      {pack && <UnprocessedChanges packId={pack.packId} refreshKey={uploadCount} />}
+      {/* 고른 Pack 의 처리되지 않은 변동. 판을 올릴 때마다 다시 받는다. Pack 을 바꾸면 새로 그린다:
+          앞에 고른 Pack 에서 아직 돌고 있던 다시 처리의 결과와 목록이 새로 고른 Pack 의 것처럼 보이지 않게 한다. */}
+      {pack && <UnprocessedChanges key={pack.packId} packId={pack.packId} refreshKey={uploadCount} />}
     </section>
   );
 }

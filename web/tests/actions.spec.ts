@@ -338,6 +338,9 @@ test("전체 수를 넘긴 자리와 틀린 건너뛸 수는 화면이 멈추지
   await expect(page.getByText("이 자리에는 조치가 없습니다. 이전으로 돌아가세요.")).toBeVisible();
   await expect(page.getByTestId("action-total")).toHaveText(`${expected.total}건`);
   await expect(page.getByRole("button", { name: "이전" })).toBeEnabled();
+  // 이전은 빈 쪽을 여러 번 지나지 않고 마지막 쪽으로 간다 (시험 자료는 한 쪽에 다 든다: 처음부터다).
+  await page.getByRole("button", { name: "이전" }).click();
+  await expect(page.getByTestId("pager-position")).toHaveText(`전체 ${expected.total}건 가운데 1~${expected.total}번째`);
 
   // 틀린 값은 서버가 알린다. 거르는 것을 바꾸면 처음부터 다시 본다.
   await page.goto(`/actions?packId=${READ_PACK}&status=PENDING&offset=abc`);

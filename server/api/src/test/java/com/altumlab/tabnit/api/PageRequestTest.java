@@ -16,10 +16,9 @@ class PageRequestTest {
 		assertThat(PageRequest.of(null, null)).isEqualTo(new PageRequest(0, 50));
 		assertThat(PageRequest.of("0", "1")).isEqualTo(new PageRequest(0, 1));
 		assertThat(PageRequest.of("2147483647", "200")).isEqualTo(new PageRequest(2147483647, 200));
-		// 앞에 0 을 붙인 것과 빼기표를 붙인 0 은 그 수다. 열 자까지 읽는다.
+		// 앞에 0 을 붙인 것은 그 수다. 열 자까지 읽는다.
 		assertThat(PageRequest.of("007", "050")).isEqualTo(new PageRequest(7, 50));
 		assertThat(PageRequest.of("0000000001", "0000000200")).isEqualTo(new PageRequest(1, 200));
-		assertThat(PageRequest.of("-0", null)).isEqualTo(new PageRequest(0, 50));
 	}
 
 	@Test
@@ -30,7 +29,8 @@ class PageRequestTest {
 			expect(() -> PageRequest.of(wrong, null), "INVALID_OFFSET", "offset");
 			expect(() -> PageRequest.of(null, wrong), "INVALID_LIMIT", "limit");
 		}
-		for (String outOfRange : new String[] { "-1", "-2147483648", "2147483648", "9999999999" }) {
+		// 빼기표가 붙은 것은 0 이어도 받지 않는다.
+		for (String outOfRange : new String[] { "-1", "-0", "-000", "-2147483648", "2147483648", "9999999999" }) {
 			expect(() -> PageRequest.of(outOfRange, null), "INVALID_OFFSET", "offset");
 		}
 		for (String outOfRange : new String[] { "0", "-0", "-1", "201", "2147483647", "2147483648" }) {

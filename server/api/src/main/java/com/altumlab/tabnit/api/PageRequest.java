@@ -46,7 +46,8 @@ record PageRequest(int offset, int limit) {
 	}
 
 	/**
-	 * 요청의 글자를 수로 읽는다. 영어 숫자(0 ~ 9)만으로 된 열 자 이하의 글자와, 그 앞에 빼기표 하나를 받는다.
+	 * 요청의 글자를 수로 읽는다. 영어 숫자(0 ~ 9)만으로 된 열 자 이하의 글자를 받는다. 그 앞에 빼기표가 하나 붙은
+	 * 것은 음수로 읽어 범위 밖이라고 알린다 (-0 도 받지 않는다).
 	 * 더하기표, 빈칸, 소수점, 다른 글자의 숫자(전각, 다른 문자의 숫자)는 수가 아니다. 음수와 담을 수 없이 큰 수는
 	 * 범위 밖의 값으로 돌려줘 부르는 쪽이 같은 문구로 알리게 한다.
 	 */
@@ -56,10 +57,11 @@ record PageRequest(int offset, int limit) {
 		if (digits.isEmpty() || digits.length() > 10 || !digits.chars().allMatch(c -> c >= '0' && c <= '9')) {
 			throw new ApiProblemException(HttpStatus.BAD_REQUEST, code, field, message);
 		}
-		long parsed = Long.parseLong(digits);
-		if (negative && parsed > 0) {
+		if (negative) {
+			// 빼기표가 붙은 값은 0 이어도 받지 않는다 (-0). 범위 밖의 값으로 알린다.
 			return -1;
 		}
+		long parsed = Long.parseLong(digits);
 		if (parsed > Integer.MAX_VALUE) {
 			throw new ApiProblemException(HttpStatus.BAD_REQUEST, code, field, message);
 		}

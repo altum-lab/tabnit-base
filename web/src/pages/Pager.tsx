@@ -17,6 +17,10 @@ type Props = {
 
 export function Pager({ total, offset, limit, shown, onMove, disabled = false }: Props) {
   const hasPrevious = offset > 0;
+  // 전체 수를 넘긴 자리에 와 있으면 (주소를 손으로 고쳤거나 목록이 줄었다) 이전은 마지막 쪽으로 간다.
+  // 한 쪽씩 물러나면 빈 쪽을 여러 번 지나게 된다.
+  const lastPageOffset = total > 0 ? Math.floor((total - 1) / limit) * limit : 0;
+  const previousOffset = shown === 0 ? Math.min(lastPageOffset, Math.max(0, offset - limit)) : Math.max(0, offset - limit);
   const hasNext = offset + shown < total;
   return (
     <p data-testid="pager">
@@ -25,7 +29,7 @@ export function Pager({ total, offset, limit, shown, onMove, disabled = false }:
           ? `전체 ${total}건 가운데 ${offset + 1}~${offset + shown}번째`
           : `전체 ${total}건. 이 자리에는 항목이 없습니다`}
       </span>{" "}
-      <button type="button" onClick={() => onMove(Math.max(0, offset - limit))} disabled={disabled || !hasPrevious}>
+      <button type="button" onClick={() => onMove(previousOffset)} disabled={disabled || !hasPrevious}>
         이전
       </button>{" "}
       <button type="button" onClick={() => onMove(offset + limit)} disabled={disabled || !hasNext}>

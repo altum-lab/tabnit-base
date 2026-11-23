@@ -407,3 +407,27 @@ test("3D 의 코드를 받지 못하면 이유를 알리고 2D 로 돌아갈 수
   await expect(map(page)).toHaveAttribute("data-view", "2d");
   await expect(map(page).locator("canvas")).toBeVisible();
 });
+
+test("3D 의 코드가 내려오기 전에 2D 로 돌아갔다가 다시 3D 를 골라도 그림이 나온다", async ({ page }) => {
+  await search(page, "e2e|T|me", "2026-03-01");
+  // 3D 의 코드가 늦게 온다.
+  let arrived = false;
+  await page.route(/RelationMapGraph3D/, async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    arrived = true;
+    await route.continue();
+  });
+
+  await page.getByRole("radio", { name: "3D" }).check();
+  await expect(page.getByTestId("map-3d-loading")).toBeVisible();
+  // 다 오기 전에 2D 로 돌아간다.
+  await page.getByRole("radio", { name: "2D" }).check();
+  await expect(map(page)).toHaveAttribute("data-view", "2d");
+  await expect.poll(() => arrived, { timeout: 10_000 }).toBe(true);
+  await page.waitForTimeout(500);
+
+  // 다시 3D: 받은 코드로 바로 그린다. 불러오는 중에서 멈추지 않는다.
+  await page.getByRole("radio", { name: "3D" }).check();
+  await expect(page.getByTestId("map-3d")).toBeVisible();
+  await expect(page.getByTestId("map-3d-loading")).toHaveCount(0);
+});

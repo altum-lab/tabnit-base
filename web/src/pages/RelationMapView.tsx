@@ -36,25 +36,28 @@ export function RelationMapView({
   onView,
   onCenter,
 }: GraphProps & { view: MapView; onView: (view: MapView) => void }) {
-  // 3D 그림의 코드: 받는 중, 받음, 받지 못함.
-  const [graph3D, setGraph3D] = useState<"loading" | "ready" | "failed">(loaded3D ? "ready" : "loading");
+  // 3D 그림의 코드를 받는 일의 상태: 받는 중, 받지 못함. 받았는지는 loaded3D 로 본다 (이 상태로 보지 않는다):
+  // 받는 사이에 2D 로 돌아갔다 와도, 화면이 다시 그려져도 받은 코드는 그대로 있다.
+  const [loading3D, setLoading3D] = useState<"loading" | "failed">("loading");
+  // 받은 것이 화면에 반영되도록 다시 그리게 하는 값.
+  const [, setArrived] = useState(0);
 
   useEffect(() => {
     if (view !== "3d" || loaded3D) {
       return;
     }
     let current = true;
-    setGraph3D("loading");
+    setLoading3D("loading");
     import("./RelationMapGraph3D")
       .then((module) => {
         loaded3D = module.default;
         if (current) {
-          setGraph3D("ready");
+          setArrived((count) => count + 1);
         }
       })
       .catch(() => {
         if (current) {
-          setGraph3D("failed");
+          setLoading3D("failed");
         }
       });
     return () => {
@@ -96,9 +99,11 @@ export function RelationMapView({
         </p>
       )}
       {view === "2d" && <Graph2D map={map} onCenter={onCenter} />}
-      {view === "3d" && graph3D === "ready" && Graph3D && <Graph3D map={map} onCenter={onCenter} />}
-      {view === "3d" && graph3D === "loading" && <p data-testid="map-3d-loading">3D 그림을 불러오는 중입니다…</p>}
-      {view === "3d" && graph3D === "failed" && (
+      {view === "3d" && Graph3D && <Graph3D map={map} onCenter={onCenter} />}
+      {view === "3d" && !Graph3D && loading3D === "loading" && (
+        <p data-testid="map-3d-loading">3D 그림을 불러오는 중입니다…</p>
+      )}
+      {view === "3d" && !Graph3D && loading3D === "failed" && (
         <p data-testid="map-3d-failed" role="alert">
           3D 그림을 불러오지 못했습니다. 연결을 확인하고 3D 를 다시 고르거나, 2D 로 보세요.
         </p>

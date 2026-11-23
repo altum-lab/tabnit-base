@@ -287,6 +287,32 @@ class ActionGeneratorTest {
                     LocalDate.parse("2029-02-28"));
     }
 
+    // B-10 (D2 AD-371): 평가하는 도중에 저장소에서 읽지 못한 것도 저장소의 실패다. 정의와 자료가 어긋난 것이 아니다.
+    @Test
+    void 평가하는_도중에_저장소에서_읽지_못하면_저장소의_실패로_알리고_아무것도_저장하지_않는다() {
+        String p = "a-read-fail";
+        EntityRef start = entity(p, "Base", "B-1");
+        RuleChange change = new RuleChange("ev-read-fail", RuleChangeKind.ADDED, start.id(), List.of(start.id()), D);
+        PackDefinition pack = pack(p, rule("0001", 1, CHANGE, "Base", 0));
+        // 영향 범위는 미리 계산해 둔다. 실패는 그 뒤, 규칙을 평가하려고 저장소를 읽을 때 난다.
+        var scope = scopeAt(D, start);
+        // core 의 테이블을 잠깐 읽을 수 없게 한다: 변동이 생긴 행의 주 개체를 읽다가 실패한다.
+        jdbc.execute("alter table entity rename to entity_unreadable");
+        try {
+            assertThatThrownBy(() -> generator.generate(pack, change, EDITION, scope, 3, NOW))
+                .isInstanceOf(ActionStorageException.class)
+                .hasMessageContaining("ev-read-fail")
+                .hasMessageContaining("저장소");
+        }
+        finally {
+            jdbc.execute("alter table entity_unreadable rename to entity");
+        }
+        assertThat(records.impactScope("ev-read-fail")).isEmpty();
+        // 저장소가 돌아오면 같은 변동을 다시 실행해 저장한다.
+        assertThat(generator.generate(pack, change, EDITION, scopeAt(D, start), 3, NOW).outcome())
+            .isEqualTo(ActionGeneration.Outcome.STORED);
+    }
+
     @Test
     void 기한이_저장소가_담는_날짜를_넘으면_그_규칙의_실패다() {
         String p = "a-due-far";
@@ -302,6 +328,9 @@ class ActionGeneratorTest {
         assertThat(result.outcome()).isEqualTo(ActionGeneration.Outcome.RULE_FAILED);
         assertThat(result.failures()).extracting(RuleFailure::ruleNo, RuleFailure::code)
             .containsExactly(tuple("0002", "DUE_DATE_OUT_OF_RANGE"), tuple("0003", "DUE_DATE_OUT_OF_RANGE"));
+        // 틀린 것은 개체가 아니라 규칙에 적힌 일수다: 걸린 개체는 비우고 일수를 값으로 알린다 (D7 5절, D2 AD-371).
+        assertThat(result.failures()).extracting(RuleFailure::entityId, RuleFailure::attributeName, RuleFailure::value)
+            .containsExactly(tuple(null, null, "1"), tuple(null, null, String.valueOf(Integer.MAX_VALUE)));
         assertThat(records.impactScope("ev-due-far")).isEmpty();
         // 마지막 날에 0일인 규칙만 있으면 저장된다.
         assertThat(generator.generate(pack(p, rule("0001", 1, CHANGE, "Base", 0)), change, EDITION, scopeAt(last, start), 3, NOW)

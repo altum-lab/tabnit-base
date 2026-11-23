@@ -1,5 +1,6 @@
 package com.altumlab.tabnit.rules;
 
+import com.altumlab.tabnit.core.CoreStorageException;
 import com.altumlab.tabnit.core.EntityQuery;
 import com.altumlab.tabnit.core.EntityRef;
 import com.altumlab.tabnit.core.ImpactScope;
@@ -132,6 +133,13 @@ public class ActionGenerator {
                     + " 의 영향 범위와 조치를 저장하지 못했습니다. 저장은 전부 되거나 전부 안 됩니다. 저장소의 상태를 확인한 뒤 다시 실행하세요."
                     + " 다시 실행해도 같은 조치가 두 번 생기지 않습니다.", e);
         }
+        catch (CoreStorageException e) {
+            // 규칙을 평가하려고 개체, 속성 값, 관계를 읽다가 저장소에서 읽지 못했다. 정의와 자료가 어긋난 것이 아니라
+            // 저장소의 실패다 (D8 7절, D5 6절의 STORAGE_FAILURE, D2 AD-371). 아직 아무것도 저장하지 않았다.
+            throw new ActionStorageException("변동 이벤트 " + eventId
+                    + " 의 규칙을 평가하다가 저장소에서 읽지 못했습니다. 아무것도 저장하지 않았습니다. 저장소의 상태를 확인한 뒤 다시 실행하세요."
+                    + " 다시 실행해도 같은 조치가 두 번 생기지 않습니다.", e);
+        }
     }
 
     /** 이미 저장된 변동. 저장된 조치를 돌려준다. 다른 Pack 의 변동으로 저장된 식별자면 잘못 부른 것이다. */
@@ -252,7 +260,8 @@ public class ActionGenerator {
             if (rule.dueInDays() < 0 || due.isAfter(LAST_DATE)) {
                 // 기한을 날짜로 담을 수 없다. 규칙마다 한 번만 알린다.
                 failed.add(rule.ruleNo());
-                failures.add(new RuleFailure(rule.ruleNo(), "DUE_DATE_OUT_OF_RANGE", match.targetEntityId(), null,
+                // 틀린 것은 대상이 아니라 규칙에 적힌 일수다: 걸린 개체는 비우고 일수를 값으로 알린다 (D7 5절, D2 AD-371).
+                failures.add(new RuleFailure(rule.ruleNo(), "DUE_DATE_OUT_OF_RANGE", null, null,
                         String.valueOf(rule.dueInDays())));
                 continue;
             }

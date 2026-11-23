@@ -603,6 +603,7 @@ x = ["""# 제조 안전 Pack 의 전수 대조. 형식은 D4 3절 "전수 대조
 #
 # 담은 것: 시나리오의 모든 변동의 영향 범위 (X-I), 모든 개체의 경계 날짜의 관계 (X-R: 그 개체의 관계가 시작하거나 끝나는
 # 날과 그 전날, 그리고 현재), 모든 개체의 현재의 관계 지도 깊이 1 과 유형마다 한 개체의 깊이 2, 3 (X-M).
+# 모든 변동의 조치 (X-A: 근거 규칙, 우선순위, 대상, 기한, 근거 조항과 그 판).
 
 scenario: S-01
 checks:
@@ -625,6 +626,16 @@ for step in sorted(EVENTS):
         x.append("      countsByType: { %s }" % ", ".join("%s: %d" % kv for kv in sorted(by_type.items())))
         x.append("      countsByDepth: { %s }" % ", ".join("%d: %d" % kv for kv in sorted(by_depth.items())))
         x.append("      truncated: %s" % ("true" if truncated else "false"))
+# 조치 (B-10, D2 AD-371): 모든 변동의 조치. 제품이 내놓는 순서다 (기한, 우선순위, 규칙 번호, 대상의 식별자).
+n_a = 0
+for step in sorted(EVENTS):
+    for e in EVENTS[step]:
+        n_a += 1
+        acts = ACTIONS[(step, e[0])]
+        x.append("  - id: X-A-%04d\n    kind: actions\n    change: { step: %d, itemKey: [%s] }\n    expect:\n      actions:%s" % (n_a, step, ", ".join(e[0].split("|")), "" if acts else " []"))
+        for due, priority, no, target, prim, source, edition_no in acts:
+            x.append('        - { rule: "%s", priority: %d, target: %s, dueDate: %s, basis: { entity: %s, inputSource: %s, edition: %d } }'
+                     % (no, priority, ref(target), due, ref(prim), source, edition_no))
 n_r = 0
 for entity in ALL_ENTITIES:
     days = {CURRENT}
@@ -657,5 +668,5 @@ for entity, depth in [(e, 1) for e in ALL_ENTITIES] + [(e, d) for e in deep for 
     x.append("      totalNodes: %d\n      truncated: %s\n      reachedDepth: %d" % (total, "true" if truncated else "false", reached))
 os.makedirs(os.path.join(OUT, "questions", "crosscheck"), exist_ok=True)
 open(os.path.join(OUT, "questions", "crosscheck", "S-01.yaml"), "w", encoding="utf-8").write("\n".join(x) + "\n")
-print("전수 대조: 영향 범위", n_i, "시점 조회", n_r, "관계 지도", n_m, "| 얕은 데서 멈춘 지도", cut_short)
+print("전수 대조: 영향 범위", n_i, "조치", n_a, sum(len(v) for v in ACTIONS.values()), "건", "시점 조회", n_r, "관계 지도", n_m, "| 얕은 데서 멈춘 지도", cut_short)
 

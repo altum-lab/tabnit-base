@@ -223,3 +223,45 @@ test("처리된 변동에서 그 변동의 영향 범위 화면으로 이어 간
   await expect(page.getByTestId("impact-total")).toHaveText(String(answer.total));
 });
 
+// C-07 수용 기준: 개정 조항 표를 넣으면 이전 조문과 비교된다 (D2 AD-367).
+test("바뀐 속성마다 이전 값과 새 값이 서버가 준 그대로 나온다", async ({ page }) => {
+  const run = Date.now();
+  await choose(page);
+  const first = await laterDate(page);
+  // 제목은 지어낸 조문이다. 줄이 둘이고 쉼표가 있다.
+  const before = `방문 건강 관리 기준 ${run}\n다만, 분기마다 점검한다`;
+  const after = `방문 건강 관리 기준 ${run}\n다만, 달마다 점검한다`;
+  await upload(page, first, "지침 마.csv", csv(`G-01,"${before}",30`, `G-02,감염병 대응 교육 기준 ${run},90`));
+  await expect(page.getByTestId("outcome")).toContainText("새 판을 받아들였습니다");
+
+  // G-01 은 제목과 점검 주기를 고치고, G-02 는 빼고, G-03 을 더한다.
+  const answered = page.waitForResponse((response) => response.url().includes("/api/v1/editions") && response.request().method() === "POST");
+  await upload(page, nextDay(first), "지침 바.csv", csv(`G-01,"${after}",14`, `G-03,새 기준 ${run},60`));
+  const body = (await (await answered).json()) as {
+    changes: { itemKey: string; changedValues: { attributeName: string; attributeLabel: string; before: string | null; after: string | null }[] | null }[];
+  };
+
+  for (const change of body.changes) {
+    const cell = page.locator(`tr[data-item-key="${change.itemKey}"]`).getByTestId("changed-values");
+    const items = cell.locator("li");
+    expect(change.changedValues, "방금 올린 두 판 사이의 변동은 이전 값을 안다").not.toBeNull();
+    await expect(items).toHaveCount(change.changedValues!.length);
+    // 서버의 차례와 값 그대로다.
+    for (const [index, value] of change.changedValues!.entries()) {
+      const item = items.nth(index);
+      await expect(item).toHaveAttribute("data-attribute-name", value.attributeName);
+      await expect(item).toContainText(value.attributeLabel);
+      await expect(item.getByTestId("value-before")).toHaveText(value.before ?? "(없음)");
+      await expect(item.getByTestId("value-after")).toHaveText(value.after ?? "(없음)");
+    }
+  }
+  // 서버가 준 것이 기대한 변동인지도 본다: 고친 행은 두 속성, 뺀 행은 새 값이 없고, 더한 행은 이전 값이 없다.
+  const byKey = new Map(body.changes.map((change) => [change.itemKey, change.changedValues!]));
+  expect(byKey.get("G-01")!.map((value) => [value.before, value.after])).toEqual(expect.arrayContaining([[before, after], ["30", "14"]]));
+  expect(byKey.get("G-02")!.every((value) => value.after === null)).toBe(true);
+  expect(byKey.get("G-03")!.every((value) => value.before === null)).toBe(true);
+  // 긴 글의 줄바꿈이 화면에서도 줄바꿈으로 보인다.
+  const title = page.locator('tr[data-item-key="G-01"]').getByTestId("value-after").filter({ hasText: "달마다" });
+  expect(await title.evaluate((element) => getComputedStyle(element).whiteSpace)).toBe("pre-wrap");
+});
+

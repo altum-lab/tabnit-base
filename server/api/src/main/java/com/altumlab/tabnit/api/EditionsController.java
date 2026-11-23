@@ -4,6 +4,7 @@ import com.altumlab.tabnit.link.Edition;
 import com.altumlab.tabnit.link.EditionRecords;
 import com.altumlab.tabnit.link.IngestOutcome;
 import com.altumlab.tabnit.link.IngestResult;
+import com.altumlab.tabnit.pack.PackDefinitions;
 import java.io.IOException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -35,9 +36,12 @@ class EditionsController {
 
 	private final EditionRecords editions;
 
-	EditionsController(EditionProcessing processing, EditionRecords editions) {
+	private final PackDefinitions packs;
+
+	EditionsController(EditionProcessing processing, EditionRecords editions, PackDefinitions packs) {
 		this.processing = processing;
 		this.editions = editions;
+		this.packs = packs;
 	}
 
 	@PostMapping(path = "/api/v1/editions", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -85,7 +89,8 @@ class EditionsController {
 		}
 		Edition edition = this.editions.findEdition(ingest.editionId())
 			.orElseThrow(() -> new IllegalStateException("투입한 판 " + ingest.editionId() + " 을 읽지 못했습니다."));
-		return EditionSubmissionResponse.of(result, edition, result.editionChanges());
+		// 바뀐 값에 붙일 속성의 이름표는 Pack 의 정의에서 읽는다 (D2 AD-367).
+		return EditionSubmissionResponse.of(result, edition, result.editionChanges(), this.packs.find(packId));
 	}
 
 	private static void require(String value, String code, String field, String detail) {

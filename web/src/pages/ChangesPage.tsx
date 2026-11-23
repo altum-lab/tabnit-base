@@ -1,6 +1,6 @@
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
-import { api, type ChangeProcessing, type EditionSubmission, type PackSummary } from "../api/client";
+import { api, type ChangeProcessing, type EditionChange, type EditionSubmission, type PackSummary } from "../api/client";
 import { CONNECTION_FAILED, messageOf } from "../api/problem";
 import { UnprocessedChanges } from "./UnprocessedChanges";
 
@@ -261,6 +261,7 @@ function Result({ result }: { result: EditionSubmission }) {
                 <th scope="col">변동</th>
                 <th scope="col">주 개체</th>
                 <th scope="col">변동 대상</th>
+                <th scope="col">바뀐 값</th>
                 <th scope="col">처리</th>
                 <th scope="col">조치</th>
               </tr>
@@ -277,6 +278,9 @@ function Result({ result }: { result: EditionSubmission }) {
                         <li key={entityId}>{entityId}</li>
                       ))}
                     </ul>
+                  </td>
+                  <td data-testid="changed-values">
+                    <ChangedValues change={change} />
                   </td>
                   <td>
                     {processingLabel(change.processing)}
@@ -362,6 +366,45 @@ function Result({ result }: { result: EditionSubmission }) {
 }
 
 // 처리 상태를 사람이 읽는 말로 적는다. 실패의 단계와 이유는 서버가 준 코드를 그대로 붙인다.
+// 그 행에서 바뀐 속성의 이전 값과 새 값 (D7 5절의 changedValues, D2 AD-367).
+// 값과 차례는 서버가 준 그대로다. 화면은 두 값을 견주거나 고르지 않는다.
+function ChangedValues({ change }: { change: EditionChange }) {
+  if (change.changedValues === null) {
+    // 빈 목록과 다르다: 바뀐 값이 없는 것이 아니라 서버가 이전 값을 모른다.
+    return <small>이전 값을 알 수 없습니다. 바뀐 값을 남기기 전에 들어간 판과 견준 변동입니다.</small>;
+  }
+  if (change.changedValues.length === 0) {
+    return <small>속성 값은 바뀌지 않았습니다.</small>;
+  }
+  return (
+    <ul>
+      {change.changedValues.map((value, index) => (
+        // 같은 속성이 두 번 올 수 있어 차례를 열쇠에 넣는다. 목록은 서버가 준 차례 그대로이고 바뀌지 않는다.
+        <li key={`${value.entityId}|${value.attributeName}|${index}`} data-attribute-name={value.attributeName}>
+          {value.attributeLabel}{" "}
+          {/* 개체가 여럿일 수 있어 어느 개체의 속성인지 함께 적는다. */}
+          <small>
+            <code>{value.entityId}</code>
+          </small>
+          : <ChangedValue value={value.before} testId="value-before" /> → <ChangedValue value={value.after} testId="value-after" />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// 값 하나. 없던 값과 없어진 값은 빈 글자가 아니라 없다고 적는다. 긴 글의 줄바꿈은 그대로 보인다.
+function ChangedValue({ value, testId }: { value: string | null; testId: string }) {
+  if (value === null) {
+    return <small data-testid={testId}>(없음)</small>;
+  }
+  return (
+    <span data-testid={testId} className="changed-value">
+      {value}
+    </span>
+  );
+}
+
 function processingLabel(processing: ChangeProcessing): string {
   if (processing.status === "PROCESSED") {
     return "처리됨";

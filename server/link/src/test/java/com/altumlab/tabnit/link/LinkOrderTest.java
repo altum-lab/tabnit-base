@@ -28,4 +28,17 @@ class LinkOrderTest {
         // UTF-16 단위로 견주면 보충 문자(U+1F600)가 U+FF21 보다 앞에 온다. 글자 코드 순에서는 뒤다.
         assertThat(sorted).containsExactly("", "B", "a", "ab", "b", "가", "Ａ", "😀");
     }
+
+    @Test
+    void 이은_글자를_나누면_원래_값들이_그대로_나온다() {
+        // 빈 값, 세로 막대만 있는 값, 역빗금으로 끝나는 값, 둘이 섞인 값, 보충 문자.
+        List<List<String>> cases = List.of(List.of(""), List.of("", ""), List.of("가", "", "나"), List.of("|"),
+                List.of("끝\\"), List.of("\\|", "|\\", "\\\\"), List.of("A", "유형", "키|\\", "이름"),
+                List.of("\uD83D\uDE00|", "가"));
+        for (List<String> values : cases) {
+            assertThat(LinkOrder.parts(LinkOrder.join(values))).as(values.toString()).isEqualTo(values);
+        }
+        // 마지막 값은 lastPart 가 주는 것과 같다.
+        assertThat(LinkOrder.lastPart(LinkOrder.join(List.of("가", "나|다\\")))).isEqualTo("나|다\\");
+    }
 }

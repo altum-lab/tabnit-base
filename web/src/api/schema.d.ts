@@ -655,6 +655,8 @@ export interface components {
             changeEventId: string;
             /** @description 바뀐 항목의 키 */
             itemKey: string;
+            /** @description 그 행에서 바뀐 속성 값. 개체의 id, 속성의 이름의 글자 코드 순이다. 빈 목록은 바뀐 속성 값이 없다는 뜻이고, null 은 이전 값을 알 수 없다는 뜻이다 (바뀐 값을 남기기 전에 들어간 판과 견준 변동) */
+            changedValues: components["schemas"]["ChangedValue"][] | null;
             /**
              * @description 추가, 변경, 삭제
              * @enum {string}
@@ -665,6 +667,19 @@ export interface components {
             /** @description 변동 대상 개체의 id. 글자 코드 순이다 */
             targetEntityIds: string[];
             processing: components["schemas"]["ChangeProcessing"];
+        };
+        /** @description 그 행에서 바뀐 속성 값 하나. 값은 저장한 글자 그대로다 */
+        ChangedValue: {
+            /** @description 어느 개체의 속성인가 */
+            entityId: string;
+            /** @description 속성의 이름 */
+            attributeName: string;
+            /** @description Pack 이 정한 속성의 이름표. 없으면 속성의 이름이다 */
+            attributeLabel: string;
+            /** @description 앞 판에서 그 행이 넣었던 값. 없었으면 null (추가된 행, 빈 칸이던 속성) */
+            before: string | null;
+            /** @description 새 판에서 그 행이 넣은 값. 없어졌으면 null (삭제된 행, 빈 칸이 된 속성) */
+            after: string | null;
         };
         /** @description 변동 하나를 영향 범위 계산과 조치 생성까지 처리한 결과 */
         ChangeProcessing: {

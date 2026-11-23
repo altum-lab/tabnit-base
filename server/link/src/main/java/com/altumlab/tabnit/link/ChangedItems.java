@@ -22,6 +22,9 @@ final class ChangedItems {
     /** 변동 이벤트마다의 관계 유형 이름. 이름의 글자 코드 순. */
     private final Map<String, List<String>> relationTypes = new TreeMap<>(LinkOrder.STRINGS);
 
+    /** 변동 이벤트마다의 바뀐 값. 저장된 차례 순 (D2 AD-367). */
+    private final Map<String, List<ValueChange>> values = new TreeMap<>(LinkOrder.STRINGS);
+
     private ChangedItems() {
     }
 
@@ -39,6 +42,13 @@ final class ChangedItems {
                             : items.relationTypes;
                     into.computeIfAbsent(rs.getString("change_event_id"), k -> new ArrayList<>()).add(rs.getString("name"));
                 }, args);
+        // 같은 변동 이벤트들의 바뀐 값. 붙이는 join 과 where 는 위와 같다.
+        jdbc.query("select c.change_event_id, c.entity_id, c.attribute_name, c.before_value, c.after_value"
+                + " from change_event_changed_value c " + from + " order by c.change_event_id, c.seq", rs -> {
+                    items.values.computeIfAbsent(rs.getString("change_event_id"), k -> new ArrayList<>())
+                        .add(new ValueChange(rs.getString("entity_id"), rs.getString("attribute_name"),
+                                rs.getString("before_value"), rs.getString("after_value")));
+                }, args);
         return items;
     }
 
@@ -50,5 +60,10 @@ final class ChangedItems {
     /** 그 변동 이벤트에서 바뀐 관계 유형. 바뀐 것을 남기지 않은 이벤트이면 null. */
     List<String> relationTypes(String changeEventId, boolean recorded) {
         return recorded ? relationTypes.getOrDefault(changeEventId, List.of()) : null;
+    }
+
+    /** 그 변동 이벤트에서 바뀐 속성 값. 바뀐 값을 남기지 않은 이벤트이면 null. */
+    List<ValueChange> values(String changeEventId, boolean recorded) {
+        return recorded ? values.getOrDefault(changeEventId, List.of()) : null;
     }
 }

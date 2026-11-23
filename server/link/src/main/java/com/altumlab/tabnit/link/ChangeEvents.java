@@ -26,7 +26,7 @@ public class ChangeEvents {
 
     private static final String COLUMNS = """
             e.id, e.edition_id, e.item_key, e.change_kind, e.primary_entity_id, e.status, e.failed_stage,
-            e.failure_code, e.changed_items_recorded
+            e.failure_code, e.changed_items_recorded, e.changed_values_recorded
             """;
 
     private final JdbcTemplate jdbc;
@@ -261,6 +261,7 @@ public class ChangeEvents {
                 ChangeEventStatus.valueOf(rs.getString("status")), rs.getString("failed_stage"),
                 rs.getString("failure_code"), targets.getOrDefault(rs.getString("id"), List.of()),
                 changed.attributes(rs.getString("id"), rs.getBoolean("changed_items_recorded")),
-                changed.relationTypes(rs.getString("id"), rs.getBoolean("changed_items_recorded")));
+                changed.relationTypes(rs.getString("id"), rs.getBoolean("changed_items_recorded")),
+                changed.values(rs.getString("id"), rs.getBoolean("changed_values_recorded")));
     }
 }

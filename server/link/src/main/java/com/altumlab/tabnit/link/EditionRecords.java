@@ -115,7 +115,7 @@ public class EditionRecords {
         }, editionId);
         return jdbc.query("""
                 select id, edition_id, item_key, change_kind, primary_entity_id, status, failed_stage, failure_code,
-                       changed_items_recorded
+                       changed_items_recorded, changed_values_recorded
                   from change_event
                  where edition_id = ?
                  order by item_key
@@ -129,7 +129,7 @@ public class EditionRecords {
     static List<EditionPlan.PreviousItem> previousItems(JdbcTemplate jdbc, String editionId) {
         Map<String, List<EditionPlan.OutputDetail>> outputs = new TreeMap<>(LinkOrder.STRINGS);
         jdbc.query("""
-                select item_key, kind, object_id, subject, fact_hash, valid_from, valid_to
+                select item_key, kind, object_id, subject, fact_hash, valid_from, valid_to, value
                   from edition_item_output
                  where edition_id = ?
                  order by item_key, kind, object_hash
@@ -138,7 +138,7 @@ public class EditionRecords {
                 .add(new EditionPlan.OutputDetail(ItemOutput.Kind.valueOf(rs.getString("kind")),
                         rs.getString("object_id"), rs.getString("subject"), rs.getString("fact_hash"),
                         rs.getObject("valid_from", java.time.LocalDate.class),
-                        rs.getObject("valid_to", java.time.LocalDate.class)));
+                        rs.getObject("valid_to", java.time.LocalDate.class), rs.getString("value")));
         }, editionId);
         return jdbc.query("""
                 select item_key, content_hash, primary_entity_id

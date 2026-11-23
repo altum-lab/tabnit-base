@@ -263,7 +263,7 @@ final class EditionPlanner {
         for (RowPlan row : rows.values()) {
             for (EntityRef entity : row.entities.values()) {
                 String subject = LinkOrder.join(List.of("E", entity.entityType(), entity.entityKey()));
-                row.made(new OutputDetail(ItemOutput.Kind.ENTITY, entity.id(), subject, hash(subject), null, null));
+                row.made(new OutputDetail(ItemOutput.Kind.ENTITY, entity.id(), subject, hash(subject), null, null, null));
             }
         }
         // 앞 판이 넣어 둔 것 (속성 값과 관계). 대상마다, 식별자 순.
@@ -424,8 +424,10 @@ final class EditionPlanner {
             if (same != null) {
                 stated.get(i)
                     .row()
+                    // 값은 이 행이 적은 것이다. 줄이 같아 이은 것이므로 앞 판의 값과 같다: 앞 판이 값을 남기지 않았어도
+                    // 여기서부터는 남는다 (D2 AD-367).
                     .made(new OutputDetail(same.kind(), same.objectId(), same.subject(), stated.get(i).factHash(),
-                            same.validFrom(), same.validTo()));
+                            same.validFrom(), same.validTo(), valueOf(stated.get(i))));
             }
         }
         // 새로 넣을 것. 값과 기간이 같은 것은 하나다.
@@ -490,7 +492,7 @@ final class EditionPlanner {
             for (Statement statement : same) {
                 statement.row()
                     .made(new OutputDetail(statement.kind(), objectId, statement.subject(), statement.factHash(),
-                            period.from(), period.to()));
+                            period.from(), period.to(), valueOf(statement)));
             }
         }
     }
@@ -548,13 +550,15 @@ final class EditionPlanner {
                 changes.add(new ItemChange(itemKey, ChangeKind.ADDED, after.item().primaryEntityId(),
                         List.copyOf(entities(after.outputs())),
                         names(after.outputs(), null, ItemOutput.Kind.ATTRIBUTE_VALUE),
-                        names(after.outputs(), null, ItemOutput.Kind.RELATION)));
+                        names(after.outputs(), null, ItemOutput.Kind.RELATION),
+                        changedValues(List.of(), after.outputs())));
             }
             else if (after == null) {
                 changes.add(new ItemChange(itemKey, ChangeKind.REMOVED, before.primaryEntityId(),
                         List.copyOf(entities(before.outputs())),
                         names(before.outputs(), null, ItemOutput.Kind.ATTRIBUTE_VALUE),
-                        names(before.outputs(), null, ItemOutput.Kind.RELATION)));
+                        names(before.outputs(), null, ItemOutput.Kind.RELATION),
+                        changedValues(before.outputs(), List.of())));
             }
             else if (!made(before.outputs()).equals(made(after.outputs()))) {
                 TreeSet<String> targets = entities(before.outputs());
@@ -562,7 +566,8 @@ final class EditionPlanner {
                 changes.add(new ItemChange(itemKey, ChangeKind.CHANGED, after.item().primaryEntityId(),
                         List.copyOf(targets),
                         changedNames(before.outputs(), after.outputs(), ItemOutput.Kind.ATTRIBUTE_VALUE),
-                        changedNames(before.outputs(), after.outputs(), ItemOutput.Kind.RELATION)));
+                        changedNames(before.outputs(), after.outputs(), ItemOutput.Kind.RELATION),
+                        changedValues(before.outputs(), after.outputs())));
             }
         }
         return changes;
@@ -594,6 +599,65 @@ final class EditionPlanner {
             }
         }
         return List.copyOf(names);
+    }
+
+    /**
+     * 두 판에서 그 행이 만든 것이 다른 속성의 이전 값과 새 값 (D2 AD-367). 바뀐 속성의 이름과 같은 기준이다: 한쪽에만
+     * 있는 속성 값이다. 개체의 식별자, 속성의 이름의 글자 코드 순이다.
+     *
+     * <p>한 행이 같은 개체의 같은 속성 값을 한쪽에서 둘 이상 만들었으면 시작일, 식별자의 차례로 하나씩 짝짓는다.
+     *
+     * @return 바뀐 값. 값을 남기지 않은 판의 것이 하나라도 끼어 있으면 null: 모른다
+     */
+    private List<ValueChange> changedValues(List<OutputDetail> before, List<OutputDetail> after) {
+        TreeMap<String, List<OutputDetail>> olds = bySubject(before, made(after));
+        TreeMap<String, List<OutputDetail>> news = bySubject(after, made(before));
+        TreeSet<String> subjects = new TreeSet<>(LinkOrder.STRINGS);
+        subjects.addAll(olds.keySet());
+        subjects.addAll(news.keySet());
+        // 개체의 식별자, 속성의 이름 순으로 놓는다. 무엇에 대한 것인가의 글자는 (A, 유형, 키, 속성 이름)이다.
+        TreeMap<String, TreeMap<String, List<ValueChange>>> ordered = new TreeMap<>(LinkOrder.STRINGS);
+        for (String subject : subjects) {
+            List<String> parts = LinkOrder.parts(subject);
+            String entityId = new EntityRef(pack.packId(), parts.get(1), parts.get(2)).id();
+            String name = parts.get(3);
+            List<OutputDetail> left = olds.getOrDefault(subject, List.of());
+            List<OutputDetail> right = news.getOrDefault(subject, List.of());
+            List<ValueChange> pairs = new ArrayList<>();
+            for (int i = 0; i < Math.max(left.size(), right.size()); i++) {
+                OutputDetail old = i < left.size() ? left.get(i) : null;
+                OutputDetail fresh = i < right.size() ? right.get(i) : null;
+                if ((old != null && old.value() == null) || (fresh != null && fresh.value() == null)) {
+                    return null;
+                }
+                pairs.add(new ValueChange(entityId, name, old == null ? null : old.value(),
+                        fresh == null ? null : fresh.value()));
+            }
+            ordered.computeIfAbsent(entityId, k -> new TreeMap<>(LinkOrder.STRINGS)).put(name, pairs);
+        }
+        List<ValueChange> changed = new ArrayList<>();
+        ordered.values().forEach(byName -> byName.values().forEach(changed::addAll));
+        return changed;
+    }
+
+    /** except 에 없는 속성 값을 무엇에 대한 것인가로 모은다. 같은 것 안에서는 시작일, 식별자 순이다. */
+    private static TreeMap<String, List<OutputDetail>> bySubject(List<OutputDetail> outputs, TreeSet<String> except) {
+        TreeMap<String, List<OutputDetail>> found = new TreeMap<>(LinkOrder.STRINGS);
+        for (OutputDetail detail : outputs) {
+            if (detail.kind() == ItemOutput.Kind.ATTRIBUTE_VALUE
+                    && !except.contains(detail.kind().name() + "|" + detail.objectId())) {
+                found.computeIfAbsent(detail.subject(), k -> new ArrayList<>()).add(detail);
+            }
+        }
+        found.values()
+            .forEach(list -> list.sort(Comparator.comparing(OutputDetail::validFrom)
+                .thenComparing(OutputDetail::objectId, LinkOrder.STRINGS)));
+        return found;
+    }
+
+    /** 만든 것의 기록에 적을 값. 속성 값만 값이 있다. */
+    private static String valueOf(Statement statement) {
+        return statement.kind() == ItemOutput.Kind.ATTRIBUTE_VALUE ? statement.value() : null;
     }
 
     private static TreeSet<String> made(List<OutputDetail> outputs) {

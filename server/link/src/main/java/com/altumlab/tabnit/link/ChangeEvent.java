@@ -14,14 +14,17 @@ import java.util.List;
  * @param changedAttributes 그 행에서 바뀐 속성의 이름. 글자 코드 순이다. 추가된 행은 넣은 것 전부, 삭제된 행은 넣었던 것
  *        전부다 (D2 AD-291). 바뀐 것을 남기기 전에 만들어진 변동 이벤트이면 null 이다: 바뀐 것이 없는 것이 아니라 모른다
  * @param changedRelationTypes 그 행에서 바뀐 관계 유형의 이름. 글자 코드 순이다. 모르면 null 이다
+ * @param changedValues 그 행에서 바뀐 속성의 이전 값과 새 값 (D2 AD-367). 개체의 식별자, 속성의 이름의 글자 코드 순이다.
+ *        바뀐 값을 남기지 않은 변동 이벤트이면 null 이다: 바뀐 값이 없는 것이 아니라 모른다
  */
 public record ChangeEvent(String id, String editionId, String itemKey, ChangeKind kind, String primaryEntityId,
         ChangeEventStatus status, String failedStage, String failureCode, List<String> targetEntityIds,
-        List<String> changedAttributes, List<String> changedRelationTypes) {
+        List<String> changedAttributes, List<String> changedRelationTypes, List<ValueChange> changedValues) {
 
     public ChangeEvent {
         targetEntityIds = List.copyOf(targetEntityIds);
         changedAttributes = changedAttributes == null ? null : List.copyOf(changedAttributes);
         changedRelationTypes = changedRelationTypes == null ? null : List.copyOf(changedRelationTypes);
+        changedValues = changedValues == null ? null : List.copyOf(changedValues);
     }
 }

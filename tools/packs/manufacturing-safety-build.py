@@ -4,7 +4,7 @@
 # 정답은 엔진을 부르지 않고, 문서(D3 6절·7절, D8 1절·2절·3절·4절, D7 의 순서)의 규칙을 이 파일에 따로 구현해 계산한다.
 #
 # 쓰는 법 (저장소의 맨 위에서): python3 tools/packs/manufacturing-safety-build.py packs/manufacturing-safety
-# 다시 돌리면 data/ 와 questions/S-01.yaml 을 똑같이 다시 쓴다. 정의 파일(ttl)은 손대지 않는다.
+# 다시 돌리면 data/ 와 questions/S-01.yaml, questions/crosscheck/S-01.yaml 을 똑같이 다시 쓴다. 정의 파일(ttl)은 손대지 않는다.
 #
 # 이 계산이 하지 않는 것 (그래서 이 Pack 의 질문은 이런 경우를 묻지 않는다. 그 규칙은 엔진의 일반 시험과 시험용 Pack 이 본다):
 # - 길이가 같은 근거 경로가 둘일 때 관계 식별자로 가리는 것 (D3 7절). 그런 경우를 만나면 멈춘다.
@@ -287,7 +287,7 @@ def ingest(step_no, source, idx):
     for r in REL:
         if r[5] == source and r[4] is None and (r[0], r[1], r[2]) not in now_rels: r[4] = date
     live = {(r[0], r[1], r[2]) for r in REL if r[5] == source and r[4] is None}
-    for rel in sorted(now_rels - live): REL.append([rel[0], rel[1], rel[2], date, None, source])
+    for rel in sorted(now_rels - live): REL.append([rel[0], rel[1], rel[2], date, None, source, EDITION_NO[source]])
     now_att = {k: val for f in new.values() for k, val in f[2].items()}
     for a in ATT:
         if a[5] == source and a[4] is None and now_att.get((a[0], a[1])) != a[2]: a[4] = date
@@ -550,3 +550,109 @@ print("Q-09", len(i9), t9, "| Q-10", len(i10), t10, "| Q-11", len(i11), t11, "| 
 print("Q-12", len(a12), "| Q-13", len(a13), "| Q-14", len(a14), "| Q-15", len(a15), "| Q-19", len(a19), "| Q-20", len(a20), "| Q-22", len(a22), "| Q-18", len(i18), t18, "| Q-21", len(i21), t21)
 print("Q-24", len(a24), "| Q-25", len(a25), "| Q-26", len(a26), [(a[2], a[3].split("|")[2]) for a in a26 if a[2] == "0001"])
 for s in (STEP_A, STEP_B, STEP_C, STEP_E, STEP_G, STEP_F, STEP_D): print(s, [(e[0], e[1], sorted(e[7])) for e in EVENTS[s]])
+
+# ── 전수 대조 (A-09, D2 AD-369) ─────────────────────────────────────
+# 질문이 묻지 않은 변동과 개체까지 모두, 같은 계산으로 만든 값을 적는다. 검증 질문을 돌릴 때 엔진의 답과 견준다 (D4 3절).
+# 길이가 같은 근거 경로가 둘인 변동은 이 자료에 없다 (있었다면 위의 bfs 가 멈췄다). 관계 유형과 상대가 같은 관계가
+# 둘일 때와 관계 지도의 간선은 관계 식별자로 차례를 정한다.
+def rel_id(r):
+    """관계의 식별자: 출발, 도착, 유형, 출처(입력 자료와 판 번호), 시작일을 이은 글자 (D5 1절)."""
+    return "|".join([r[1], r[2].split("|", 1)[1], r[0], r[5], str(r[6]), r[3]])
+
+def relations_as_of_all(entity, day):
+    rows = []
+    for r in REL:
+        if valid(r[3], r[4], day) and entity in (r[1], r[2]):
+            other = r[2] if r[1] == entity else r[1]
+            rows.append((r[0], other, rel_id(r), r[1], r[2], r[3], r[4]))
+    return [(rt, other, s_, t_, f, to) for rt, other, _, s_, t_, f, to in sorted(rows)]
+
+MAX_NODES = 200
+
+def relation_map(center, day, depth):
+    """관계 지도 (D7 4절 "관계 지도", D2 AD-352, AD-357). 그 날짜에 유효한 관계를 방향과 무관하게 따라간다.
+    가까운 단계부터 따라가다가 찾은 노드가 한도를 넘으면 그 단계에서 멈춘다. 노드는 깊이, 유형, 식별자 순으로 한도까지,
+    간선은 두 끝이 모두 담긴 노드인 관계를 유형, 출발, 도착, 관계 식별자 순으로 담는다."""
+    near = {}
+    live = [r for r in REL if valid(r[3], r[4], day)]
+    for r in live:
+        near.setdefault(r[1], set()).add(r[2])
+        near.setdefault(r[2], set()).add(r[1])
+    found, frontier, reached = {center: 0}, [center], depth
+    for d in range(1, depth + 1):
+        nxt = sorted({o for n in frontier for o in near.get(n, ()) if o not in found})
+        for o in nxt: found[o] = d
+        frontier = nxt
+        if len(found) > MAX_NODES:
+            reached = d
+            break
+    ordered = sorted(found.items(), key=lambda kv: (kv[1], type_of(kv[0]), kv[0]))
+    nodes = ordered[:MAX_NODES]
+    kept = {o for o, _ in nodes}
+    edges = sorted((r for r in live if r[1] in kept and r[2] in kept), key=lambda r: (r[0], r[1], r[2], rel_id(r)))
+    return nodes, edges, len(found), len(found) > MAX_NODES, reached
+
+x = ["""# 제조 안전 Pack 의 전수 대조. 형식은 D4 3절 "전수 대조"다.
+#
+# 손으로 고치지 않는다: tools/packs/manufacturing-safety-build.py 가 만든다.
+# 질문이 아니다. 대표가 확정한 정답이 아니라, 예시 입력 파일에서 문서의 규칙을 엔진과 따로 구현한 계산으로 만든 값이다.
+# 엔진의 답과 다르면 엔진의 결함이거나 이 계산의 잘못이다: 어느 쪽인지 가려서 고친다.
+#
+# 담은 것: 시나리오의 모든 변동의 영향 범위 (X-I), 모든 개체의 경계 날짜의 관계 (X-R: 그 개체의 관계가 시작하거나 끝나는
+# 날과 그 전날, 그리고 현재), 모든 개체의 현재의 관계 지도 깊이 1 과 유형마다 한 개체의 깊이 2, 3 (X-M).
+
+scenario: S-01
+checks:
+"""]
+CURRENT = "2026-12-01"
+ALL_ENTITIES = sorted({e for f in PREV.values() for v in f.values() for e in v[1]} | {r[1] for r in REL} | {r[2] for r in REL})
+def day_before(day): return (D(day) - datetime.timedelta(days=1)).isoformat()
+n_i = 0
+for step in sorted(EVENTS):
+    for e in EVENTS[step]:
+        n_i += 1
+        ordered, truncated, day, prev = IMPACTS[(step, e[0])]
+        x.append("  - id: X-I-%04d\n    kind: impact\n    change: { step: %d, itemKey: [%s] }\n    expect:\n      targets:%s" % (n_i, step, ", ".join(e[0].split("|")), "" if ordered else " []"))
+        by_type, by_depth = {}, {}
+        for o, (depth, path, start, used) in ordered:
+            rels = ", ".join("{ type: %s, source: %s, target: %s }" % (p[0], ref(p[1]), ref(p[2])) for p in path)
+            x.append("        - { entity: %s, depth: %d, path: { from: %s, asOf: %s, relations: [ %s ] } }" % (ref(o), depth, ref(start), used, rels))
+            by_type[type_of(o)] = by_type.get(type_of(o), 0) + 1
+            by_depth[depth] = by_depth.get(depth, 0) + 1
+        x.append("      countsByType: { %s }" % ", ".join("%s: %d" % kv for kv in sorted(by_type.items())))
+        x.append("      countsByDepth: { %s }" % ", ".join("%d: %d" % kv for kv in sorted(by_depth.items())))
+        x.append("      truncated: %s" % ("true" if truncated else "false"))
+n_r = 0
+for entity in ALL_ENTITIES:
+    days = {CURRENT}
+    for r in REL:
+        if entity in (r[1], r[2]):
+            for edge in (r[3], r[4]):
+                if edge is not None: days |= {edge, day_before(edge)}
+    for day in sorted(days):
+        n_r += 1
+        rows = relations_as_of_all(entity, day)
+        x.append("  - id: X-R-%05d\n    kind: relations-as-of\n    asOf: %s\n    entity: %s\n    expect:\n      relations:%s" % (n_r, day, ref(entity), "" if rows else " []"))
+        for rt, other, s_, t_, f, to in rows:
+            x.append("        - { type: %s, source: %s, target: %s, validFrom: %s, validTo: %s }" % (rt, ref(s_), ref(t_), f, to or "null"))
+n_m = 0
+deep, seen_types = [], set()
+for entity in ALL_ENTITIES:
+    if type_of(entity) not in seen_types:
+        seen_types.add(type_of(entity))
+        deep.append(entity)
+cut_short = 0
+for entity, depth in [(e, 1) for e in ALL_ENTITIES] + [(e, d) for e in deep for d in (2, 3)]:
+    n_m += 1
+    nodes, edges, total, truncated, reached = relation_map(entity, CURRENT, depth)
+    cut_short += 1 if reached < depth else 0
+    x.append("  - id: X-M-%04d\n    kind: relation-map\n    asOf: %s\n    entity: %s\n    depth: %d\n    expect:\n      nodes:" % (n_m, CURRENT, ref(entity), depth))
+    for o, d in nodes: x.append("        - { entity: %s, depth: %d }" % (ref(o), d))
+    x.append("      edges:" + ("" if edges else " []"))
+    for r in edges:
+        x.append("        - { type: %s, source: %s, target: %s, validFrom: %s, validTo: %s }" % (r[0], ref(r[1]), ref(r[2]), r[3], r[4] or "null"))
+    x.append("      totalNodes: %d\n      truncated: %s\n      reachedDepth: %d" % (total, "true" if truncated else "false", reached))
+os.makedirs(os.path.join(OUT, "questions", "crosscheck"), exist_ok=True)
+open(os.path.join(OUT, "questions", "crosscheck", "S-01.yaml"), "w", encoding="utf-8").write("\n".join(x) + "\n")
+print("전수 대조: 영향 범위", n_i, "시점 조회", n_r, "관계 지도", n_m, "| 얕은 데서 멈춘 지도", cut_short)
+

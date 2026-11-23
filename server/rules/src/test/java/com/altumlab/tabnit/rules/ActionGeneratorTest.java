@@ -313,6 +313,36 @@ class ActionGeneratorTest {
             .isEqualTo(ActionGeneration.Outcome.STORED);
     }
 
+    // 위의 시험은 주 개체를 읽다가 실패한다. 이 시험은 그것을 지나, 규칙의 조건이 속성 값을 읽을 때 실패한다:
+    // 평가의 읽기 전용 트랜잭션 안에서 난 실패도 같은 예외로 나온다.
+    @Test
+    void 조건의_속성_값을_읽다가_저장소에서_읽지_못해도_저장소의_실패로_알린다() {
+        String p = "a-read-fail-value";
+        EntityRef start = entity(p, "Base", "B-1");
+        EntityRef target = entity(p, "Other", "O-1");
+        link(start, target);
+        value(target, "count", "5");
+        RuleChange change = change("ev-read-fail-value", start);
+        PackDefinition pack = pack(p,
+                rule("0001", 1, IMPACT, "Other", 7, new RuleCondition(IMPACT, null, "count", RuleOperator.GREATER_THAN, List.of("1"))));
+        var scope = scope(start);
+        jdbc.execute("alter table attribute_value rename to attribute_value_unreadable");
+        try {
+            assertThatThrownBy(() -> generator.generate(pack, change, EDITION, scope, 3, NOW))
+                .isInstanceOf(ActionStorageException.class)
+                .hasMessageContaining("ev-read-fail-value")
+                .hasMessageContaining("저장소");
+        }
+        finally {
+            jdbc.execute("alter table attribute_value_unreadable rename to attribute_value");
+        }
+        assertThat(records.impactScope("ev-read-fail-value")).isEmpty();
+        // 저장소가 돌아오면 같은 변동을 다시 실행해 조치까지 저장한다.
+        ActionGeneration again = generator.generate(pack, change, EDITION, scope, 3, NOW);
+        assertThat(again.outcome()).isEqualTo(ActionGeneration.Outcome.STORED);
+        assertThat(again.actions()).hasSize(1);
+    }
+
     @Test
     void 기한이_저장소가_담는_날짜를_넘으면_그_규칙의_실패다() {
         String p = "a-due-far";

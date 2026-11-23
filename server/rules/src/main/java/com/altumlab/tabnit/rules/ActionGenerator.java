@@ -1,5 +1,6 @@
 package com.altumlab.tabnit.rules;
 
+import com.altumlab.tabnit.core.CoreStorageException;
 import com.altumlab.tabnit.core.EntityQuery;
 import com.altumlab.tabnit.core.EntityRef;
 import com.altumlab.tabnit.core.ImpactScope;
@@ -78,7 +79,8 @@ public class ActionGenerator {
      * @param recordedAt 저장하는 때. 밖에서 받는다. 마이크로초까지 남긴다
      * @throws IllegalArgumentException 잘못 부른 것: 주 개체나 변동 대상이 저장소에 없거나 이 Pack 의 것이 아닐 때,
      *         영향 범위가 이 변동의 것으로 볼 수 없을 때. 아무것도 저장하지 않는다
-     * @throws ActionStorageException 저장하지 못했을 때. 아무것도 남지 않는다
+     * @throws ActionStorageException 저장하지 못했을 때, 또는 규칙을 평가하는 도중에 저장소에서 읽지 못했을 때
+     *         (D2 AD-371). 아무것도 남지 않는다
      */
     public ActionGeneration generate(PackDefinition pack, RuleChange change, BasisEdition edition, ImpactScope scope,
             int maxDepth, Instant recordedAt) {
@@ -130,6 +132,13 @@ public class ActionGenerator {
         catch (DataAccessException | TransactionException e) {
             throw new ActionStorageException("변동 이벤트 " + eventId
                     + " 의 영향 범위와 조치를 저장하지 못했습니다. 저장은 전부 되거나 전부 안 됩니다. 저장소의 상태를 확인한 뒤 다시 실행하세요."
+                    + " 다시 실행해도 같은 조치가 두 번 생기지 않습니다.", e);
+        }
+        catch (CoreStorageException e) {
+            // 규칙을 평가하려고 개체, 속성 값, 관계를 읽다가 저장소에서 읽지 못했다. 정의와 자료가 어긋난 것이 아니라
+            // 저장소의 실패다 (D8 7절, D5 8절의 STORAGE_FAILURE, D2 AD-371). 아직 아무것도 저장하지 않았다.
+            throw new ActionStorageException("변동 이벤트 " + eventId
+                    + " 의 규칙을 평가하다가 저장소에서 읽지 못했습니다. 아무것도 저장하지 않았습니다. 저장소의 상태를 확인한 뒤 다시 실행하세요."
                     + " 다시 실행해도 같은 조치가 두 번 생기지 않습니다.", e);
         }
     }
@@ -252,7 +261,8 @@ public class ActionGenerator {
             if (rule.dueInDays() < 0 || due.isAfter(LAST_DATE)) {
                 // 기한을 날짜로 담을 수 없다. 규칙마다 한 번만 알린다.
                 failed.add(rule.ruleNo());
-                failures.add(new RuleFailure(rule.ruleNo(), "DUE_DATE_OUT_OF_RANGE", match.targetEntityId(), null,
+                // 틀린 것은 대상이 아니라 규칙에 적힌 일수다: 걸린 개체는 비우고 일수를 값으로 알린다 (D7 5절, D2 AD-371).
+                failures.add(new RuleFailure(rule.ruleNo(), "DUE_DATE_OUT_OF_RANGE", null, null,
                         String.valueOf(rule.dueInDays())));
                 continue;
             }

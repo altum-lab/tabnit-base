@@ -6,6 +6,7 @@
 #
 # 담은 것: 시나리오의 모든 변동의 영향 범위 (X-I), 모든 개체의 경계 날짜의 관계 (X-R: 그 개체의 관계가 시작하거나 끝나는
 # 날과 그 전날, 그리고 현재), 모든 개체의 현재의 관계 지도 깊이 1 과 유형마다 한 개체의 깊이 2, 3 (X-M).
+# 모든 변동의 조치 (X-A: 근거 규칙, 우선순위, 대상, 기한, 근거 조항과 그 판).
 
 scenario: S-01
 checks:
@@ -433,6 +434,219 @@ checks:
       countsByType: { 공정설비: 4, 작업인원: 9, 제조공정: 2, 화학물질: 1 }
       countsByDepth: { 1: 1, 2: 2, 3: 13 }
       truncated: true
+  - id: X-A-0001
+    kind: actions
+    change: { step: 21, itemKey: [SDS-01] }
+    expect:
+      actions:
+        - { rule: "0004", priority: 1, target: { type: 물질안전자료, key: SDS-01 }, dueDate: 2026-09-05, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 가-세정-01-E1 }, dueDate: 2026-09-09, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 가-세정-01-E2 }, dueDate: 2026-09-09, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 가-세정-01-E3 }, dueDate: 2026-09-09, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 가-세정-02-E1 }, dueDate: 2026-09-09, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 가-세정-02-E2 }, dueDate: 2026-09-09, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 가-세정-02-E3 }, dueDate: 2026-09-09, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 나-세정-02-E1 }, dueDate: 2026-09-09, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 나-세정-02-E2 }, dueDate: 2026-09-09, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 나-세정-02-E3 }, dueDate: 2026-09-09, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 다-세정-01-E1 }, dueDate: 2026-09-09, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 다-세정-01-E2 }, dueDate: 2026-09-09, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 다-세정-01-E3 }, dueDate: 2026-09-09, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0003", priority: 2, target: { type: 약품보관소, key: STO-가-A }, dueDate: 2026-09-09, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0003", priority: 2, target: { type: 약품보관소, key: STO-나-B }, dueDate: 2026-09-09, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0003", priority: 2, target: { type: 약품보관소, key: STO-다-A }, dueDate: 2026-09-09, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1001 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1002 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1003 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1004 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1005 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1006 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1007 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1008 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1009 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1010 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1011 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1012 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1013 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1032 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1033 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1034 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1035 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1036 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1037 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1052 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1053 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1054 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1055 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1056 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0005", priority: 1, target: { type: 작업인원, key: W-1001 }, dueDate: 2026-10-02, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0005", priority: 1, target: { type: 작업인원, key: W-1002 }, dueDate: 2026-10-02, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0005", priority: 1, target: { type: 작업인원, key: W-1003 }, dueDate: 2026-10-02, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0005", priority: 1, target: { type: 작업인원, key: W-1004 }, dueDate: 2026-10-02, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0005", priority: 1, target: { type: 작업인원, key: W-1005 }, dueDate: 2026-10-02, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0005", priority: 1, target: { type: 작업인원, key: W-1006 }, dueDate: 2026-10-02, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0005", priority: 1, target: { type: 작업인원, key: W-1007 }, dueDate: 2026-10-02, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0005", priority: 1, target: { type: 작업인원, key: W-1008 }, dueDate: 2026-10-02, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0005", priority: 1, target: { type: 작업인원, key: W-1009 }, dueDate: 2026-10-02, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0005", priority: 1, target: { type: 작업인원, key: W-1010 }, dueDate: 2026-10-02, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0005", priority: 1, target: { type: 작업인원, key: W-1011 }, dueDate: 2026-10-02, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0005", priority: 1, target: { type: 작업인원, key: W-1012 }, dueDate: 2026-10-02, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0005", priority: 1, target: { type: 작업인원, key: W-1013 }, dueDate: 2026-10-02, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0005", priority: 1, target: { type: 작업인원, key: W-1032 }, dueDate: 2026-10-02, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0005", priority: 1, target: { type: 작업인원, key: W-1033 }, dueDate: 2026-10-02, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0005", priority: 1, target: { type: 작업인원, key: W-1034 }, dueDate: 2026-10-02, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0005", priority: 1, target: { type: 작업인원, key: W-1035 }, dueDate: 2026-10-02, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0005", priority: 1, target: { type: 작업인원, key: W-1036 }, dueDate: 2026-10-02, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0005", priority: 1, target: { type: 작업인원, key: W-1037 }, dueDate: 2026-10-02, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0005", priority: 1, target: { type: 작업인원, key: W-1052 }, dueDate: 2026-10-02, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0005", priority: 1, target: { type: 작업인원, key: W-1053 }, dueDate: 2026-10-02, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0005", priority: 1, target: { type: 작업인원, key: W-1054 }, dueDate: 2026-10-02, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0005", priority: 1, target: { type: 작업인원, key: W-1055 }, dueDate: 2026-10-02, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0005", priority: 1, target: { type: 작업인원, key: W-1056 }, dueDate: 2026-10-02, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 2 } }
+  - id: X-A-0002
+    kind: actions
+    change: { step: 21, itemKey: [SDS-04] }
+    expect:
+      actions:
+        - { rule: "0004", priority: 1, target: { type: 물질안전자료, key: SDS-04 }, dueDate: 2026-09-05, basis: { entity: { type: 물질안전자료, key: SDS-04 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1014 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-04 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1015 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-04 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1016 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-04 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1017 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-04 }, inputSource: safety-sheet, edition: 2 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1018 }, dueDate: 2026-09-16, basis: { entity: { type: 물질안전자료, key: SDS-04 }, inputSource: safety-sheet, edition: 2 } }
+  - id: X-A-0003
+    kind: actions
+    change: { step: 22, itemKey: [W-1003] }
+    expect:
+      actions:
+        - { rule: "0006", priority: 2, target: { type: 작업인원, key: W-1003 }, dueDate: 2026-10-11, basis: { entity: { type: 작업인원, key: W-1003 }, inputSource: worker, edition: 2 } }
+  - id: X-A-0004
+    kind: actions
+    change: { step: 22, itemKey: [W-1024] }
+    expect:
+      actions: []
+  - id: X-A-0005
+    kind: actions
+    change: { step: 22, itemKey: [W-1038] }
+    expect:
+      actions: []
+  - id: X-A-0006
+    kind: actions
+    change: { step: 22, itemKey: [W-1039] }
+    expect:
+      actions: []
+  - id: X-A-0007
+    kind: actions
+    change: { step: 22, itemKey: [W-1052] }
+    expect:
+      actions: []
+  - id: X-A-0008
+    kind: actions
+    change: { step: 22, itemKey: [W-1061] }
+    expect:
+      actions:
+        - { rule: "0006", priority: 2, target: { type: 작업인원, key: W-1061 }, dueDate: 2026-10-11, basis: { entity: { type: 작업인원, key: W-1061 }, inputSource: worker, edition: 2 } }
+  - id: X-A-0009
+    kind: actions
+    change: { step: 23, itemKey: [나-세정-03] }
+    expect:
+      actions: []
+  - id: X-A-0010
+    kind: actions
+    change: { step: 24, itemKey: [나-세정-03-E1] }
+    expect:
+      actions: []
+  - id: X-A-0011
+    kind: actions
+    change: { step: 24, itemKey: [나-세정-03-E2] }
+    expect:
+      actions: []
+  - id: X-A-0012
+    kind: actions
+    change: { step: 24, itemKey: [나-세정-03-E3] }
+    expect:
+      actions: []
+  - id: X-A-0013
+    kind: actions
+    change: { step: 24, itemKey: [나-세정-03-E4] }
+    expect:
+      actions: []
+  - id: X-A-0014
+    kind: actions
+    change: { step: 25, itemKey: [MAT-02] }
+    expect:
+      actions: []
+  - id: X-A-0015
+    kind: actions
+    change: { step: 26, itemKey: [다-세정-01, MAT-01] }
+    expect:
+      actions: []
+  - id: X-A-0016
+    kind: actions
+    change: { step: 27, itemKey: [SDS-01] }
+    expect:
+      actions:
+        - { rule: "0004", priority: 1, target: { type: 물질안전자료, key: SDS-01 }, dueDate: 2026-11-23, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 가-세정-01-E1 }, dueDate: 2026-11-27, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 가-세정-01-E2 }, dueDate: 2026-11-27, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 가-세정-01-E3 }, dueDate: 2026-11-27, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 가-세정-02-E1 }, dueDate: 2026-11-27, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 가-세정-02-E2 }, dueDate: 2026-11-27, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 가-세정-02-E3 }, dueDate: 2026-11-27, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 나-세정-02-E1 }, dueDate: 2026-11-27, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 나-세정-02-E2 }, dueDate: 2026-11-27, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 나-세정-02-E3 }, dueDate: 2026-11-27, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 나-세정-03-E1 }, dueDate: 2026-11-27, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 나-세정-03-E2 }, dueDate: 2026-11-27, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 나-세정-03-E3 }, dueDate: 2026-11-27, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 나-세정-03-E4 }, dueDate: 2026-11-27, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 다-세정-01-E1 }, dueDate: 2026-11-27, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 다-세정-01-E2 }, dueDate: 2026-11-27, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 다-세정-01-E3 }, dueDate: 2026-11-27, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0003", priority: 2, target: { type: 약품보관소, key: STO-가-A }, dueDate: 2026-11-27, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0003", priority: 2, target: { type: 약품보관소, key: STO-나-B }, dueDate: 2026-11-27, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0003", priority: 2, target: { type: 약품보관소, key: STO-다-A }, dueDate: 2026-11-27, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1001 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1002 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1003 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1004 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1005 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1006 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1007 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1008 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1009 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1010 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1011 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1012 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1013 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1032 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1033 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1034 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1035 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1036 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1037 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1053 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1054 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1055 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1056 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1061 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-01 }, inputSource: safety-sheet, edition: 3 } }
+  - id: X-A-0017
+    kind: actions
+    change: { step: 27, itemKey: [SDS-06] }
+    expect:
+      actions:
+        - { rule: "0004", priority: 1, target: { type: 물질안전자료, key: SDS-06 }, dueDate: 2026-11-23, basis: { entity: { type: 물질안전자료, key: SDS-06 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 가-확산-02-E1 }, dueDate: 2026-11-27, basis: { entity: { type: 물질안전자료, key: SDS-06 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 가-확산-02-E2 }, dueDate: 2026-11-27, basis: { entity: { type: 물질안전자료, key: SDS-06 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 나-증착-01-E1 }, dueDate: 2026-11-27, basis: { entity: { type: 물질안전자료, key: SDS-06 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0002", priority: 2, target: { type: 공정설비, key: 나-증착-01-E2 }, dueDate: 2026-11-27, basis: { entity: { type: 물질안전자료, key: SDS-06 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1025 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-06 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1026 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-06 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1027 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-06 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1039 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-06 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1040 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-06 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1041 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-06 }, inputSource: safety-sheet, edition: 3 } }
+        - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1042 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-06 }, inputSource: safety-sheet, edition: 3 } }
   - id: X-R-00001
     kind: relations-as-of
     asOf: 2025-12-31

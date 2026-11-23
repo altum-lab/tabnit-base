@@ -1,4 +1,5 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router";
 import { api, type RelationMap, type RelationsAsOf } from "../api/client";
 import { CONNECTION_FAILED, messageOf } from "../api/problem";
 import { addDays } from "../time";
@@ -29,8 +30,13 @@ type View =
 type Query = { entityId: string; asOf?: string; depth: number };
 
 export function RelationsPage() {
-  const [entityId, setEntityId] = useState("");
-  const [asOf, setAsOf] = useState("");
+  // 다른 화면에서 개체와 조회 시점을 주소에 담아 넘겨줄 수 있다 (영향 범위 화면의 "관계 지도": ?entityId=…&asOf=…).
+  // 처음 열릴 때 한 번 그 값으로 조회한다. 그 뒤로 이 화면에서 바꾼 것은 주소에 적지 않는다.
+  const [params] = useSearchParams();
+  const givenEntityId = params.get("entityId") ?? "";
+  const givenAsOf = params.get("asOf") ?? "";
+  const [entityId, setEntityId] = useState(givenEntityId);
+  const [asOf, setAsOf] = useState(givenAsOf);
   const [depth, setDepth] = useState<number>(1);
   const [view, setView] = useState<View>({ kind: "idle" });
   // 지도를 2D 로 그릴지 3D 로 그릴지. 화면을 열어 둔 동안 유지한다 (다시 받아도, 가운데를 옮겨도). D2 AD-361.
@@ -107,6 +113,18 @@ export function RelationsPage() {
       }
     }
   }
+
+  const opened = useRef(false);
+  useEffect(() => {
+    // 주소로 개체를 받았으면 조회 단추를 누른 것처럼 한 번 조회한다.
+    if (opened.current || !givenEntityId) {
+      return;
+    }
+    opened.current = true;
+    void load(givenAsOf ? { entityId: givenEntityId, asOf: givenAsOf, depth } : { entityId: givenEntityId, depth }, true);
+    // 처음 열릴 때의 주소만 본다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function search(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

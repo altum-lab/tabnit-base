@@ -106,6 +106,174 @@ class ImpactQueryTest {
     }
 
     @Test
+    void 방향을_모르는_유형은_들어오는_쪽에서_만나도_어느_쪽으로도_퍼지지_않는_곳에서_만나도_알린다() {
+        // 읽을 때 방향으로 거르더라도 (A-07), 방향을 모르는 유형의 관계는 어느 끝에서 닿든 만난 것이다 (D2 AD-123).
+        String incoming = "imp-unknown-incoming";
+        rel(incoming, "a", "b", "R");
+        // b 로 들어오는 관계다. R 은 출발에서 도착으로만 퍼지므로 b 에서 들어오는 쪽은 따라가지 않는다.
+        rel(incoming, "z", "b", "X");
+        assertThatThrownBy(() -> impact.impactScope(request(List.of(id(incoming, "a")), List.of(DAY), FORWARD, 3)))
+                .isInstanceOf(UnknownImpactDirectionException.class)
+                .hasMessageContaining("X");
+
+        // 출발 개체로 들어오는 관계.
+        String atStart = "imp-unknown-at-start";
+        rel(atStart, "z", "a", "X");
+        assertThatThrownBy(() -> impact.impactScope(request(List.of(id(atStart, "a")), List.of(DAY), FORWARD, 1)))
+                .isInstanceOf(UnknownImpactDirectionException.class)
+                .hasMessageContaining("X");
+
+        // 도착에서 출발로만 퍼지는 유형만 아는데, 나가는 쪽에서 모르는 유형을 만난다.
+        String outgoing = "imp-unknown-outgoing";
+        rel(outgoing, "b", "a", "B");
+        rel(outgoing, "b", "y", "X");
+        assertThatThrownBy(() -> impact.impactScope(request(List.of(id(outgoing, "a")), List.of(DAY),
+                Map.of("B", ImpactDirection.TARGET_TO_SOURCE), 3)))
+                .isInstanceOf(UnknownImpactDirectionException.class)
+                .hasMessageContaining("X");
+
+        // 최대 깊이 너머의 개체로 들어오는 관계에서도 같다.
+        String far = "imp-unknown-far-incoming";
+        rel(far, "a", "b", "R");
+        rel(far, "z", "b", "X");
+        assertThatThrownBy(() -> impact.impactScope(request(List.of(id(far, "a")), List.of(DAY), FORWARD, 1)))
+                .isInstanceOf(UnknownImpactDirectionException.class)
+                .hasMessageContaining("X");
+    }
+
+    @Test
+    void 네_가지_방향의_유형이_한_개체에_섞여_닿아도_퍼지는_쪽으로만_따라간다() {
+        String p = "imp-mixed-directions";
+        Map<String, ImpactDirection> directions = Map.of("F", ImpactDirection.SOURCE_TO_TARGET, "B",
+                ImpactDirection.TARGET_TO_SOURCE, "W", ImpactDirection.BOTH, "N", ImpactDirection.NONE);
+        // 가운데 m 에 유형마다 나가는 관계와 들어오는 관계를 하나씩 둔다.
+        for (String type : List.of("F", "B", "W", "N")) {
+            rel(p, "m", "out-" + type, type);
+            rel(p, "in-" + type, "m", type);
+        }
+        // 한 단계 더: 퍼진 곳에서 다시 퍼지는 것과 퍼지지 않는 것.
+        rel(p, "out-F", "far-F", "F");
+        rel(p, "far-B", "in-B", "B");
+        rel(p, "in-F", "out-F", "N");
+
+        ImpactScope one = impact.impactScope(request(List.of(id(p, "m")), List.of(DAY), directions, 1));
+        // F 는 나가는 쪽으로, B 는 들어오는 쪽으로, W 는 양쪽으로. N 은 어느 쪽으로도 퍼지지 않는다.
+        assertThat(one.targets()).extracting(ImpactTarget::entityId)
+                .containsExactlyInAnyOrder(id(p, "out-F"), id(p, "in-B"), id(p, "out-W"), id(p, "in-W"));
+        // 그 너머에 far-F 와 far-B 가 있다.
+        assertThat(one.truncated()).isTrue();
+
+        ImpactScope two = impact.impactScope(request(List.of(id(p, "m")), List.of(DAY), directions, 2));
+        assertThat(two.targets()).extracting(ImpactTarget::entityId)
+                .containsExactlyInAnyOrder(id(p, "out-F"), id(p, "in-B"), id(p, "out-W"), id(p, "in-W"), id(p, "far-F"),
+                        id(p, "far-B"));
+        assertThat(pathOf(two, id(p, "far-B"))).hasSize(2);
+        // 남은 것은 퍼지지 않는 쪽의 관계뿐이다.
+        assertThat(two.truncated()).isFalse();
+    }
+
+    @Test
+    void 방향을_모르는_유형의_관계가_양쪽_끝에_있으면_식별자가_앞선_관계를_알린다() {
+        // 읽는 관계를 방향으로 거르더라도 알리는 관계는 같아야 한다 (A-07): 식별자 순으로 처음 만난 것이다.
+        String p = "imp-unknown-both-ends";
+        // 식별자 순: …|0|T|a|Y… (들어오는 쪽) < …|a|T|b|B… (아는 유형, 이 끝에서는 퍼지지 않아 읽지 않는다)
+        //           < …|a|T|c|X… (나가는 쪽).
+        String incoming = rel(p, "0", "a", "Y");
+        rel(p, "a", "b", "B");
+        rel(p, "a", "c", "X");
+        Map<String, ImpactDirection> directions = Map.of("B", ImpactDirection.TARGET_TO_SOURCE);
+
+        for (int i = 0; i < 2; i++) {
+            assertThatThrownBy(() -> impact.impactScope(request(List.of(id(p, "a")), List.of(DAY), directions, 2)))
+                    .isInstanceOf(UnknownImpactDirectionException.class)
+                    .hasMessage("영향 방향을 모르는 관계 유형입니다: Y (관계: " + incoming
+                            + "). Pack 의 온톨로지에 이 관계 유형과 영향 방향이 있는지 확인하세요.");
+        }
+    }
+
+    @Test
+    void 들어오는_쪽의_방향을_모르는_유형은_유효한_날짜에서만_만난다() {
+        String p = "imp-unknown-incoming-dates";
+        rel(p, "a", "b", "R");
+        // b 로 들어오는 모르는 유형의 관계. 2026-03-01 에 시작한다.
+        String late = relBetween(p, "z", "b", "X", "2026-03-01", null);
+
+        // 전날에는 유효하지 않아 만나지 않는다.
+        assertThat(impact.impactScope(request(List.of(id(p, "a")), List.of(DAY.minusDays(1)), FORWARD, 3)).targets())
+                .extracting(ImpactTarget::entityId).containsExactly(id(p, "b"));
+        // 두 날짜로 보면 뒤 날짜에서 만난다.
+        assertThatThrownBy(
+                () -> impact.impactScope(request(List.of(id(p, "a")), List.of(DAY.minusDays(1), DAY), FORWARD, 3)))
+                .isInstanceOf(UnknownImpactDirectionException.class)
+                .hasMessageContaining(late);
+    }
+
+    @Test
+    void 아는_유형과_글자가_거의_같은_유형도_방향을_모르는_유형이다() {
+        // 저장소에서 유형을 견주는 것과 코드에서 견주는 것이 같아야 한다: 대소문자와 빈칸을 가린다.
+        for (String almost : List.of("r", "R ", " R", "RR")) {
+            String p = "imp-unknown-almost-" + Integer.toHexString(almost.hashCode());
+            rel(p, "a", "b", "R");
+            rel(p, "z", "b", almost);
+            assertThatThrownBy(() -> impact.impactScope(request(List.of(id(p, "a")), List.of(DAY), FORWARD, 3)))
+                    .as("유형 [" + almost + "]")
+                    .isInstanceOf(UnknownImpactDirectionException.class)
+                    .hasMessageContaining("영향 방향을 모르는 관계 유형입니다: " + almost + " (");
+        }
+    }
+
+    @Test
+    void 퍼지지_않는_유형만_넘겨받으면_아무_데도_닿지_않고_한계_표시도_켜지_않는다() {
+        String p = "imp-none-only";
+        rel(p, "a", "b", "N");
+        rel(p, "c", "a", "N");
+        rel(p, "b", "d", "N");
+
+        ImpactScope scope = impact
+            .impactScope(request(List.of(id(p, "a")), List.of(DAY), Map.of("N", ImpactDirection.NONE), 2));
+
+        assertThat(scope.targets()).isEmpty();
+        assertThat(scope.truncated()).isFalse();
+    }
+
+    @Test
+    void 관계_유형이_많고_이름에_특별한_글자가_있어도_유형마다의_방향대로_따라간다() {
+        // 유형 예순 개에 네 방향을 돌아가며 준다. 이름에는 질의에서 뜻이 있는 글자와 기본 평면 밖의 글자를 섞는다.
+        String p = "imp-many-types";
+        ImpactDirection[] all = ImpactDirection.values();
+        String[] marks = { "'", "?", "\\", "%", "\uD83D\uDE00", "\"" };
+        java.util.TreeMap<String, ImpactDirection> directions = new java.util.TreeMap<>();
+        List<String> expected = new java.util.ArrayList<>();
+        for (int i = 0; i < 60; i++) {
+            String type = "t" + marks[i % marks.length] + String.format("%02d", i);
+            ImpactDirection direction = all[i % all.length];
+            directions.put(type, direction);
+            // 가운데 m 에 유형마다 나가는 관계와 들어오는 관계를 하나씩.
+            rel(p, "m", "out" + i, type);
+            rel(p, "in" + i, "m", type);
+            if (direction == ImpactDirection.SOURCE_TO_TARGET || direction == ImpactDirection.BOTH) {
+                expected.add(id(p, "out" + i));
+            }
+            if (direction == ImpactDirection.TARGET_TO_SOURCE || direction == ImpactDirection.BOTH) {
+                expected.add(id(p, "in" + i));
+            }
+        }
+
+        ImpactScope scope = impact.impactScope(request(List.of(id(p, "m")), List.of(DAY), directions, 3));
+
+        assertThat(scope.targets()).extracting(ImpactTarget::entityId).containsExactlyInAnyOrderElementsOf(expected);
+        assertThat(scope.targets()).allSatisfy(target -> assertThat(target.depth()).isEqualTo(1));
+        assertThat(scope.countsByDepth()).containsExactly(Map.entry(1, 60));
+        assertThat(scope.truncated()).isFalse();
+        // 유형 하나의 방향을 빼면 그 유형을 모르는 것이 된다.
+        String dropped = directions.firstKey();
+        directions.remove(dropped);
+        assertThatThrownBy(() -> impact.impactScope(request(List.of(id(p, "m")), List.of(DAY), directions, 3)))
+                .isInstanceOf(UnknownImpactDirectionException.class)
+                .hasMessageContaining("영향 방향을 모르는 관계 유형입니다: " + dropped + " (");
+    }
+
+    @Test
     void 최대_깊이_너머에서_방향을_모르는_유형을_만나도_멈춘다() {
         // 한계 표시를 정하려면 최대 깊이 너머를 따라가야 한다. 그때 만나도 같다.
         String p = "imp-unknown-far";

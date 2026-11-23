@@ -39,6 +39,17 @@ import javax.sql.DataSource;
  */
 final class LargeMeasure {
 
+    /**
+     * 영향 범위 계산 하나의 성능 목표 (D2 AD-355, D5 1절). 영향 대상 1,000개쯤에서 0.1초, 10,000개쯤에서 1초이고
+     * 그 사이와 너머는 비례로 본다 (하나에 0.1 ms). 0.1초보다 작게 잡지는 않는다. 가운데 값과 견준다.
+     *
+     * @param impactTargets 영향 대상의 수
+     * @return 목표 (밀리초)
+     */
+    static double targetMillis(long impactTargets) {
+        return Math.max(100.0, impactTargets * 0.1);
+    }
+
     /** 오래 걸린 질의로 보는 기준 (실행 계획을 남긴다). */
     private static final int SLOW_MILLIS = 200;
 
@@ -93,6 +104,8 @@ final class LargeMeasure {
         ImpactQuery impact = new ImpactQuery(dataSource);
         long computed = -1;
         boolean sameCount = true;
+        // 영향 대상의 수마다 계산에 걸린 시간 (마이크로초). 목표가 영향 대상의 수에 달려 있다.
+        Map<Long, List<Long>> calculations = new TreeMap<>();
         for (int round = 0; round < this.rounds; round++) {
             for (LargePack.ExpectedChange change : expected.changes()) {
                 String scopePath = "/api/v1/impact-scopes?changeEventId=" + HttpProduct.encoded(eventByKey.get(change.itemKey()));
@@ -121,8 +134,11 @@ final class LargeMeasure {
                         List.of(LocalDate.parse(String.valueOf(scope.get("asOfPrevious"))),
                                 LocalDate.parse(String.valueOf(scope.get("asOfEffective")))),
                         directions, ((Number) scope.get("maxDepth")).intValue());
-                ImpactScope calculated = timed(samples, "영향 범위 계산 (core): 영향 대상 " + change.impactTargets() + "개",
-                        () -> impact.impactScope(request));
+                String calculation = "영향 범위 계산 (core): 영향 대상 " + change.impactTargets() + "개";
+                ImpactScope calculated = timed(samples, calculation, () -> impact.impactScope(request));
+                List<Long> taken = samples.get(calculation);
+                calculations.computeIfAbsent((long) change.impactTargets(), key -> new ArrayList<>())
+                    .add(taken.get(taken.size() - 1));
                 computed = calculated.targets().size();
                 if (computed != change.impactTargets()) {
                     sameCount = false;
@@ -160,6 +176,13 @@ final class LargeMeasure {
             lines.add("  같음  영향 범위 계산 (core) 의 영향 대상의 수: " + computed);
         }
         samples.forEach((what, taken) -> lines.add(summary(what, taken)));
+        // 목표와 견준다. 넘어도 실패로 끝내지는 않는다: 걸린 시간은 기계와 그날의 사정에 따라 흔들린다 (D2 AD-355).
+        for (Map.Entry<Long, List<Long>> entry : calculations.entrySet()) {
+            double median = median(entry.getValue()) / 1000.0;
+            double target = targetMillis(entry.getKey());
+            lines.add(String.format("  %s  영향 범위 계산 (core) 의 가운데 값 %.1f ms, 목표 %.1f ms (영향 대상 %d개)",
+                    median <= target ? "목표 안" : "목표 넘음", median, target, entry.getKey()));
+        }
         failed |= !sameCount;
         failed |= storage(lines, jdbcUrl, user, password);
         return failed;
@@ -194,8 +217,14 @@ final class LargeMeasure {
     /** 가운데 값과 가장 큰 값 (마이크로초로 재어 밀리초로 적는다). 잰 횟수가 짝수이면 가운데 둘 가운데 큰 쪽을 적는다. */
     private static String summary(String what, List<Long> micros) {
         long[] sorted = micros.stream().mapToLong(Long::longValue).sorted().toArray();
-        return String.format("  %-42s 가운데 %8.1f ms   가장 큼 %8.1f ms   (%d번)", what, sorted[sorted.length / 2] / 1000.0,
+        return String.format("  %-42s 가운데 %8.1f ms   가장 큼 %8.1f ms   (%d번)", what, median(micros) / 1000.0,
                 sorted[sorted.length - 1] / 1000.0, sorted.length);
+    }
+
+    /** 가운데 값 (마이크로초). 잰 횟수가 짝수이면 가운데 둘 가운데 큰 쪽이다. */
+    private static long median(List<Long> micros) {
+        long[] sorted = micros.stream().mapToLong(Long::longValue).sorted().toArray();
+        return sorted[sorted.length / 2];
     }
 
     /** 테이블의 크기와, 시간을 많이 쓴 질의. 이 실행이 띄운 저장소의 통계만 읽는다. */

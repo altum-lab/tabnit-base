@@ -30,3 +30,6 @@ tools/forbidden-words.local.txt
 
 # 개발 보드의 자료
 tools/board/data/
+
+# 파이썬이 만드는 것
+__pycache__/

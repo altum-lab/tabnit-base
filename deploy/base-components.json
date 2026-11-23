@@ -1,0 +1,44 @@
+{
+  "images": [
+    {
+      "image": "eclipse-temurin:21-jre",
+      "where": "deploy/Dockerfile 의 실행하는 이미지",
+      "components": [
+        {
+          "name": "Eclipse Temurin 자바 실행 환경 (OpenJDK)",
+          "version": "21 (작은 버전은 고정하지 않았다. 이미지를 만든 날의 것이다)",
+          "license": "GPL-2.0-with-classpath-exception"
+        },
+        {
+          "name": "eclipse-temurin:21-jre 의 바탕 운영체제와 그 꾸러미",
+          "version": "이미지에 든 것 (하나하나 적지 않았다)",
+          "license": "꾸러미마다 다르다"
+        }
+      ]
+    },
+    {
+      "image": "postgres:18",
+      "where": "deploy/install/compose.yaml 의 데이터베이스",
+      "components": [
+        {
+          "name": "PostgreSQL",
+          "version": "18 (작은 버전은 고정하지 않았다. 이미지를 받은 날의 것이다)",
+          "license": "PostgreSQL"
+        },
+        {
+          "name": "postgres:18 의 바탕 운영체제와 그 꾸러미",
+          "version": "이미지에 든 것 (하나하나 적지 않았다)",
+          "license": "꾸러미마다 다르다"
+        }
+      ]
+    }
+  ],
+  "extra": [
+    {
+      "file": "spring-boot-jarmode-tools",
+      "name": "org.springframework.boot:spring-boot-jarmode-tools",
+      "license": "Apache-2.0",
+      "why": "Spring Boot 가 서버 파일을 만들 때 넣는다 (빌드 도구의 명세에는 나오지 않는다)"
+    }
+  ]
+}

@@ -11,6 +11,7 @@
 #   images/tabnit-base-app.tar, images/postgres.tar   이미지 둘
 #   compose.yaml, install.sh                          설치 구성과 스크립트 (deploy/install 의 것)
 #   packs/                                            저장소의 Pack 들 (가상 데이터)
+#   COMPONENTS.md, components.csv, bom.json           배포물에 든 구성요소의 이름, 버전, 라이선스 (tools/components.sh)
 #   VERSION, ARCH, SHA256SUMS                         버전, CPU, 파일의 지문 (packs/ 는 뺀다)
 #
 # 설치하는 법: 그 폴더를 통째로 서버에 복사한 뒤, 그 폴더에서 bash install.sh
@@ -65,6 +66,11 @@ require_architecture() {
   [ "$found" = "$2" ] || fail "$1 이 $2 용이 아닙니다 ($found). Docker 의 설정에서 다른 CPU 의 이미지를 다룰 수 있는지 확인하세요."
 }
 
+# 배포물에 든 구성요소의 목록 (E-11). CPU 와 무관하므로 한 번 만들어 폴더마다 담는다.
+echo "== 구성요소의 목록을 만듭니다."
+components="$top/dist/components"
+bash "$top/tools/components.sh" "$components"
+
 for arch in "$@"; do
   out="$top/dist/tabnit-base-$version-linux-$arch"
   echo "== $arch: $out"
@@ -83,6 +89,7 @@ for arch in "$@"; do
 
   echo "3) 설치 구성과 Pack 을 담습니다."
   cp "$top/deploy/install/compose.yaml" "$top/deploy/install/install.sh" "$out/"
+  cp "$components/COMPONENTS.md" "$components/components.csv" "$components/bom.json" "$out/"
   chmod +x "$out/install.sh"
   cp -R "$top/packs" "$out/packs"
   # 지침 파일은 설치하는 쪽에 필요 없다.

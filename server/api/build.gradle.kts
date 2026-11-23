@@ -2,6 +2,7 @@ plugins {
 	java
 	id("org.springframework.boot") version "4.1.2"
 	id("io.spring.dependency-management") version "1.1.7"
+	id("org.cyclonedx.bom") version "3.4.0"
 }
 
 group = "com.altumlab.tabnit"
@@ -51,4 +52,15 @@ tasks.withType<JavaCompile> {
 
 tasks.withType<Test> {
 	useJUnitPlatform()
+}
+
+// 서버에 든 구성요소의 명세 (E-11, D2 AD-364). 표준 형식(CycloneDX)으로 낸다. bash tools/components.sh 가 부른다.
+// 실행할 때 쓰이는 것만 담는다 (시험과 빌드에만 쓰이는 것은 배포물에 들어가지 않는다).
+// 돌릴 때마다 달라지는 일련번호는 넣지 않는다.
+tasks.cyclonedxDirectBom {
+	includeConfigs.set(listOf("runtimeClasspath"))
+	includeBomSerialNumber.set(false)
+	includeLicenseText.set(false)
+	includeBuildSystem.set(false)
+	jsonOutput.set(layout.buildDirectory.file("components/server-bom.json"))
 }

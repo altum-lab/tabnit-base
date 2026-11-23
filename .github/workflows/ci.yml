@@ -38,6 +38,14 @@ jobs:
         working-directory: server
         run: ./gradlew build --no-daemon
 
+      # 배포물에 든 구성요소의 목록이 만들어지는지 본다 (E-11). 목록을 만드는 일의 시험을 먼저 돌린다.
+      - name: 구성요소와 라이선스 목록
+        if: hashFiles('tools/components.sh') != ''
+        run: |
+          python3 -m unittest tools/test_components.py
+          bash tools/components.sh
+          sed -n '/^## 확인이 필요한 것/,/^## 모두/p' dist/components/COMPONENTS.md
+
       # 빈 저장소로 제품을 띄워 모든 Pack 의 검증 질문을 HTTP 로 묻고, 한 번 더 돌려 결과가 같은지 본다 (E-04).
       - name: 검증 질문 실행
         if: hashFiles('verify/run.sh') != ''

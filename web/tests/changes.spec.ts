@@ -201,3 +201,25 @@ test("화면을 주소로 오가고 없는 주소는 없는 화면이라고 알�
   await page.goto("/no-such-screen");
   await expect(page.getByRole("heading", { name: "없는 화면입니다" })).toBeVisible();
 });
+
+test("처리된 변동에서 그 변동의 영향 범위 화면으로 이어 간다", async ({ page }) => {
+  const run = Date.now();
+  await choose(page);
+  const first = await laterDate(page);
+  await upload(page, first, "지침 다.csv", csv(`G-01,방문 건강 관리 기준 ${run},30`));
+  await expect(page.getByTestId("outcome")).toContainText("새 판을 받아들였습니다");
+  // G-01 의 점검 주기를 고친 판을 올린다: 변동 하나가 생기고 처리된다.
+  await upload(page, nextDay(first), "지침 라.csv", csv(`G-01,방문 건강 관리 기준 ${run},7`));
+  const row = page.locator('tr[data-item-key="G-01"]');
+  await expect(row).toContainText("처리됨");
+  const changeEventId = await row.getAttribute("data-change-event-id");
+
+  await row.getByRole("link", { name: "영향 범위 보기" }).click();
+
+  await expect(page.getByRole("heading", { name: "영향 범위", level: 1 })).toBeVisible();
+  expect(new URL(page.url()).searchParams.get("changeEventId")).toBe(changeEventId);
+  // 수는 서버가 준 값이다.
+  const answer = await (await page.request.get("/api/v1/impact-scopes", { params: { changeEventId: changeEventId! } })).json();
+  await expect(page.getByTestId("impact-total")).toHaveText(String(answer.total));
+});
+

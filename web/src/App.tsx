@@ -4,6 +4,7 @@ import { api, SESSION_ENDED, type Session } from "./api/client";
 import { CONNECTION_FAILED, messageOf } from "./api/problem";
 import { ActionsPage } from "./pages/ActionsPage";
 import { ChangesPage } from "./pages/ChangesPage";
+import { ImpactPage } from "./pages/ImpactPage";
 import { SessionContext } from "./session";
 import { LoginPage } from "./pages/LoginPage";
 import { RelationsPage } from "./pages/RelationsPage";
@@ -18,6 +19,7 @@ import { RelationsPage } from "./pages/RelationsPage";
 
 const SCREENS = [
   { path: "/changes", label: "변동 감지", element: <ChangesPage /> },
+  { path: "/impact", label: "영향 범위", element: <ImpactPage /> },
   { path: "/actions", label: "조치", element: <ActionsPage /> },
   { path: "/relations", label: "관계 지도", element: <RelationsPage /> },
 ];

@@ -278,7 +278,16 @@ function Result({ result }: { result: EditionSubmission }) {
                       ))}
                     </ul>
                   </td>
-                  <td>{processingLabel(change.processing)}</td>
+                  <td>
+                    {processingLabel(change.processing)}
+                    {change.processing.status === "PROCESSED" && (
+                      // 처리된 변동에는 저장된 영향 범위가 있다. 그 화면으로 가는 길 (D-03).
+                      <>
+                        {" "}
+                        <Link to={`/impact?${new URLSearchParams({ changeEventId: change.changeEventId })}`}>영향 범위 보기</Link>
+                      </>
+                    )}
+                  </td>
                   <td>
                     {change.processing.status === "PROCESSED" ? (
                       // 그 변동의 조치만 걸러서 여는 길. 수는 서버가 준 값이다.

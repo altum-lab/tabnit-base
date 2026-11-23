@@ -59,6 +59,8 @@ public final class VerifyMain {
         boolean failed = false;
         int asked = 0;
         int passed = 0;
+        int checksAsked = 0;
+        int checksPassed = 0;
         List<String> empty = new ArrayList<>();
         List<String> ran = new ArrayList<>();
         for (Path pack : packFolders(packs)) {
@@ -81,23 +83,37 @@ public final class VerifyMain {
             // 정의가 없으면 적재할 수 없다. 위에서 알렸다.
             List<QuestionFile> files = Files.isRegularFile(pack.resolve("pack.ttl")) ? read.files() : List.of();
             for (QuestionFile file : files) {
-                List<Evaluator.Result> first = runOnce(packs, pack, file);
-                List<Evaluator.Result> second = runOnce(packs, pack, file);
-                List<String> differences = Report.differences(first, second);
-                report.append(Report.scenario(packId, file.scenarioId(), first, differences));
-                asked += first.size();
-                passed += (int) first.stream().filter(Evaluator.Result::passed).count();
-                failed |= !differences.isEmpty() || first.stream().anyMatch(result -> !result.passed());
+                // 전수 대조가 있으면 같은 실행에서 함께 묻는다: 시나리오를 한 번 더 넣지 않는다 (D2 AD-368).
+                QuestionFile checks = read.checks().get(file.fileName());
+                Run first = runOnce(packs, pack, file, checks);
+                Run second = runOnce(packs, pack, file, checks);
+                List<String> differences = Report.differences(first.questions(), second.questions());
+                report.append(Report.scenario(packId, file.scenarioId(), first.questions(), differences));
+                asked += first.questions().size();
+                passed += (int) first.questions().stream().filter(Evaluator.Result::passed).count();
+                failed |= !differences.isEmpty() || first.questions().stream().anyMatch(result -> !result.passed());
+                if (checks != null) {
+                    List<String> checkDifferences = Report.differences(first.checks(), second.checks());
+                    report.append(Report.checks(packId, file.scenarioId(), first.checks(), checkDifferences));
+                    checksAsked += first.checks().size();
+                    checksPassed += (int) first.checks().stream().filter(Evaluator.Result::passed).count();
+                    failed |= !checkDifferences.isEmpty() || first.checks().stream().anyMatch(result -> !result.passed());
+                }
             }
             report.append('\n');
         }
         report.append("전체: 통과 ").append(passed).append(" / ").append(asked).append("   돌린 Pack ").append(ran.size())
             .append("개").append(ran.isEmpty() ? "" : " (" + String.join(", ", ran) + ")").append('\n');
+        // 대조는 질문과 따로 센다: 확정한 정답이 아니라 따로 계산한 값과 견준 것이다 (D4 3절 "전수 대조").
+        if (checksAsked > 0) {
+            report.append("대조: 통과 ").append(checksPassed).append(" / ").append(checksAsked)
+                .append("   (엔진과 따로 계산한 값과 견준 것이다. 질문의 수에 넣지 않는다)\n");
+        }
         if (!empty.isEmpty()) {
             report.append("아직 내용이 없는 Pack ").append(empty.size()).append("개 (").append(String.join(", ", empty))
                 .append("): 돌리지 않았습니다. 출시 기준은 모든 Pack 의 통과입니다.\n");
         }
-        report.append("묻는 길: 모두 HTTP (Pack 적재, 판 올리기, 시점 조회, 변동, 영향 범위, 조치)\n");
+        report.append("묻는 길: 모두 HTTP (Pack 적재, 판 올리기, 시점 조회, 변동, 영향 범위, 조치, 관계 지도)\n");
         if (ran.isEmpty()) {
             failed = true;
             report.append("실패  돌릴 Pack 이 하나도 없습니다: ").append(packs).append('\n');
@@ -112,8 +128,21 @@ public final class VerifyMain {
         System.exit(failed ? 1 : 0);
     }
 
-    /** 빈 저장소로 제품을 띄워 시나리오를 한 번 돌린다. */
-    private static List<Evaluator.Result> runOnce(Path packs, Path pack, QuestionFile file) {
+    /**
+     * 한 번 돌린 결과.
+     *
+     * @param questions 질문의 결과. 번호 순
+     * @param checks 전수 대조의 결과. 번호 순. 대조 파일이 없으면 비어 있다
+     */
+    record Run(List<Evaluator.Result> questions, List<Evaluator.Result> checks) {
+    }
+
+    /**
+     * 빈 저장소로 제품을 띄워 시나리오를 한 번 돌린다.
+     *
+     * @param checks 같은 자료에 함께 물을 전수 대조. 없으면 null
+     */
+    private static Run runOnce(Path packs, Path pack, QuestionFile file, QuestionFile checks) {
         String packId = pack.getFileName().toString();
         try (PostgreSQLContainer database = new PostgreSQLContainer(DockerImageName.parse("postgres:18"))) {
             database.start();
@@ -146,30 +175,38 @@ public final class VerifyMain {
                 HttpProduct http = new HttpProduct(port);
                 Product.Reply login = http.login(loginId, password);
                 if (login.status() != 200) {
-                    return allFailed(file, "제품에 로그인하지 못했습니다: HTTP " + login.status());
+                    return allFailed(file, checks, "제품에 로그인하지 못했습니다: HTTP " + login.status());
                 }
                 Product.Reply loaded = http.loadPack(packId);
                 if (loaded.status() != 200) {
-                    return allFailed(file, "Pack 을 적재하지 못했습니다: HTTP " + loaded.status() + " " + loaded.body());
+                    return allFailed(file, checks, "Pack 을 적재하지 못했습니다: HTTP " + loaded.status() + " " + loaded.body());
                 }
                 Map<Integer, Product.Reply> steps = new LinkedHashMap<>();
                 for (QuestionFile.Step step : file.steps()) {
                     Path data = pack.resolve(step.file()).normalize();
                     if (!data.startsWith(pack) || !Files.isRegularFile(data)) {
-                        return allFailed(file, "시나리오 " + step.step() + "단계의 파일이 Pack 폴더 안에 없습니다: " + step.file());
+                        return allFailed(file, checks,
+                                "시나리오 " + step.step() + "단계의 파일이 Pack 폴더 안에 없습니다: " + step.file());
                     }
                     steps.put(step.step(), http.submitEdition(packId, step.inputSource(), step.effectiveDate(),
                             data.getFileName().toString(), Files.readAllBytes(data)));
                 }
-                return new Evaluator(packId, http).evaluate(file, steps);
+                Evaluator evaluator = new Evaluator(packId, http);
+                return new Run(evaluator.evaluate(file, steps),
+                        checks == null ? List.of() : evaluator.evaluate(checks, steps));
             }
         }
         catch (IOException | RuntimeException e) {
-            return allFailed(file, "제품을 띄우거나 시나리오를 돌리지 못했습니다: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            return allFailed(file, checks,
+                    "제품을 띄우거나 시나리오를 돌리지 못했습니다: " + e.getClass().getSimpleName() + ": " + e.getMessage());
         }
     }
 
-    /** 질문을 묻기 전에 막혔다. 건너뛰지 않고 모든 질문을 실패로 낸다. */
+    /** 질문을 묻기 전에 막혔다. 건너뛰지 않고 모든 질문과 대조를 실패로 낸다. */
+    private static Run allFailed(QuestionFile file, QuestionFile checks, String reason) {
+        return new Run(allFailed(file, reason), checks == null ? List.of() : allFailed(checks, reason));
+    }
+
     private static List<Evaluator.Result> allFailed(QuestionFile file, String reason) {
         List<QuestionFile.Question> ordered = new ArrayList<>(file.questions());
         ordered.sort(java.util.Comparator.comparing(QuestionFile.Question::id, Evaluator.CODE_POINT_ORDER));
@@ -186,8 +223,9 @@ public final class VerifyMain {
      * @param hasContent 정의 파일이나 질문 파일이 하나라도 있는가. 없으면 아직 내용이 없는 Pack 이다
      * @param files 읽은 질문 파일. 이름의 글자 코드 순
      * @param problems 질문의 문제: 읽지 못한 파일, 겹친 번호, 짧은 시나리오, 최소 수에 모자란 것. 하나라도 있으면 실패다
+     * @param checks 전수 대조. 짝이 되는 질문 파일의 이름으로 찾는다. 없는 Pack 은 비어 있다 (D2 AD-368)
      */
-    record PackQuestions(boolean hasContent, List<QuestionFile> files, List<String> problems) {
+    record PackQuestions(boolean hasContent, List<QuestionFile> files, List<String> problems, Map<String, QuestionFile> checks) {
     }
 
     /** Pack 폴더의 질문 파일을 모두 읽고 문제를 모은다. Pack 을 가리지 않는다. */
@@ -195,7 +233,7 @@ public final class VerifyMain {
         List<Path> paths = questionFiles(pack);
         boolean defined = Files.isRegularFile(pack.resolve("pack.ttl"));
         if (!defined && paths.isEmpty()) {
-            return new PackQuestions(false, List.of(), List.of());
+            return new PackQuestions(false, List.of(), List.of(), Map.of());
         }
         List<String> problems = new ArrayList<>();
         if (!defined) {
@@ -231,7 +269,25 @@ public final class VerifyMain {
         problems.addAll(Report.shortfalls(all));
         // 시점 조회는 현재와 과거 두 시점, 셋 이상의 날짜를 묻는다 (D2 AD-112, AD-332). Pack 의 모든 파일을 합쳐 센다.
         problems.addAll(Report.timePointShortfalls(all));
-        return new PackQuestions(true, List.copyOf(files), List.copyOf(problems));
+        // 전수 대조: questions/crosscheck/ 에 질문 파일과 같은 이름으로 둔다. 틀린 파일은 건너뛰지 않고 알린다.
+        Map<String, QuestionFile> checks = new LinkedHashMap<>();
+        for (Path path : checkFiles(pack)) {
+            String name = path.getFileName().toString();
+            String shown = "crosscheck/" + name;
+            QuestionFile parent = files.stream().filter(file -> file.fileName().equals(name)).findFirst().orElse(null);
+            if (parent == null) {
+                problems.add(shown + ": 이름이 같은 질문 파일이 없습니다 (읽지 못했거나 없다). 대조 파일은 questions/ 의 질문 파일과 "
+                        + "같은 이름으로 둡니다.");
+                continue;
+            }
+            try {
+                checks.put(name, QuestionFile.readChecks(path, shown, parent));
+            }
+            catch (QuestionFileException e) {
+                problems.add(e.getMessage());
+            }
+        }
+        return new PackQuestions(true, List.copyOf(files), List.copyOf(problems), java.util.Collections.unmodifiableMap(checks));
     }
 
     /** 바로 아래의 폴더. 이름의 글자 코드 순. */
@@ -245,7 +301,15 @@ public final class VerifyMain {
 
     /** Pack 의 questions/ 에 있는 질문 파일 (yaml, yml). 이름의 글자 코드 순. 폴더가 없으면 비어 있다. */
     private static List<Path> questionFiles(Path pack) throws IOException {
-        Path folder = pack.resolve("questions");
+        return yamlFiles(pack.resolve("questions"));
+    }
+
+    /** Pack 의 questions/crosscheck/ 에 있는 전수 대조의 파일. 이름의 글자 코드 순. 폴더가 없으면 비어 있다. */
+    private static List<Path> checkFiles(Path pack) throws IOException {
+        return yamlFiles(pack.resolve("questions").resolve("crosscheck"));
+    }
+
+    private static List<Path> yamlFiles(Path folder) throws IOException {
         if (!Files.isDirectory(folder)) {
             return List.of();
         }

@@ -2,6 +2,7 @@
 #
 # 상태: 확정 (2026-11-22, D2 AD-315). 자료나 규칙을 바꿔 정답이 달라지면 다시 확정한다 (D4 4절: 정답은 대표가 정한다).
 # B-09 와 B-14 에서 달라진 Q-08, Q-16, Q-31 은 다시 확정했다 (2026-11-22, D2 AD-342).
+# 관계 지도의 질문 Q-32 ~ Q-36 은 초안이다 (2026-11-23, A-08, D2 AD-368). 대표가 확정하기 전이다.
 # 모든 이름은 지어낸 것이다. 실제 기관, 사업장, 사람, 규정과 관계가 없다.
 #
 # 정답을 만든 방법: 자료가 커서 (개체 362개) 손으로 적지 않았다. 예시 입력 파일에서 문서의 규칙
@@ -15,6 +16,9 @@
 # 한 대상에 길이가 같은 길이 여럿이면 관계 식별자가 앞선 길이 남는다 (D3 7절). 이 자료에는 그런 대상이 많다.
 #
 # 이 질문들이 묻지 않는 것: 관계 유형과 상대 개체가 같은 관계가 둘인 경우 (정답을 만든 계산이 구현하지 않았다).
+#
+# 전수 대조: 이 시나리오의 모든 변동의 영향 범위와 모든 개체의 경계 날짜의 관계를 같은 계산으로 만들어
+# questions/crosscheck/S-01.yaml 에 따로 두었다 (D4 3절 "전수 대조"). 질문이 아니다: 질문의 수에 넣지 않는다.
 
 scenario:
   id: S-01
@@ -1898,4 +1902,1005 @@ questions:
       actions:
         - { rule: "0007", priority: 1, target: { type: 가입사업장, key: E-04 }, dueDate: 2026-10-13, basis: { entity: { type: 연금제도, key: L-04 }, inputSource: plan, edition: 2 } }
         - { rule: "0008", priority: 2, target: { type: 기업담당자, key: M-5 }, dueDate: 2026-11-05, basis: { entity: { type: 연금제도, key: L-04 }, inputSource: plan, edition: 2 } }
+
+  # ── 관계 지도 ──────────────────────────────────────────────
+  # 초안이다 (대표 확정 전). 방향과 무관하게 따라간다. 노드는 깊이, 유형, 식별자 순이고 간선은 유형, 출발, 도착 순이다 (D7 4절).
+  # 간선은 담긴 노드 사이의 관계 전부다: 같은 깊이의 노드 사이의 관계도 든다.
+
+  - id: Q-32
+    kind: relation-map
+    title: 계좌 A-005 가 상품을 팔기 전날의 관계 지도 (깊이 1)
+    asOf: 2026-05-31
+    entity: { type: 연금계좌, key: A-005 }
+    depth: 1
+    # Q-03 과 같은 날짜와 개체다. 가운데가 계좌이고 이웃은 가입자, 제도, 보유한 상품, 지정한 기본운용방법이다. 이웃끼리 이어진 관계(기본운용방법을 이루는 상품을 이 계좌가 보유한 경우)도 간선에 든다.
+    expect:
+      nodes:
+        - { entity: { type: 연금계좌, key: A-005 }, depth: 0 }
+        - { entity: { type: 기본운용방법, key: D-01 }, depth: 1 }
+        - { entity: { type: 연금가입자, key: N-005 }, depth: 1 }
+        - { entity: { type: 연금제도, key: L-07 }, depth: 1 }
+        - { entity: { type: 운용상품, key: P-03 }, depth: 1 }
+        - { entity: { type: 운용상품, key: P-09 }, depth: 1 }
+        - { entity: { type: 운용상품, key: P-26 }, depth: 1 }
+      edges:
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-005 }, target: { type: 연금가입자, key: N-005 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-005 }, target: { type: 기본운용방법, key: D-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-005 }, target: { type: 운용상품, key: P-03 }, validFrom: 2026-01-01, validTo: 2026-06-01 }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-005 }, target: { type: 운용상품, key: P-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-005 }, target: { type: 운용상품, key: P-26 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-005 }, target: { type: 연금제도, key: L-07 }, validFrom: 2026-01-01, validTo: null }
+      totalNodes: 7
+      truncated: false
+      reachedDepth: 1
+
+  - id: Q-33
+    kind: relation-map
+    title: 계좌 A-005 가 상품을 판 날의 관계 지도 (깊이 1, 경계)
+    asOf: 2026-06-01
+    entity: { type: 연금계좌, key: A-005 }
+    depth: 1
+    # 판 상품의 보유는 이날 끝나 그 상품이 이웃에서 빠지고, 새로 산 상품이 이웃으로 든다 (시작일 포함, 종료일 제외).
+    expect:
+      nodes:
+        - { entity: { type: 연금계좌, key: A-005 }, depth: 0 }
+        - { entity: { type: 기본운용방법, key: D-01 }, depth: 1 }
+        - { entity: { type: 연금가입자, key: N-005 }, depth: 1 }
+        - { entity: { type: 연금제도, key: L-07 }, depth: 1 }
+        - { entity: { type: 운용상품, key: P-06 }, depth: 1 }
+        - { entity: { type: 운용상품, key: P-09 }, depth: 1 }
+        - { entity: { type: 운용상품, key: P-26 }, depth: 1 }
+      edges:
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-005 }, target: { type: 연금가입자, key: N-005 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-005 }, target: { type: 기본운용방법, key: D-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-005 }, target: { type: 운용상품, key: P-06 }, validFrom: 2026-06-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-005 }, target: { type: 운용상품, key: P-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-005 }, target: { type: 운용상품, key: P-26 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-005 }, target: { type: 연금제도, key: L-07 }, validFrom: 2026-01-01, validTo: null }
+      totalNodes: 7
+      truncated: false
+      reachedDepth: 1
+
+  - id: Q-34
+    kind: relation-map
+    title: 현재, 저축은행 다(I-03)의 관계 지도 (깊이 2)
+    asOf: 2026-12-01
+    entity: { type: 금융기관, key: I-03 }
+    depth: 2
+    # 영향이 퍼지는 방향과 무관하게 따라간다. 깊이 1 은 이 기관의 상품과 이 기관에 걸린 요건, 깊이 2 는 그 상품을 보유한 계좌와 그 상품으로 구성된 기본운용방법, 그 요건을 부과한 규약과 그 요건이 걸린 다른 대상이다.
+    expect:
+      nodes:
+        - { entity: { type: 금융기관, key: I-03 }, depth: 0 }
+        - { entity: { type: 운영요건, key: RQ-02 }, depth: 1 }
+        - { entity: { type: 운영요건, key: RQ-16 }, depth: 1 }
+        - { entity: { type: 운용상품, key: P-05 }, depth: 1 }
+        - { entity: { type: 운용상품, key: P-06 }, depth: 1 }
+        - { entity: { type: 금융기관, key: I-01 }, depth: 2 }
+        - { entity: { type: 금융기관, key: I-02 }, depth: 2 }
+        - { entity: { type: 금융기관, key: I-04 }, depth: 2 }
+        - { entity: { type: 금융기관, key: I-05 }, depth: 2 }
+        - { entity: { type: 금융기관, key: I-06 }, depth: 2 }
+        - { entity: { type: 금융기관, key: I-07 }, depth: 2 }
+        - { entity: { type: 금융기관, key: I-08 }, depth: 2 }
+        - { entity: { type: 금융기관, key: I-09 }, depth: 2 }
+        - { entity: { type: 금융기관, key: I-10 }, depth: 2 }
+        - { entity: { type: 기본운용방법, key: D-01 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-001 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-005 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-012 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-013 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-018 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-023 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-029 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-040 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-041 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-046 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-051 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-057 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-068 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-069 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-074 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-079 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-085 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-096 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-097 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-102 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-107 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-113 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-124 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-125 }, depth: 2 }
+        - { entity: { type: 운영규약, key: RG-02 }, depth: 2 }
+        - { entity: { type: 운영요건, key: RQ-08 }, depth: 2 }
+        - { entity: { type: 운영요건, key: RQ-10 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-01 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-02 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-03 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-04 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-07 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-08 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-09 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-10 }, depth: 2 }
+      edges:
+        - { type: 규약부과, source: { type: 운영규약, key: RG-02 }, target: { type: 운영요건, key: RQ-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 규약부과, source: { type: 운영규약, key: RG-02 }, target: { type: 운영요건, key: RQ-16 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법구성, source: { type: 기본운용방법, key: D-01 }, target: { type: 운용상품, key: P-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법구성, source: { type: 기본운용방법, key: D-01 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-005 }, target: { type: 기본운용방법, key: D-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-085 }, target: { type: 기본운용방법, key: D-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-125 }, target: { type: 기본운용방법, key: D-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-001 }, target: { type: 운용상품, key: P-06 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-005 }, target: { type: 운용상품, key: P-06 }, validFrom: 2026-06-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-005 }, target: { type: 운용상품, key: P-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-012 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-013 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-013 }, target: { type: 운용상품, key: P-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-018 }, target: { type: 운용상품, key: P-06 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-018 }, target: { type: 운용상품, key: P-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-023 }, target: { type: 운용상품, key: P-04 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-023 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-023 }, target: { type: 운용상품, key: P-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-029 }, target: { type: 운용상품, key: P-06 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-040 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-041 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-041 }, target: { type: 운용상품, key: P-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-041 }, target: { type: 운용상품, key: P-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-046 }, target: { type: 운용상품, key: P-06 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-046 }, target: { type: 운용상품, key: P-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-051 }, target: { type: 운용상품, key: P-04 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-051 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-051 }, target: { type: 운용상품, key: P-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-057 }, target: { type: 운용상품, key: P-06 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-068 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-069 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-069 }, target: { type: 운용상품, key: P-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-069 }, target: { type: 운용상품, key: P-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-074 }, target: { type: 운용상품, key: P-06 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-074 }, target: { type: 운용상품, key: P-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-079 }, target: { type: 운용상품, key: P-04 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-079 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-079 }, target: { type: 운용상품, key: P-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-085 }, target: { type: 운용상품, key: P-06 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-096 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-097 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-097 }, target: { type: 운용상품, key: P-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-097 }, target: { type: 운용상품, key: P-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-102 }, target: { type: 운용상품, key: P-06 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-102 }, target: { type: 운용상품, key: P-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-107 }, target: { type: 운용상품, key: P-04 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-107 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-107 }, target: { type: 운용상품, key: P-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-113 }, target: { type: 운용상품, key: P-06 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-124 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-125 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-125 }, target: { type: 운용상품, key: P-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-125 }, target: { type: 운용상품, key: P-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-01 }, target: { type: 금융기관, key: I-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-02 }, target: { type: 금융기관, key: I-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-03 }, target: { type: 금융기관, key: I-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-04 }, target: { type: 금융기관, key: I-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-05 }, target: { type: 금융기관, key: I-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-06 }, target: { type: 금융기관, key: I-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-07 }, target: { type: 금융기관, key: I-04 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-08 }, target: { type: 금융기관, key: I-04 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-09 }, target: { type: 금융기관, key: I-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-10 }, target: { type: 금융기관, key: I-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 금융기관, key: I-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 금융기관, key: I-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 금융기관, key: I-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 금융기관, key: I-04 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 금융기관, key: I-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 운용상품, key: P-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 운용상품, key: P-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 운용상품, key: P-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 운용상품, key: P-04 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 운용상품, key: P-06 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 운용상품, key: P-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 운용상품, key: P-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 운용상품, key: P-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 운용상품, key: P-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-08 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-10 }, target: { type: 운용상품, key: P-06 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-16 }, target: { type: 금융기관, key: I-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-16 }, target: { type: 금융기관, key: I-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-16 }, target: { type: 금융기관, key: I-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-16 }, target: { type: 금융기관, key: I-04 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-16 }, target: { type: 금융기관, key: I-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-16 }, target: { type: 금융기관, key: I-06 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-16 }, target: { type: 금융기관, key: I-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-16 }, target: { type: 금융기관, key: I-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-16 }, target: { type: 금융기관, key: I-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-16 }, target: { type: 금융기관, key: I-10 }, validFrom: 2026-01-01, validTo: null }
+      totalNodes: 50
+      truncated: false
+      reachedDepth: 2
+
+  - id: Q-35
+    kind: relation-map
+    title: 현재, 기업집단 G-1 의 관계 지도 (깊이 1, 영향이 퍼지지 않는 관계도 따라간다)
+    asOf: 2026-12-01
+    entity: { type: 기업집단, key: G-1 }
+    depth: 1
+    # 집단지배는 영향이 퍼지지 않는 관계다 (영향 범위에서는 따라가지 않는다). 관계 지도는 영향 방향을 보지 않으므로 이 집단이 지배하는 사업장이 이웃으로 든다.
+    expect:
+      nodes:
+        - { entity: { type: 기업집단, key: G-1 }, depth: 0 }
+        - { entity: { type: 가입사업장, key: E-01 }, depth: 1 }
+        - { entity: { type: 가입사업장, key: E-02 }, depth: 1 }
+        - { entity: { type: 가입사업장, key: E-03 }, depth: 1 }
+      edges:
+        - { type: 집단지배, source: { type: 가입사업장, key: E-01 }, target: { type: 기업집단, key: G-1 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 집단지배, source: { type: 가입사업장, key: E-02 }, target: { type: 기업집단, key: G-1 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 집단지배, source: { type: 가입사업장, key: E-03 }, target: { type: 기업집단, key: G-1 }, validFrom: 2026-01-01, validTo: null }
+      totalNodes: 4
+      truncated: false
+      reachedDepth: 1
+
+  - id: Q-36
+    kind: relation-map
+    title: 현재, 기본운용방법 D-01 의 관계 지도 (깊이 3, 노드가 한도를 넘어 잘린다)
+    asOf: 2026-12-01
+    entity: { type: 기본운용방법, key: D-01 }
+    depth: 3
+    # 깊이 3 까지 찾은 노드가 200개를 넘는다. totalNodes 는 찾은 수 전체이고, 노드는 가까운 것부터 (깊이, 유형, 식별자 순) 200개만 담는다. 잘린 노드에 닿는 관계는 간선에 없다. 깊이 3 에서 넘었으므로 reachedDepth 는 청한 깊이와 같은 3 이다. 청한 깊이보다 얕은 데서 멈추는 경우는 이 자료로는 물을 수 없다 (깊이 2 까지가 200개를 넘는 개체가 없다): core 의 일반 시험이 본다.
+    expect:
+      nodes:
+        - { entity: { type: 기본운용방법, key: D-01 }, depth: 0 }
+        - { entity: { type: 연금계좌, key: A-005 }, depth: 1 }
+        - { entity: { type: 연금계좌, key: A-010 }, depth: 1 }
+        - { entity: { type: 연금계좌, key: A-015 }, depth: 1 }
+        - { entity: { type: 연금계좌, key: A-025 }, depth: 1 }
+        - { entity: { type: 연금계좌, key: A-030 }, depth: 1 }
+        - { entity: { type: 연금계좌, key: A-035 }, depth: 1 }
+        - { entity: { type: 연금계좌, key: A-045 }, depth: 1 }
+        - { entity: { type: 연금계좌, key: A-050 }, depth: 1 }
+        - { entity: { type: 연금계좌, key: A-055 }, depth: 1 }
+        - { entity: { type: 연금계좌, key: A-065 }, depth: 1 }
+        - { entity: { type: 연금계좌, key: A-070 }, depth: 1 }
+        - { entity: { type: 연금계좌, key: A-075 }, depth: 1 }
+        - { entity: { type: 연금계좌, key: A-085 }, depth: 1 }
+        - { entity: { type: 연금계좌, key: A-090 }, depth: 1 }
+        - { entity: { type: 연금계좌, key: A-095 }, depth: 1 }
+        - { entity: { type: 연금계좌, key: A-105 }, depth: 1 }
+        - { entity: { type: 연금계좌, key: A-110 }, depth: 1 }
+        - { entity: { type: 연금계좌, key: A-115 }, depth: 1 }
+        - { entity: { type: 연금계좌, key: A-125 }, depth: 1 }
+        - { entity: { type: 운영요건, key: RQ-17 }, depth: 1 }
+        - { entity: { type: 운영요건, key: RQ-18 }, depth: 1 }
+        - { entity: { type: 운용상품, key: P-01 }, depth: 1 }
+        - { entity: { type: 운용상품, key: P-05 }, depth: 1 }
+        - { entity: { type: 금융기관, key: I-01 }, depth: 2 }
+        - { entity: { type: 금융기관, key: I-03 }, depth: 2 }
+        - { entity: { type: 기본운용방법, key: D-02 }, depth: 2 }
+        - { entity: { type: 기본운용방법, key: D-03 }, depth: 2 }
+        - { entity: { type: 기본운용방법, key: D-04 }, depth: 2 }
+        - { entity: { type: 기본운용방법, key: D-05 }, depth: 2 }
+        - { entity: { type: 연금가입자, key: N-005 }, depth: 2 }
+        - { entity: { type: 연금가입자, key: N-010 }, depth: 2 }
+        - { entity: { type: 연금가입자, key: N-015 }, depth: 2 }
+        - { entity: { type: 연금가입자, key: N-025 }, depth: 2 }
+        - { entity: { type: 연금가입자, key: N-030 }, depth: 2 }
+        - { entity: { type: 연금가입자, key: N-035 }, depth: 2 }
+        - { entity: { type: 연금가입자, key: N-045 }, depth: 2 }
+        - { entity: { type: 연금가입자, key: N-050 }, depth: 2 }
+        - { entity: { type: 연금가입자, key: N-055 }, depth: 2 }
+        - { entity: { type: 연금가입자, key: N-065 }, depth: 2 }
+        - { entity: { type: 연금가입자, key: N-070 }, depth: 2 }
+        - { entity: { type: 연금가입자, key: N-075 }, depth: 2 }
+        - { entity: { type: 연금가입자, key: N-085 }, depth: 2 }
+        - { entity: { type: 연금가입자, key: N-091 }, depth: 2 }
+        - { entity: { type: 연금가입자, key: N-096 }, depth: 2 }
+        - { entity: { type: 연금가입자, key: N-101 }, depth: 2 }
+        - { entity: { type: 연금가입자, key: N-102 }, depth: 2 }
+        - { entity: { type: 연금가입자, key: N-107 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-012 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-013 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-021 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-023 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-028 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-040 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-041 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-043 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-049 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-051 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-056 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-068 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-069 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-071 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-077 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-079 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-084 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-096 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-097 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-099 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-107 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-112 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-124 }, depth: 2 }
+        - { entity: { type: 연금계좌, key: A-127 }, depth: 2 }
+        - { entity: { type: 연금제도, key: L-07 }, depth: 2 }
+        - { entity: { type: 연금제도, key: L-08 }, depth: 2 }
+        - { entity: { type: 연금제도, key: L-09 }, depth: 2 }
+        - { entity: { type: 연금제도, key: L-10 }, depth: 2 }
+        - { entity: { type: 연금제도, key: L-11 }, depth: 2 }
+        - { entity: { type: 연금제도, key: L-12 }, depth: 2 }
+        - { entity: { type: 연금제도, key: L-13 }, depth: 2 }
+        - { entity: { type: 연금제도, key: L-14 }, depth: 2 }
+        - { entity: { type: 연금제도, key: L-15 }, depth: 2 }
+        - { entity: { type: 연금제도, key: L-16 }, depth: 2 }
+        - { entity: { type: 운영규약, key: RG-03 }, depth: 2 }
+        - { entity: { type: 운영규약, key: RG-04 }, depth: 2 }
+        - { entity: { type: 운영요건, key: RQ-02 }, depth: 2 }
+        - { entity: { type: 운영요건, key: RQ-07 }, depth: 2 }
+        - { entity: { type: 운영요건, key: RQ-08 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-02 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-03 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-06 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-07 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-08 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-09 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-10 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-11 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-12 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-13 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-14 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-15 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-16 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-17 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-18 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-19 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-20 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-21 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-22 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-23 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-24 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-25 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-26 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-27 }, depth: 2 }
+        - { entity: { type: 운용상품, key: P-28 }, depth: 2 }
+        - { entity: { type: 가입사업장, key: E-01 }, depth: 3 }
+        - { entity: { type: 가입사업장, key: E-04 }, depth: 3 }
+        - { entity: { type: 가입사업장, key: E-06 }, depth: 3 }
+        - { entity: { type: 가입사업장, key: E-07 }, depth: 3 }
+        - { entity: { type: 가입사업장, key: E-08 }, depth: 3 }
+        - { entity: { type: 가입사업장, key: E-09 }, depth: 3 }
+        - { entity: { type: 가입사업장, key: E-10 }, depth: 3 }
+        - { entity: { type: 가입사업장, key: E-11 }, depth: 3 }
+        - { entity: { type: 가입사업장, key: E-12 }, depth: 3 }
+        - { entity: { type: 가입사업장, key: E-13 }, depth: 3 }
+        - { entity: { type: 가입사업장, key: E-14 }, depth: 3 }
+        - { entity: { type: 가입사업장, key: E-15 }, depth: 3 }
+        - { entity: { type: 금융기관, key: I-02 }, depth: 3 }
+        - { entity: { type: 금융기관, key: I-04 }, depth: 3 }
+        - { entity: { type: 금융기관, key: I-05 }, depth: 3 }
+        - { entity: { type: 금융기관, key: I-06 }, depth: 3 }
+        - { entity: { type: 금융기관, key: I-07 }, depth: 3 }
+        - { entity: { type: 금융기관, key: I-08 }, depth: 3 }
+        - { entity: { type: 금융기관, key: I-09 }, depth: 3 }
+        - { entity: { type: 금융기관, key: I-10 }, depth: 3 }
+        - { entity: { type: 연금가입자, key: N-012 }, depth: 3 }
+        - { entity: { type: 연금가입자, key: N-013 }, depth: 3 }
+        - { entity: { type: 연금가입자, key: N-021 }, depth: 3 }
+        - { entity: { type: 연금가입자, key: N-023 }, depth: 3 }
+        - { entity: { type: 연금가입자, key: N-028 }, depth: 3 }
+        - { entity: { type: 연금가입자, key: N-040 }, depth: 3 }
+        - { entity: { type: 연금가입자, key: N-041 }, depth: 3 }
+        - { entity: { type: 연금가입자, key: N-043 }, depth: 3 }
+        - { entity: { type: 연금가입자, key: N-049 }, depth: 3 }
+        - { entity: { type: 연금가입자, key: N-051 }, depth: 3 }
+        - { entity: { type: 연금가입자, key: N-056 }, depth: 3 }
+        - { entity: { type: 연금가입자, key: N-067 }, depth: 3 }
+        - { entity: { type: 연금가입자, key: N-068 }, depth: 3 }
+        - { entity: { type: 연금가입자, key: N-069 }, depth: 3 }
+        - { entity: { type: 연금가입자, key: N-071 }, depth: 3 }
+        - { entity: { type: 연금가입자, key: N-077 }, depth: 3 }
+        - { entity: { type: 연금가입자, key: N-079 }, depth: 3 }
+        - { entity: { type: 연금가입자, key: N-084 }, depth: 3 }
+        - { entity: { type: 연금가입자, key: N-093 }, depth: 3 }
+        - { entity: { type: 연금가입자, key: N-098 }, depth: 3 }
+        - { entity: { type: 연금가입자, key: N-108 }, depth: 3 }
+        - { entity: { type: 연금가입자, key: N-109 }, depth: 3 }
+        - { entity: { type: 연금가입자, key: N-111 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-001 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-002 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-003 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-004 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-006 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-007 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-008 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-009 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-011 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-014 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-016 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-017 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-018 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-019 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-020 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-022 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-024 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-026 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-027 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-029 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-031 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-032 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-033 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-034 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-036 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-037 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-038 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-039 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-042 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-044 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-046 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-047 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-048 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-052 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-053 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-054 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-057 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-058 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-059 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-060 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-061 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-062 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-063 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-064 }, depth: 3 }
+        - { entity: { type: 연금계좌, key: A-066 }, depth: 3 }
+      edges:
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-005 }, target: { type: 연금가입자, key: N-005 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-010 }, target: { type: 연금가입자, key: N-010 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-012 }, target: { type: 연금가입자, key: N-012 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-013 }, target: { type: 연금가입자, key: N-013 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-015 }, target: { type: 연금가입자, key: N-015 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-021 }, target: { type: 연금가입자, key: N-021 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-023 }, target: { type: 연금가입자, key: N-023 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-025 }, target: { type: 연금가입자, key: N-025 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-028 }, target: { type: 연금가입자, key: N-028 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-030 }, target: { type: 연금가입자, key: N-030 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-035 }, target: { type: 연금가입자, key: N-035 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-040 }, target: { type: 연금가입자, key: N-040 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-041 }, target: { type: 연금가입자, key: N-041 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-043 }, target: { type: 연금가입자, key: N-043 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-045 }, target: { type: 연금가입자, key: N-045 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-049 }, target: { type: 연금가입자, key: N-049 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-050 }, target: { type: 연금가입자, key: N-050 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-051 }, target: { type: 연금가입자, key: N-051 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-055 }, target: { type: 연금가입자, key: N-055 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-056 }, target: { type: 연금가입자, key: N-056 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-065 }, target: { type: 연금가입자, key: N-065 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-068 }, target: { type: 연금가입자, key: N-068 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-069 }, target: { type: 연금가입자, key: N-069 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-070 }, target: { type: 연금가입자, key: N-070 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-071 }, target: { type: 연금가입자, key: N-071 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-075 }, target: { type: 연금가입자, key: N-075 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-077 }, target: { type: 연금가입자, key: N-077 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-079 }, target: { type: 연금가입자, key: N-079 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-084 }, target: { type: 연금가입자, key: N-084 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-085 }, target: { type: 연금가입자, key: N-085 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-090 }, target: { type: 연금가입자, key: N-102 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-095 }, target: { type: 연금가입자, key: N-107 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-096 }, target: { type: 연금가입자, key: N-108 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-097 }, target: { type: 연금가입자, key: N-109 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-099 }, target: { type: 연금가입자, key: N-111 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-105 }, target: { type: 연금가입자, key: N-091 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-107 }, target: { type: 연금가입자, key: N-093 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-110 }, target: { type: 연금가입자, key: N-096 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-112 }, target: { type: 연금가입자, key: N-098 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-115 }, target: { type: 연금가입자, key: N-101 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-124 }, target: { type: 연금가입자, key: N-049 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-125 }, target: { type: 연금가입자, key: N-055 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 계좌소유, source: { type: 연금계좌, key: A-127 }, target: { type: 연금가입자, key: N-067 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 규약부과, source: { type: 운영규약, key: RG-03 }, target: { type: 운영요건, key: RQ-17 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 규약부과, source: { type: 운영규약, key: RG-04 }, target: { type: 운영요건, key: RQ-18 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법구성, source: { type: 기본운용방법, key: D-01 }, target: { type: 운용상품, key: P-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법구성, source: { type: 기본운용방법, key: D-01 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법구성, source: { type: 기본운용방법, key: D-02 }, target: { type: 운용상품, key: P-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법구성, source: { type: 기본운용방법, key: D-02 }, target: { type: 운용상품, key: P-26 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법구성, source: { type: 기본운용방법, key: D-03 }, target: { type: 운용상품, key: P-24 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법구성, source: { type: 기본운용방법, key: D-04 }, target: { type: 운용상품, key: P-13 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법구성, source: { type: 기본운용방법, key: D-04 }, target: { type: 운용상품, key: P-22 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법구성, source: { type: 기본운용방법, key: D-05 }, target: { type: 운용상품, key: P-17 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-001 }, target: { type: 기본운용방법, key: D-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-002 }, target: { type: 기본운용방법, key: D-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-003 }, target: { type: 기본운용방법, key: D-04 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-005 }, target: { type: 기본운용방법, key: D-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-006 }, target: { type: 기본운용방법, key: D-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-007 }, target: { type: 기본운용방법, key: D-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-009 }, target: { type: 기본운용방법, key: D-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-010 }, target: { type: 기본운용방법, key: D-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-011 }, target: { type: 기본운용방법, key: D-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-013 }, target: { type: 기본운용방법, key: D-04 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-014 }, target: { type: 기본운용방법, key: D-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-015 }, target: { type: 기본운용방법, key: D-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-017 }, target: { type: 기본운용방법, key: D-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-018 }, target: { type: 기본운용방법, key: D-04 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-019 }, target: { type: 기본운용방법, key: D-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-021 }, target: { type: 기본운용방법, key: D-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-022 }, target: { type: 기본운용방법, key: D-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-023 }, target: { type: 기본운용방법, key: D-04 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-025 }, target: { type: 기본운용방법, key: D-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-026 }, target: { type: 기본운용방법, key: D-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-027 }, target: { type: 기본운용방법, key: D-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-029 }, target: { type: 기본운용방법, key: D-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-030 }, target: { type: 기본운용방법, key: D-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-031 }, target: { type: 기본운용방법, key: D-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-033 }, target: { type: 기본운용방법, key: D-04 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-034 }, target: { type: 기본운용방법, key: D-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-035 }, target: { type: 기본운용방법, key: D-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-037 }, target: { type: 기본운용방법, key: D-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-038 }, target: { type: 기본운용방법, key: D-04 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-039 }, target: { type: 기본운용방법, key: D-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-041 }, target: { type: 기본운용방법, key: D-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-042 }, target: { type: 기본운용방법, key: D-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-043 }, target: { type: 기본운용방법, key: D-04 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-045 }, target: { type: 기본운용방법, key: D-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-046 }, target: { type: 기본운용방법, key: D-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-047 }, target: { type: 기본운용방법, key: D-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-049 }, target: { type: 기본운용방법, key: D-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-050 }, target: { type: 기본운용방법, key: D-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-051 }, target: { type: 기본운용방법, key: D-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-053 }, target: { type: 기본운용방법, key: D-04 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-054 }, target: { type: 기본운용방법, key: D-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-055 }, target: { type: 기본운용방법, key: D-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-057 }, target: { type: 기본운용방법, key: D-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-058 }, target: { type: 기본운용방법, key: D-04 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-059 }, target: { type: 기본운용방법, key: D-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-061 }, target: { type: 기본운용방법, key: D-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-062 }, target: { type: 기본운용방법, key: D-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-063 }, target: { type: 기본운용방법, key: D-04 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-065 }, target: { type: 기본운용방법, key: D-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-066 }, target: { type: 기본운용방법, key: D-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-069 }, target: { type: 기본운용방법, key: D-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-070 }, target: { type: 기본운용방법, key: D-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-071 }, target: { type: 기본운용방법, key: D-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-075 }, target: { type: 기본운용방법, key: D-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-077 }, target: { type: 기본운용방법, key: D-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-079 }, target: { type: 기본운용방법, key: D-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-085 }, target: { type: 기본운용방법, key: D-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-090 }, target: { type: 기본운용방법, key: D-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-095 }, target: { type: 기본운용방법, key: D-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-097 }, target: { type: 기본운용방법, key: D-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-099 }, target: { type: 기본운용방법, key: D-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-105 }, target: { type: 기본운용방법, key: D-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-107 }, target: { type: 기본운용방법, key: D-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-110 }, target: { type: 기본운용방법, key: D-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-115 }, target: { type: 기본운용방법, key: D-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-125 }, target: { type: 기본운용방법, key: D-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 방법지정, source: { type: 연금계좌, key: A-127 }, target: { type: 기본운용방법, key: D-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-005 }, target: { type: 가입사업장, key: E-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-010 }, target: { type: 가입사업장, key: E-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-012 }, target: { type: 가입사업장, key: E-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-013 }, target: { type: 가입사업장, key: E-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-021 }, target: { type: 가입사업장, key: E-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-023 }, target: { type: 가입사업장, key: E-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-025 }, target: { type: 가입사업장, key: E-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-028 }, target: { type: 가입사업장, key: E-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-030 }, target: { type: 가입사업장, key: E-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-035 }, target: { type: 가입사업장, key: E-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-041 }, target: { type: 가입사업장, key: E-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-043 }, target: { type: 가입사업장, key: E-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-045 }, target: { type: 가입사업장, key: E-11 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-049 }, target: { type: 가입사업장, key: E-11 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-050 }, target: { type: 가입사업장, key: E-11 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-051 }, target: { type: 가입사업장, key: E-11 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-055 }, target: { type: 가입사업장, key: E-12 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-056 }, target: { type: 가입사업장, key: E-12 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-065 }, target: { type: 가입사업장, key: E-13 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-067 }, target: { type: 가입사업장, key: E-13 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-068 }, target: { type: 가입사업장, key: E-13 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-069 }, target: { type: 가입사업장, key: E-13 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-070 }, target: { type: 가입사업장, key: E-13 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-071 }, target: { type: 가입사업장, key: E-13 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-075 }, target: { type: 가입사업장, key: E-14 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-077 }, target: { type: 가입사업장, key: E-14 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-079 }, target: { type: 가입사업장, key: E-14 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-084 }, target: { type: 가입사업장, key: E-15 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-085 }, target: { type: 가입사업장, key: E-15 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-091 }, target: { type: 가입사업장, key: E-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-096 }, target: { type: 가입사업장, key: E-04 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 사업장재직, source: { type: 연금가입자, key: N-101 }, target: { type: 가입사업장, key: E-06 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-001 }, target: { type: 운용상품, key: P-06 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-001 }, target: { type: 운용상품, key: P-15 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-001 }, target: { type: 운용상품, key: P-25 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-002 }, target: { type: 운용상품, key: P-11 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-002 }, target: { type: 운용상품, key: P-14 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-002 }, target: { type: 운용상품, key: P-26 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-003 }, target: { type: 운용상품, key: P-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-003 }, target: { type: 운용상품, key: P-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-003 }, target: { type: 운용상품, key: P-16 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-004 }, target: { type: 운용상품, key: P-20 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-004 }, target: { type: 운용상품, key: P-21 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-005 }, target: { type: 운용상품, key: P-06 }, validFrom: 2026-06-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-005 }, target: { type: 운용상품, key: P-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-005 }, target: { type: 운용상품, key: P-26 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-006 }, target: { type: 운용상품, key: P-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-006 }, target: { type: 운용상품, key: P-14 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-006 }, target: { type: 운용상품, key: P-26 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-007 }, target: { type: 운용상품, key: P-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-007 }, target: { type: 운용상품, key: P-15 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-007 }, target: { type: 운용상품, key: P-25 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-008 }, target: { type: 운용상품, key: P-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-008 }, target: { type: 운용상품, key: P-13 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-009 }, target: { type: 운용상품, key: P-18 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-009 }, target: { type: 운용상품, key: P-19 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-009 }, target: { type: 운용상품, key: P-21 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-010 }, target: { type: 운용상품, key: P-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-010 }, target: { type: 운용상품, key: P-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-010 }, target: { type: 운용상품, key: P-23 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-011 }, target: { type: 운용상품, key: P-13 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-011 }, target: { type: 운용상품, key: P-27 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-011 }, target: { type: 운용상품, key: P-28 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-012 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-012 }, target: { type: 운용상품, key: P-16 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-012 }, target: { type: 운용상품, key: P-24 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-013 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-013 }, target: { type: 운용상품, key: P-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-014 }, target: { type: 운용상품, key: P-15 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-014 }, target: { type: 운용상품, key: P-18 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-014 }, target: { type: 운용상품, key: P-22 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-015 }, target: { type: 운용상품, key: P-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-015 }, target: { type: 운용상품, key: P-11 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-015 }, target: { type: 운용상품, key: P-20 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-016 }, target: { type: 운용상품, key: P-12 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-016 }, target: { type: 운용상품, key: P-25 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-016 }, target: { type: 운용상품, key: P-28 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-017 }, target: { type: 운용상품, key: P-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-017 }, target: { type: 운용상품, key: P-17 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-017 }, target: { type: 운용상품, key: P-23 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-018 }, target: { type: 운용상품, key: P-06 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-018 }, target: { type: 운용상품, key: P-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-019 }, target: { type: 운용상품, key: P-12 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-019 }, target: { type: 운용상품, key: P-17 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-019 }, target: { type: 운용상품, key: P-23 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-020 }, target: { type: 운용상품, key: P-17 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-020 }, target: { type: 운용상품, key: P-28 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-021 }, target: { type: 운용상품, key: P-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-021 }, target: { type: 운용상품, key: P-11 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-021 }, target: { type: 운용상품, key: P-22 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-022 }, target: { type: 운용상품, key: P-18 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-022 }, target: { type: 운용상품, key: P-22 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-022 }, target: { type: 운용상품, key: P-27 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-023 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-023 }, target: { type: 운용상품, key: P-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-024 }, target: { type: 운용상품, key: P-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-024 }, target: { type: 운용상품, key: P-16 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-024 }, target: { type: 운용상품, key: P-24 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-025 }, target: { type: 운용상품, key: P-13 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-025 }, target: { type: 운용상품, key: P-14 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-025 }, target: { type: 운용상품, key: P-27 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-026 }, target: { type: 운용상품, key: P-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-026 }, target: { type: 운용상품, key: P-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-026 }, target: { type: 운용상품, key: P-19 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-027 }, target: { type: 운용상품, key: P-19 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-027 }, target: { type: 운용상품, key: P-21 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-027 }, target: { type: 운용상품, key: P-24 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-028 }, target: { type: 운용상품, key: P-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-028 }, target: { type: 운용상품, key: P-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-029 }, target: { type: 운용상품, key: P-06 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-029 }, target: { type: 운용상품, key: P-15 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-029 }, target: { type: 운용상품, key: P-25 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-030 }, target: { type: 운용상품, key: P-11 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-030 }, target: { type: 운용상품, key: P-14 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-030 }, target: { type: 운용상품, key: P-26 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-031 }, target: { type: 운용상품, key: P-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-031 }, target: { type: 운용상품, key: P-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-031 }, target: { type: 운용상품, key: P-16 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-032 }, target: { type: 운용상품, key: P-20 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-032 }, target: { type: 운용상품, key: P-21 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-033 }, target: { type: 운용상품, key: P-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-033 }, target: { type: 운용상품, key: P-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-034 }, target: { type: 운용상품, key: P-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-034 }, target: { type: 운용상품, key: P-14 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-034 }, target: { type: 운용상품, key: P-26 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-035 }, target: { type: 운용상품, key: P-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-035 }, target: { type: 운용상품, key: P-15 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-035 }, target: { type: 운용상품, key: P-25 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-036 }, target: { type: 운용상품, key: P-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-036 }, target: { type: 운용상품, key: P-13 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-037 }, target: { type: 운용상품, key: P-18 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-037 }, target: { type: 운용상품, key: P-19 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-037 }, target: { type: 운용상품, key: P-21 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-038 }, target: { type: 운용상품, key: P-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-038 }, target: { type: 운용상품, key: P-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-038 }, target: { type: 운용상품, key: P-23 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-039 }, target: { type: 운용상품, key: P-13 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-039 }, target: { type: 운용상품, key: P-27 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-039 }, target: { type: 운용상품, key: P-28 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-040 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-040 }, target: { type: 운용상품, key: P-13 }, validFrom: 2026-06-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-040 }, target: { type: 운용상품, key: P-16 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-040 }, target: { type: 운용상품, key: P-24 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-041 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-041 }, target: { type: 운용상품, key: P-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-041 }, target: { type: 운용상품, key: P-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-042 }, target: { type: 운용상품, key: P-15 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-042 }, target: { type: 운용상품, key: P-18 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-042 }, target: { type: 운용상품, key: P-22 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-043 }, target: { type: 운용상품, key: P-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-043 }, target: { type: 운용상품, key: P-11 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-043 }, target: { type: 운용상품, key: P-20 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-044 }, target: { type: 운용상품, key: P-12 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-044 }, target: { type: 운용상품, key: P-25 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-044 }, target: { type: 운용상품, key: P-28 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-045 }, target: { type: 운용상품, key: P-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-045 }, target: { type: 운용상품, key: P-17 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-045 }, target: { type: 운용상품, key: P-23 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-046 }, target: { type: 운용상품, key: P-06 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-046 }, target: { type: 운용상품, key: P-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-047 }, target: { type: 운용상품, key: P-12 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-047 }, target: { type: 운용상품, key: P-17 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-047 }, target: { type: 운용상품, key: P-23 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-048 }, target: { type: 운용상품, key: P-12 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-048 }, target: { type: 운용상품, key: P-17 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-048 }, target: { type: 운용상품, key: P-28 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-049 }, target: { type: 운용상품, key: P-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-049 }, target: { type: 운용상품, key: P-11 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-049 }, target: { type: 운용상품, key: P-22 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-050 }, target: { type: 운용상품, key: P-18 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-050 }, target: { type: 운용상품, key: P-22 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-050 }, target: { type: 운용상품, key: P-27 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-051 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-051 }, target: { type: 운용상품, key: P-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-052 }, target: { type: 운용상품, key: P-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-052 }, target: { type: 운용상품, key: P-16 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-052 }, target: { type: 운용상품, key: P-24 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-053 }, target: { type: 운용상품, key: P-13 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-053 }, target: { type: 운용상품, key: P-14 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-053 }, target: { type: 운용상품, key: P-27 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-054 }, target: { type: 운용상품, key: P-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-054 }, target: { type: 운용상품, key: P-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-054 }, target: { type: 운용상품, key: P-19 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-055 }, target: { type: 운용상품, key: P-19 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-055 }, target: { type: 운용상품, key: P-21 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-055 }, target: { type: 운용상품, key: P-24 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-056 }, target: { type: 운용상품, key: P-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-056 }, target: { type: 운용상품, key: P-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-057 }, target: { type: 운용상품, key: P-06 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-057 }, target: { type: 운용상품, key: P-15 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-057 }, target: { type: 운용상품, key: P-25 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-058 }, target: { type: 운용상품, key: P-11 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-058 }, target: { type: 운용상품, key: P-14 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-058 }, target: { type: 운용상품, key: P-26 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-059 }, target: { type: 운용상품, key: P-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-059 }, target: { type: 운용상품, key: P-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-059 }, target: { type: 운용상품, key: P-16 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-060 }, target: { type: 운용상품, key: P-20 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-060 }, target: { type: 운용상품, key: P-21 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-061 }, target: { type: 운용상품, key: P-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-061 }, target: { type: 운용상품, key: P-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-061 }, target: { type: 운용상품, key: P-26 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-062 }, target: { type: 운용상품, key: P-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-062 }, target: { type: 운용상품, key: P-14 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-062 }, target: { type: 운용상품, key: P-26 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-063 }, target: { type: 운용상품, key: P-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-063 }, target: { type: 운용상품, key: P-15 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-063 }, target: { type: 운용상품, key: P-25 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-064 }, target: { type: 운용상품, key: P-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-064 }, target: { type: 운용상품, key: P-13 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-065 }, target: { type: 운용상품, key: P-18 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-065 }, target: { type: 운용상품, key: P-19 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-065 }, target: { type: 운용상품, key: P-21 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-066 }, target: { type: 운용상품, key: P-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-066 }, target: { type: 운용상품, key: P-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-066 }, target: { type: 운용상품, key: P-23 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-068 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-068 }, target: { type: 운용상품, key: P-16 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-068 }, target: { type: 운용상품, key: P-24 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-069 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-069 }, target: { type: 운용상품, key: P-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-069 }, target: { type: 운용상품, key: P-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-070 }, target: { type: 운용상품, key: P-15 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-070 }, target: { type: 운용상품, key: P-18 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-070 }, target: { type: 운용상품, key: P-22 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-071 }, target: { type: 운용상품, key: P-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-071 }, target: { type: 운용상품, key: P-11 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-071 }, target: { type: 운용상품, key: P-20 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-075 }, target: { type: 운용상품, key: P-12 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-075 }, target: { type: 운용상품, key: P-17 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-075 }, target: { type: 운용상품, key: P-23 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-077 }, target: { type: 운용상품, key: P-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-077 }, target: { type: 운용상품, key: P-11 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-077 }, target: { type: 운용상품, key: P-22 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-079 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-079 }, target: { type: 운용상품, key: P-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-084 }, target: { type: 운용상품, key: P-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-084 }, target: { type: 운용상품, key: P-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-085 }, target: { type: 운용상품, key: P-06 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-085 }, target: { type: 운용상품, key: P-15 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-085 }, target: { type: 운용상품, key: P-25 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-090 }, target: { type: 운용상품, key: P-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-090 }, target: { type: 운용상품, key: P-14 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-090 }, target: { type: 운용상품, key: P-26 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-095 }, target: { type: 운용상품, key: P-13 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-095 }, target: { type: 운용상품, key: P-27 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-095 }, target: { type: 운용상품, key: P-28 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-096 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-096 }, target: { type: 운용상품, key: P-16 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-096 }, target: { type: 운용상품, key: P-24 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-097 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-097 }, target: { type: 운용상품, key: P-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-097 }, target: { type: 운용상품, key: P-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-099 }, target: { type: 운용상품, key: P-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-099 }, target: { type: 운용상품, key: P-11 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-099 }, target: { type: 운용상품, key: P-20 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-105 }, target: { type: 운용상품, key: P-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-105 }, target: { type: 운용상품, key: P-11 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-105 }, target: { type: 운용상품, key: P-22 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-107 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-107 }, target: { type: 운용상품, key: P-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-110 }, target: { type: 운용상품, key: P-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-110 }, target: { type: 운용상품, key: P-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-110 }, target: { type: 운용상품, key: P-19 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-112 }, target: { type: 운용상품, key: P-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-112 }, target: { type: 운용상품, key: P-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-115 }, target: { type: 운용상품, key: P-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-115 }, target: { type: 운용상품, key: P-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-115 }, target: { type: 운용상품, key: P-16 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-124 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-124 }, target: { type: 운용상품, key: P-16 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-124 }, target: { type: 운용상품, key: P-24 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-125 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-125 }, target: { type: 운용상품, key: P-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-125 }, target: { type: 운용상품, key: P-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-127 }, target: { type: 운용상품, key: P-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-127 }, target: { type: 운용상품, key: P-11 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품보유, source: { type: 연금계좌, key: A-127 }, target: { type: 운용상품, key: P-20 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-01 }, target: { type: 금융기관, key: I-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-02 }, target: { type: 금융기관, key: I-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-03 }, target: { type: 금융기관, key: I-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-05 }, target: { type: 금융기관, key: I-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-06 }, target: { type: 금융기관, key: I-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-07 }, target: { type: 금융기관, key: I-04 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-08 }, target: { type: 금융기관, key: I-04 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-09 }, target: { type: 금융기관, key: I-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-10 }, target: { type: 금융기관, key: I-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-11 }, target: { type: 금융기관, key: I-06 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-12 }, target: { type: 금융기관, key: I-06 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-13 }, target: { type: 금융기관, key: I-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-14 }, target: { type: 금융기관, key: I-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-15 }, target: { type: 금융기관, key: I-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-16 }, target: { type: 금융기관, key: I-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-17 }, target: { type: 금융기관, key: I-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-18 }, target: { type: 금융기관, key: I-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-19 }, target: { type: 금융기관, key: I-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-20 }, target: { type: 금융기관, key: I-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-21 }, target: { type: 금융기관, key: I-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-22 }, target: { type: 금융기관, key: I-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-23 }, target: { type: 금융기관, key: I-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-24 }, target: { type: 금융기관, key: I-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-25 }, target: { type: 금융기관, key: I-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-26 }, target: { type: 금융기관, key: I-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-27 }, target: { type: 금융기관, key: I-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 상품제공, source: { type: 운용상품, key: P-28 }, target: { type: 금융기관, key: I-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 금융기관, key: I-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 금융기관, key: I-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 금융기관, key: I-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 금융기관, key: I-04 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 금융기관, key: I-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 운용상품, key: P-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 운용상품, key: P-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 운용상품, key: P-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 운용상품, key: P-06 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 운용상품, key: P-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 운용상품, key: P-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 운용상품, key: P-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-02 }, target: { type: 운용상품, key: P-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-07 }, target: { type: 운용상품, key: P-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-07 }, target: { type: 운용상품, key: P-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-07 }, target: { type: 운용상품, key: P-15 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-07 }, target: { type: 운용상품, key: P-22 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-08 }, target: { type: 운용상품, key: P-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-08 }, target: { type: 운용상품, key: P-12 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-08 }, target: { type: 운용상품, key: P-19 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-08 }, target: { type: 운용상품, key: P-26 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-17 }, target: { type: 기본운용방법, key: D-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-17 }, target: { type: 기본운용방법, key: D-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-17 }, target: { type: 기본운용방법, key: D-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-17 }, target: { type: 기본운용방법, key: D-04 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-17 }, target: { type: 기본운용방법, key: D-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-18 }, target: { type: 기본운용방법, key: D-01 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-18 }, target: { type: 기본운용방법, key: D-02 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-18 }, target: { type: 기본운용방법, key: D-03 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-18 }, target: { type: 기본운용방법, key: D-04 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 요건적용, source: { type: 운영요건, key: RQ-18 }, target: { type: 기본운용방법, key: D-05 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-001 }, target: { type: 연금제도, key: L-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-002 }, target: { type: 연금제도, key: L-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-003 }, target: { type: 연금제도, key: L-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-004 }, target: { type: 연금제도, key: L-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-005 }, target: { type: 연금제도, key: L-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-006 }, target: { type: 연금제도, key: L-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-007 }, target: { type: 연금제도, key: L-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-008 }, target: { type: 연금제도, key: L-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-009 }, target: { type: 연금제도, key: L-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-010 }, target: { type: 연금제도, key: L-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-011 }, target: { type: 연금제도, key: L-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-012 }, target: { type: 연금제도, key: L-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-013 }, target: { type: 연금제도, key: L-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-014 }, target: { type: 연금제도, key: L-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-015 }, target: { type: 연금제도, key: L-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-016 }, target: { type: 연금제도, key: L-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-017 }, target: { type: 연금제도, key: L-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-018 }, target: { type: 연금제도, key: L-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-019 }, target: { type: 연금제도, key: L-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-020 }, target: { type: 연금제도, key: L-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-021 }, target: { type: 연금제도, key: L-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-022 }, target: { type: 연금제도, key: L-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-023 }, target: { type: 연금제도, key: L-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-024 }, target: { type: 연금제도, key: L-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-025 }, target: { type: 연금제도, key: L-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-026 }, target: { type: 연금제도, key: L-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-027 }, target: { type: 연금제도, key: L-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-028 }, target: { type: 연금제도, key: L-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-029 }, target: { type: 연금제도, key: L-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-030 }, target: { type: 연금제도, key: L-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-031 }, target: { type: 연금제도, key: L-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-032 }, target: { type: 연금제도, key: L-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-033 }, target: { type: 연금제도, key: L-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-034 }, target: { type: 연금제도, key: L-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-035 }, target: { type: 연금제도, key: L-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-036 }, target: { type: 연금제도, key: L-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-037 }, target: { type: 연금제도, key: L-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-038 }, target: { type: 연금제도, key: L-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-039 }, target: { type: 연금제도, key: L-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-040 }, target: { type: 연금제도, key: L-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-041 }, target: { type: 연금제도, key: L-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-042 }, target: { type: 연금제도, key: L-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-043 }, target: { type: 연금제도, key: L-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-044 }, target: { type: 연금제도, key: L-11 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-045 }, target: { type: 연금제도, key: L-11 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-046 }, target: { type: 연금제도, key: L-11 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-047 }, target: { type: 연금제도, key: L-11 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-048 }, target: { type: 연금제도, key: L-11 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-049 }, target: { type: 연금제도, key: L-11 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-050 }, target: { type: 연금제도, key: L-11 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-051 }, target: { type: 연금제도, key: L-11 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-052 }, target: { type: 연금제도, key: L-11 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-053 }, target: { type: 연금제도, key: L-11 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-054 }, target: { type: 연금제도, key: L-12 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-055 }, target: { type: 연금제도, key: L-12 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-056 }, target: { type: 연금제도, key: L-12 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-057 }, target: { type: 연금제도, key: L-12 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-058 }, target: { type: 연금제도, key: L-12 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-059 }, target: { type: 연금제도, key: L-12 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-060 }, target: { type: 연금제도, key: L-12 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-061 }, target: { type: 연금제도, key: L-12 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-062 }, target: { type: 연금제도, key: L-12 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-063 }, target: { type: 연금제도, key: L-13 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-064 }, target: { type: 연금제도, key: L-13 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-065 }, target: { type: 연금제도, key: L-13 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-066 }, target: { type: 연금제도, key: L-13 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-068 }, target: { type: 연금제도, key: L-13 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-069 }, target: { type: 연금제도, key: L-13 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-070 }, target: { type: 연금제도, key: L-13 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-071 }, target: { type: 연금제도, key: L-13 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-075 }, target: { type: 연금제도, key: L-14 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-077 }, target: { type: 연금제도, key: L-14 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-079 }, target: { type: 연금제도, key: L-14 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-084 }, target: { type: 연금제도, key: L-15 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-085 }, target: { type: 연금제도, key: L-15 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-090 }, target: { type: 연금제도, key: L-16 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-095 }, target: { type: 연금제도, key: L-16 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-096 }, target: { type: 연금제도, key: L-16 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-097 }, target: { type: 연금제도, key: L-16 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-099 }, target: { type: 연금제도, key: L-16 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-105 }, target: { type: 연금제도, key: L-16 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-107 }, target: { type: 연금제도, key: L-16 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-110 }, target: { type: 연금제도, key: L-16 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-112 }, target: { type: 연금제도, key: L-16 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-115 }, target: { type: 연금제도, key: L-16 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-124 }, target: { type: 연금제도, key: L-16 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-125 }, target: { type: 연금제도, key: L-16 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도가입, source: { type: 연금계좌, key: A-127 }, target: { type: 연금제도, key: L-16 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도설정, source: { type: 연금제도, key: L-07 }, target: { type: 가입사업장, key: E-07 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도설정, source: { type: 연금제도, key: L-08 }, target: { type: 가입사업장, key: E-08 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도설정, source: { type: 연금제도, key: L-09 }, target: { type: 가입사업장, key: E-09 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도설정, source: { type: 연금제도, key: L-10 }, target: { type: 가입사업장, key: E-10 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도설정, source: { type: 연금제도, key: L-11 }, target: { type: 가입사업장, key: E-11 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도설정, source: { type: 연금제도, key: L-12 }, target: { type: 가입사업장, key: E-12 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도설정, source: { type: 연금제도, key: L-13 }, target: { type: 가입사업장, key: E-13 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도설정, source: { type: 연금제도, key: L-14 }, target: { type: 가입사업장, key: E-14 }, validFrom: 2026-01-01, validTo: null }
+        - { type: 제도설정, source: { type: 연금제도, key: L-15 }, target: { type: 가입사업장, key: E-15 }, validFrom: 2026-01-01, validTo: null }
+      totalNodes: 257
+      truncated: true
+      reachedDepth: 3
 

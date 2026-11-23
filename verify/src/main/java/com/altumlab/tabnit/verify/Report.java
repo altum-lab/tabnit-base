@@ -125,6 +125,61 @@ final class Report {
         return text.toString();
     }
 
+    /** 대조의 보고에 적는 실패는 이만큼까지다. 나머지는 수로 알린다. */
+    static final int MAX_CHECK_FAILURES = 20;
+
+    /**
+     * 시나리오 하나의 전수 대조의 보고 (D4 3절 "전수 대조", D2 AD-368). 대조는 수가 많아 통과한 것은 한 줄씩 적지 않는다:
+     * 수와, 실패한 것의 기대와 실제를 적는다.
+     *
+     * @param differences 두 번 돌린 결과가 달랐던 대조의 번호
+     */
+    static String checks(String packId, String scenarioId, List<Evaluator.Result> results, List<String> differences) {
+        long passed = results.stream().filter(Evaluator.Result::passed).count();
+        Map<String, Integer> byKind = new LinkedHashMap<>();
+        for (String kind : KIND_LABELS.keySet()) {
+            int count = (int) results.stream().filter(result -> kind.equals(result.kind())).count();
+            if (count > 0) {
+                byKind.put(label(kind), count);
+            }
+        }
+        int others = results.size() - byKind.values().stream().mapToInt(Integer::intValue).sum();
+        if (others > 0) {
+            byKind.put("그 밖", others);
+        }
+        List<String> kinds = new ArrayList<>();
+        byKind.forEach((kind, count) -> kinds.add(kind + " " + count));
+        StringBuilder text = new StringBuilder();
+        text.append("Pack: ").append(packId).append("   시나리오 ").append(scenarioId).append("   대조 통과 ").append(passed)
+            .append(" / ").append(results.size()).append(" (").append(String.join(", ", kinds)).append(")   두 번 실행: ")
+            .append(differences.isEmpty() ? "같음" : "다름 (" + String.join(", ", differences) + ")").append('\n');
+        int written = 0;
+        int failed = 0;
+        for (Evaluator.Result result : results) {
+            if (result.passed()) {
+                continue;
+            }
+            failed++;
+            if (written == MAX_CHECK_FAILURES) {
+                continue;
+            }
+            written++;
+            text.append("  실패  ").append(result.id()).append("  ").append(label(result.kind())).append("  ")
+                .append(result.label()).append('\n');
+            if (result.reason() != null) {
+                text.append("        ").append(result.reason()).append('\n');
+            }
+            else {
+                text.append("        기대: ").append(result.expected()).append('\n');
+                text.append("        실제: ").append(result.actual()).append('\n');
+            }
+        }
+        if (failed > written) {
+            text.append("  실패한 대조가 ").append(failed - written).append("건 더 있습니다.\n");
+        }
+        return text.toString();
+    }
+
     private static String label(String kind) {
         return KIND_LABELS.getOrDefault(kind, kind);
     }
@@ -143,6 +198,7 @@ final class Report {
         labels.put(Evaluator.CHANGES, "변동");
         labels.put(Evaluator.IMPACT, "영향 범위");
         labels.put(Evaluator.ACTIONS, "조치");
+        labels.put(Evaluator.RELATION_MAP, "관계 지도");
         return labels;
     }
 }

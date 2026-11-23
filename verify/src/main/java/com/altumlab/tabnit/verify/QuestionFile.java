@@ -81,24 +81,61 @@ record QuestionFile(String fileName, String scenarioId, String title, List<Step>
         if (steps.isEmpty()) {
             throw new QuestionFileException(name + ": scenario 의 steps 가 비어 있습니다. 투입할 판을 차례대로 적으세요.");
         }
+        List<Question> questions = questions(list(root.get("questions"), name, "questions"), name, "질문");
+        Object title = scenario.get("title");
+        return new QuestionFile(name, scenarioId, title == null ? "" : String.valueOf(title), List.copyOf(steps),
+                List.copyOf(questions));
+    }
+
+    /** 질문의 목록을 읽는다. 대조 파일의 목록도 같은 모양이다. */
+    private static List<Question> questions(List<?> items, String name, String what) {
         List<Question> questions = new ArrayList<>();
         Set<String> ids = new LinkedHashSet<>();
-        for (Object item : list(root.get("questions"), name, "questions")) {
-            Map<String, Object> question = map(item, name, "questions 의 항목");
-            String id = text(question.get("id"), name, "질문의 id");
+        for (Object item : items) {
+            Map<String, Object> question = map(item, name, what + "의 항목");
+            String id = text(question.get("id"), name, what + "의 id");
             if (!ids.add(id)) {
-                throw new QuestionFileException(name + ": 질문 번호 " + id + " 이(가) 두 번 적혀 있습니다. 번호는 겹치지 않아야 합니다.");
+                throw new QuestionFileException(name + ": " + what + " 번호 " + id + " 이(가) 두 번 적혀 있습니다. 번호는 겹치지 않아야 합니다.");
             }
-            String kind = text(question.get("kind"), name, "질문 " + id + " 의 kind");
+            String kind = text(question.get("kind"), name, what + " " + id + " 의 kind");
             if (!(question.get("expect") instanceof Map<?, ?>)) {
-                throw new QuestionFileException(name + ": 질문 " + id + " 에 정답(expect)이 없습니다.");
+                throw new QuestionFileException(name + ": " + what + " " + id + " 에 정답(expect)이 없습니다.");
             }
             Object title = question.get("title");
             questions.add(new Question(id, kind, title == null ? "" : String.valueOf(title), question));
         }
-        Object title = scenario.get("title");
-        return new QuestionFile(name, scenarioId, title == null ? "" : String.valueOf(title), List.copyOf(steps),
-                List.copyOf(questions));
+        return questions;
+    }
+
+    /**
+     * 전수 대조의 파일을 읽는다 (D4 3절 "전수 대조", D2 AD-368). 시나리오의 단계는 짝이 되는 질문 파일의 것이다:
+     * 같은 자료에 묻는다. 대조의 모양은 질문과 같다.
+     *
+     * @param shownName 문제를 알릴 때 적는 이름 (questions/ 기준 경로)
+     * @param parent 짝이 되는 질문 파일
+     * @throws QuestionFileException 읽지 못하거나, 다른 시나리오의 것이거나, 대조가 없을 때
+     */
+    static QuestionFile readChecks(Path path, String shownName, QuestionFile parent) {
+        Object loaded;
+        try {
+            loaded = yaml().load(Files.readString(path, StandardCharsets.UTF_8));
+        }
+        catch (IOException | RuntimeException e) {
+            throw new QuestionFileException(shownName + ": 대조 파일을 읽지 못했습니다. YAML 형식인지 확인하세요. (" + e.getMessage() + ")", e);
+        }
+        if (!(loaded instanceof Map<?, ?> root)) {
+            throw new QuestionFileException(shownName + ": 대조 파일이 비었거나 형식이 틀렸습니다. scenario 와 checks 를 적으세요.");
+        }
+        String scenarioId = text(root.get("scenario"), shownName, "scenario (시나리오의 번호)");
+        if (!scenarioId.equals(parent.scenarioId())) {
+            throw new QuestionFileException(shownName + ": 시나리오 " + scenarioId + " 의 대조인데, 이름이 같은 질문 파일 "
+                    + parent.fileName() + " 은 시나리오 " + parent.scenarioId() + " 입니다. 같은 시나리오의 것이어야 합니다.");
+        }
+        List<Question> checks = questions(list(root.get("checks"), shownName, "checks"), shownName, "대조");
+        if (checks.isEmpty()) {
+            throw new QuestionFileException(shownName + ": checks 가 비어 있습니다. 대조할 것이 없으면 파일을 두지 않습니다.");
+        }
+        return new QuestionFile(shownName, parent.scenarioId(), parent.title(), parent.steps(), List.copyOf(checks));
     }
 
     /**

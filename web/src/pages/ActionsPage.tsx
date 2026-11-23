@@ -286,7 +286,9 @@ export function ActionsPage() {
                   const isOpen = opened.includes(action.id);
                   return [
                     <tr key={action.id} data-action-id={action.id}>
-                      <td>{action.dueDate}</td>
+                      <td>
+                        <time>{action.dueDate}</time>
+                      </td>
                       <td>{action.priority}</td>
                       <td>
                         {action.actionText}

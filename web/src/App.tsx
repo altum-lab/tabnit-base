@@ -4,6 +4,7 @@ import { api, SESSION_ENDED, type Session } from "./api/client";
 import { CONNECTION_FAILED, messageOf } from "./api/problem";
 import { ActionsPage } from "./pages/ActionsPage";
 import { ChangesPage } from "./pages/ChangesPage";
+import { Brand } from "./Brand";
 import { ImpactPage } from "./pages/ImpactPage";
 import { SessionContext } from "./session";
 import { LoginPage } from "./pages/LoginPage";
@@ -107,7 +108,7 @@ export function App() {
   return (
     <>
       <header>
-        <strong>Tabnit Base</strong>
+        <Brand />
         <nav aria-label="화면">
           <ul>
             {SCREENS.map((screen) => (

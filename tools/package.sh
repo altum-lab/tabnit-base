@@ -11,7 +11,7 @@
 #   images/tabnit-base-app.tar, images/postgres.tar   이미지 둘
 #   compose.yaml, install.sh                          설치 구성과 스크립트 (deploy/install 의 것)
 #   packs/                                            저장소의 Pack 들 (가상 데이터)
-#   VERSION, ARCH, SHA256SUMS
+#   VERSION, ARCH, SHA256SUMS                         버전, CPU, 파일의 지문 (packs/ 는 뺀다)
 #
 # 설치하는 법: 그 폴더를 통째로 서버에 복사한 뒤, 그 폴더에서 bash install.sh
 #
@@ -89,7 +89,8 @@ for arch in "$@"; do
   find "$out/packs" -name 'CLAUDE.md' -delete
   printf '%s\n' "$version" > "$out/VERSION"
   printf '%s\n' "$arch" > "$out/ARCH"
-  (cd "$out" && find . -type f ! -name SHA256SUMS | LC_ALL=C sort | while read -r file; do checksum "$file"; done > SHA256SUMS)
+  # 파일의 지문. packs/ 는 뺀다: 받는 쪽이 설치한 뒤에 Pack 을 더하거나 고치는 곳이다.
+  (cd "$out" && find . -type f ! -name SHA256SUMS ! -path './packs/*' | LC_ALL=C sort | while read -r file; do checksum "$file"; done > SHA256SUMS)
   echo "[확인] $out ($(du -sh "$out" | cut -f1))"
 done
 

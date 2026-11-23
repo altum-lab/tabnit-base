@@ -10,10 +10,13 @@
 #   bash install.sh unlock 아이디           로그인 막힘을 푼다
 #   bash install.sh password 아이디         비밀번호를 바꾼다
 #                                         비밀번호는 환경 변수 TABNIT_NEW_USER_PASSWORD 로 넘긴다 (12자 이상)
+#                                         명령 줄에 값을 적으면 셸의 기록에 남는다. 남기지 않으려면 먼저
+#                                           read -rs TABNIT_NEW_USER_PASSWORD; export TABNIT_NEW_USER_PASSWORD
+#                                         로 넣은 뒤 부른다
 #   bash install.sh logs                  앱의 로그를 본다
 #   bash install.sh down                  내린다. 데이터는 남는다
 #
-# 설치할 때 정하는 것 (환경 변수로 준다. 처음 설치할 때 .env 에 적히고 그 뒤로는 .env 의 값을 쓴다):
+# 설치할 때 정하는 것 (환경 변수로 준다. 처음 설치할 때 .env 에 적히고, 그 뒤로는 다시 주어도 .env 의 값을 쓴다):
 #   TABNIT_HOST       사람들이 접속할 이 서버의 이름이나 주소. 자체 서명 인증서에 적힌다. 없으면 이 서버의 이름
 #   TABNIT_PORT       여는 포트. 없으면 8443
 #   TABNIT_TIME_ZONE  조회 시점이 없을 때의 "오늘"을 정하는 시간대. 없으면 Asia/Seoul
@@ -24,6 +27,7 @@
 #
 # 비밀번호: 데이터베이스의 비밀번호는 처음 한 번 무작위로 만들어 이 폴더의 .env 에 둔다 (이 사용자만 읽는다).
 # 이 파일을 지우면 데이터베이스에 붙을 수 없다. 데이터는 Docker 의 볼륨(tabnit_db-data)에 있다.
+# 새 버전의 배포 폴더로 올릴 때는 앞서 설치한 폴더의 .env 를 (받은 인증서를 썼다면 tls/ 도) 새 폴더로 복사한 뒤 부른다.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -43,8 +47,12 @@ fi
 [ -f "$here/VERSION" ] || fail "이 폴더에 VERSION 파일이 없습니다. 배포 폴더를 통째로 복사했는지 확인하세요."
 version="$(tr -d ' \n\r' < "$here/VERSION")"
 
+# 설치 구성의 값은 .env 의 것만 쓴다. 이 셸의 환경 변수에 같은 이름이 있으면 docker compose 가 그것을 먼저 쓰므로
+# 지우고 부른다: 처음 설치한 뒤에 다른 값을 주고 다시 불러도, 띄우는 것과 이 스크립트가 확인하는 것이 어긋나지 않는다.
 compose() {
-  docker compose --project-directory "$here" -f "$here/compose.yaml" --env-file "$env_file" "$@"
+  env -u TABNIT_VERSION -u TABNIT_DB_PASSWORD -u TABNIT_TLS_MODE -u TABNIT_TLS_PASSWORD -u TABNIT_APP_ARGS \
+    -u TABNIT_HOST -u TABNIT_PORT -u TABNIT_TIME_ZONE \
+    docker compose --project-directory "$here" -f "$here/compose.yaml" --env-file "$env_file" "$@"
 }
 
 # .env 에서 값 하나를 읽는다. 없으면 빈 값이다.
@@ -83,7 +91,8 @@ check_architecture() {
   fi
 }
 
-# 옮기다가 파일이 상하지 않았는지 본다.
+# 옮기다가 파일이 상하지 않았는지 본다 (누가 바꿔치기한 것을 막는 장치는 아니다: 지문도 같은 폴더에 있다).
+# packs/ 는 보지 않는다: 설치한 뒤에 Pack 을 더하거나 고치는 곳이다.
 check_files() {
   [ -f "$here/SHA256SUMS" ] || return 0
   if command -v sha256sum >/dev/null 2>&1; then
@@ -126,6 +135,11 @@ ensure_env() {
     fi
     return
   fi
+  # .env 가 없는데 데이터가 이미 있으면 새로 만들지 않는다: 데이터베이스는 처음 만든 비밀번호만 안다.
+  # 새 버전의 배포 폴더에서 처음 부를 때가 이 경우다.
+  if docker volume inspect tabnit_db-data >/dev/null 2>&1; then
+    fail "이 서버에 앞서 설치한 데이터가 있는데 이 폴더에 .env 가 없습니다. 앞서 설치한 폴더의 .env 를 (받은 인증서를 썼다면 tls/ 도) 이 폴더로 복사한 뒤 다시 실행하세요. 새로 만들면 데이터베이스에 붙을 수 없습니다."
+  fi
   local arguments tls_password=""
   if [ "$tls_mode" = "given" ]; then
     arguments="--server.port=8443 --server.ssl.certificate=file:/app/tls/cert.pem --server.ssl.certificate-private-key=file:/app/tls/key.pem"
@@ -154,6 +168,10 @@ ensure_certificate() {
   if [ "$(env_value TABNIT_TLS_MODE)" = "given" ]; then
     [ -f "$here/tls/cert.pem" ] && [ -f "$here/tls/key.pem" ] \
       || fail "처음 설치할 때 받은 인증서를 썼는데 지금은 tls/cert.pem 과 tls/key.pem 이 없습니다. 두 파일을 되돌려 놓으세요."
+    # 개인 키는 이 폴더에도 남는다 (다시 설치할 때 쓴다). 다른 사람이 읽을 수 있게 두지 않았는지 알린다.
+    if [ -n "$(find "$here/tls/key.pem" \( -perm -g+r -o -perm -o+r \) 2>/dev/null)" ]; then
+      echo "   (주의) tls/key.pem 을 이 사용자 말고도 읽을 수 있습니다. chmod 600 tls/key.pem 으로 좁히세요."
+    fi
     # 앱은 관리자 권한 없이 돌아 이 폴더의 파일을 읽지 못할 수 있다. 볼륨에 옮겨 앱의 사용자만 읽게 한다.
     compose run --rm --no-deps --user 0 --entrypoint sh -v "$here/tls:/in:ro" app -c \
       'cp /in/cert.pem /in/key.pem /app/tls/ && chown 10001 /app/tls/cert.pem /app/tls/key.pem && chmod 600 /app/tls/key.pem' \
@@ -220,7 +238,8 @@ case "${1:-install}" in
     [ $# -eq 3 ] || { echo "쓰는 법: TABNIT_NEW_USER_PASSWORD='(12자 이상)' bash install.sh user 아이디 역할(ADMIN 또는 OFFICER)" >&2; exit 2; }
     [ -n "${TABNIT_NEW_USER_PASSWORD:-}" ] || fail "비밀번호가 없습니다. 환경 변수 TABNIT_NEW_USER_PASSWORD 에 넣어 다시 실행하세요. 명령의 인자로는 받지 않습니다."
     require_installed
-    # 비밀번호는 이 셸의 환경 변수를 컨테이너에 그대로 넘긴다. 값이 명령이나 파일에 남지 않는다.
+    # 비밀번호는 이 셸의 환경 변수를 컨테이너에 그대로 넘긴다. 이 스크립트가 부르는 명령이나 파일에는 값이 남지 않는다
+    # (부른 사람이 명령 줄에 값을 적었다면 그 셸의 기록에는 남는다: 맨 위의 쓰는 법).
     compose run --rm -e TABNIT_NEW_USER_PASSWORD app "--tabnit.create-user.login-id=$2" "--tabnit.create-user.role=$3"
     ;;
   unlock)

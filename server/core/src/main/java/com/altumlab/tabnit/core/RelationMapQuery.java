@@ -136,6 +136,8 @@ public class RelationMapQuery {
             frontier = next;
             if (depthOf.size() > maxNodes) {
                 // 이 단계까지로 한도를 넘었다. 이 단계의 노드는 모두 찾았으므로 가까운 것부터 고르는 데 모자람이 없다.
+                // 그 너머에 이어진 것이 더 있는지는 보지 않는다 (보려면 다음 단계를 읽어야 한다): 마침 여기가 끝이어도
+                // 따라간 깊이는 이 단계다.
                 reachedDepth = level;
                 break;
             }

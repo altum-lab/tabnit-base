@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef } from "react";
+import { type ComponentType, useEffect, useMemo, useRef, useState } from "react";
 import ForceGraph2D, { type ForceGraphMethods, type LinkObject, type NodeObject } from "react-force-graph-2d";
 import type { RelationMap } from "../api/client";
+import { buildGraph, type GraphLink, type GraphNode } from "./relationMapGraph";
 
 // 관계 지도의 그림 (D-08, D2 AD-352, AD-353). 관계 지도 API 의 답을 그대로 그린다.
 //
@@ -15,72 +16,53 @@ import type { RelationMap } from "../api/client";
 
 const WIDTH = 760;
 const HEIGHT = 460;
-const RING = 90;
 const WARMUP_TICKS = 80;
 // 화면에 맞출 때의 확대 한도. 노드가 몇 안 되면 맞추느라 점이 지나치게 커진다.
 const MAX_FIT_ZOOM = 2.5;
 
-type Node = { id: string; label: string; typeLabel: string; depth: number };
-type Link = { id: string; relationType: string; curvature: number };
+export type MapView = "2d" | "3d";
 
-export function RelationMapView({ map, onCenter }: { map: RelationMap; onCenter: (entityId: string) => void }) {
-  const graph = useRef<ForceGraphMethods<NodeObject<Node>, LinkObject<Node, Link>> | undefined>(undefined);
+type Node = NodeObject<GraphNode>;
+type Link = LinkObject<GraphNode, GraphLink>;
 
-  // 라이브러리는 받은 노드에 자리(x, y)를 적어 넣는다. 서버의 답을 건드리지 않게 옮겨 담는다.
-  const data = useMemo(() => {
-    const perDepth = new Map<number, number>();
-    for (const node of map.nodes) {
-      perDepth.set(node.depth, (perDepth.get(node.depth) ?? 0) + 1);
-    }
-    const placed = new Map<number, number>();
-    const nodes: NodeObject<Node>[] = map.nodes.map((node) => {
-      const index = placed.get(node.depth) ?? 0;
-      placed.set(node.depth, index + 1);
-      const angle = (2 * Math.PI * index) / (perDepth.get(node.depth) ?? 1);
-      return {
-        id: node.entityId,
-        label: node.entity.displayName ?? node.entity.entityKey,
-        typeLabel: node.entity.entityTypeLabel,
-        depth: node.depth,
-        x: node.depth * RING * Math.cos(angle),
-        y: node.depth * RING * Math.sin(angle),
-      };
-    });
-    // 같은 두 개체 사이의 관계가 여럿이면 겹치지 않게 휘어 그린다 (서버가 준 순서대로 번갈아).
-    const perPair = new Map<string, number>();
-    const links: LinkObject<Node, Link>[] = map.edges.map((edge) => {
-      const pair = [edge.sourceEntityId, edge.targetEntityId].sort().join("\u0000");
-      const nth = perPair.get(pair) ?? 0;
-      perPair.set(pair, nth + 1);
-      const side = edge.sourceEntityId <= edge.targetEntityId ? 1 : -1;
-      return {
-        id: edge.id,
-        source: edge.sourceEntityId,
-        target: edge.targetEntityId,
-        relationType: edge.relationType,
-        curvature: nth === 0 ? 0 : side * 0.25 * Math.ceil(nth / 2) * (nth % 2 === 1 ? 1 : -1),
-      };
-    });
-    return { nodes, links };
-  }, [map]);
+type GraphProps = { map: RelationMap; onCenter: (entityId: string) => void };
 
-  // 배치가 끝난 그림을 한눈에 들어오게 맞춘다. 너무 크게 키우지는 않는다.
-  function fit() {
-    const current = graph.current;
-    if (!current) {
-      return;
-    }
-    current.zoomToFit(0, 40);
-    if (current.zoom() > MAX_FIT_ZOOM) {
-      current.zoom(MAX_FIT_ZOOM, 0);
-      current.centerAt(0, 0, 0);
-    }
-  }
+// 3D 그림은 고를 때 내려받는다 (D2 AD-361). 한 번 받은 것은 화면을 열어 둔 동안 다시 받지 않는다.
+let loaded3D: ComponentType<GraphProps> | null = null;
+
+export function RelationMapView({
+  map,
+  view,
+  onView,
+  onCenter,
+}: GraphProps & { view: MapView; onView: (view: MapView) => void }) {
+  // 3D 그림의 코드: 받는 중, 받음, 받지 못함.
+  const [graph3D, setGraph3D] = useState<"loading" | "ready" | "failed">(loaded3D ? "ready" : "loading");
 
   useEffect(() => {
-    const timer = window.setTimeout(fit, 0);
-    return () => window.clearTimeout(timer);
-  }, [data]);
+    if (view !== "3d" || loaded3D) {
+      return;
+    }
+    let current = true;
+    setGraph3D("loading");
+    import("./RelationMapGraph3D")
+      .then((module) => {
+        loaded3D = module.default;
+        if (current) {
+          setGraph3D("ready");
+        }
+      })
+      .catch(() => {
+        if (current) {
+          setGraph3D("failed");
+        }
+      });
+    return () => {
+      current = false;
+    };
+  }, [view]);
+
+  const Graph3D = loaded3D;
 
   return (
     <section
@@ -89,7 +71,18 @@ export function RelationMapView({ map, onCenter }: { map: RelationMap; onCenter:
       data-center={map.centerEntityId}
       data-as-of={map.asOf}
       data-depth={map.depth}
+      data-view={view}
     >
+      <fieldset>
+        <legend>그림</legend>
+        <label>
+          <input type="radio" name="map-view" checked={view === "2d"} onChange={() => onView("2d")} /> 2D
+        </label>{" "}
+        <label>
+          <input type="radio" name="map-view" checked={view === "3d"} onChange={() => onView("3d")} /> 3D
+        </label>{" "}
+        <small>3D 는 마우스로 끌어 돌리고 굴려서 확대합니다.</small>
+      </fieldset>
       {map.truncated && map.reachedDepth < map.depth && (
         <p data-testid="map-truncated">
           이웃이 많아 깊이 {map.reachedDepth} 에서 더 따라가지 않았습니다. 거기까지 찾은 {map.totalNodes}개 가운데 가까운{" "}
@@ -102,36 +95,14 @@ export function RelationMapView({ map, onCenter }: { map: RelationMap; onCenter:
           쪽의 개체를 가운데로 옮겨 보세요.
         </p>
       )}
-      <div role="img" aria-label="관계 지도 그림. 같은 내용이 아래의 노드 목록에 있습니다.">
-        <ForceGraph2D
-          ref={graph}
-          graphData={data}
-          width={WIDTH}
-          height={HEIGHT}
-          warmupTicks={WARMUP_TICKS}
-          cooldownTicks={0}
-          enableNodeDrag={false}
-          nodeRelSize={5}
-          nodeColor={(node) => (node.depth === 0 ? "#b3261e" : "#3b6ea5")}
-          nodeLabel={(node) => `${node.label} (${node.typeLabel})`}
-          nodeCanvasObjectMode={() => "after"}
-          nodeCanvasObject={(node, context, scale) => {
-            const size = 12 / scale;
-            context.font = `${size}px sans-serif`;
-            context.textAlign = "center";
-            context.textBaseline = "top";
-            context.fillStyle = "#1f1f1f";
-            context.fillText(node.label, node.x ?? 0, (node.y ?? 0) + 7);
-          }}
-          linkLabel={(link) => link.relationType}
-          linkCurvature={(link) => link.curvature}
-          linkColor={() => "#8a8a8a"}
-          linkDirectionalArrowLength={5}
-          linkDirectionalArrowRelPos={1}
-          onNodeClick={(node) => onCenter(String(node.id))}
-          onEngineStop={fit}
-        />
-      </div>
+      {view === "2d" && <Graph2D map={map} onCenter={onCenter} />}
+      {view === "3d" && graph3D === "ready" && Graph3D && <Graph3D map={map} onCenter={onCenter} />}
+      {view === "3d" && graph3D === "loading" && <p data-testid="map-3d-loading">3D 그림을 불러오는 중입니다…</p>}
+      {view === "3d" && graph3D === "failed" && (
+        <p data-testid="map-3d-failed" role="alert">
+          3D 그림을 불러오지 못했습니다. 연결을 확인하고 3D 를 다시 고르거나, 2D 로 보세요.
+        </p>
+      )}
       <p>
         <small>
           붉은 점이 가운데 개체입니다. 화살표는 관계에 적힌 방향(출발에서 도착)입니다. 점을 누르면 그 개체를 가운데로
@@ -155,5 +126,62 @@ export function RelationMapView({ map, onCenter }: { map: RelationMap; onCenter:
         ))}
       </ul>
     </section>
+  );
+}
+
+// 2D 그림. 처음 자리는 서버가 준 순서로 깊이마다 둥글게 놓고, 힘 배치를 정해진 횟수만 돌린 뒤 멈춘다.
+function Graph2D({ map, onCenter }: GraphProps) {
+  const graph = useRef<ForceGraphMethods<Node, Link> | undefined>(undefined);
+  const data = useMemo(() => buildGraph(map, 2), [map]);
+
+  // 배치가 끝난 그림을 한눈에 들어오게 맞춘다. 너무 크게 키우지는 않는다.
+  function fit() {
+    const current = graph.current;
+    if (!current) {
+      return;
+    }
+    current.zoomToFit(0, 40);
+    if (current.zoom() > MAX_FIT_ZOOM) {
+      current.zoom(MAX_FIT_ZOOM, 0);
+      current.centerAt(0, 0, 0);
+    }
+  }
+
+  useEffect(() => {
+    const timer = window.setTimeout(fit, 0);
+    return () => window.clearTimeout(timer);
+  }, [data]);
+
+  return (
+    <div role="img" aria-label="관계 지도 그림. 같은 내용이 아래의 노드 목록에 있습니다.">
+      <ForceGraph2D
+        ref={graph}
+        graphData={data}
+        width={WIDTH}
+        height={HEIGHT}
+        warmupTicks={WARMUP_TICKS}
+        cooldownTicks={0}
+        enableNodeDrag={false}
+        nodeRelSize={5}
+        nodeColor={(node) => (node.depth === 0 ? "#b3261e" : "#3b6ea5")}
+        nodeLabel={(node) => `${node.label} (${node.typeLabel})`}
+        nodeCanvasObjectMode={() => "after"}
+        nodeCanvasObject={(node, context, scale) => {
+          const size = 12 / scale;
+          context.font = `${size}px sans-serif`;
+          context.textAlign = "center";
+          context.textBaseline = "top";
+          context.fillStyle = "#1f1f1f";
+          context.fillText(node.label, node.x ?? 0, (node.y ?? 0) + 7);
+        }}
+        linkLabel={(link) => link.relationType}
+        linkCurvature={(link) => link.curvature}
+        linkColor={() => "#8a8a8a"}
+        linkDirectionalArrowLength={5}
+        linkDirectionalArrowRelPos={1}
+        onNodeClick={(node) => onCenter(String(node.id))}
+        onEngineStop={fit}
+      />
+    </div>
   );
 }

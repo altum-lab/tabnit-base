@@ -276,3 +276,134 @@ test("받아 오는 동안에는 막대와 깊이를 바꾸지 못한다", async
   await expect(page.getByLabel("시점 막대")).toBeEnabled();
 });
 
+
+// ── 3D 로 보기 (D-14, D2 AD-361) ───────────────────────────────────────────
+//
+// 3D 그림도 캔버스(WebGL)라 시험이 그 안을 읽지 못한다. 고르기가 되는지, 그림이 비어 있지 않은지,
+// 같은 답의 노드 목록이 그대로인지, 2D 와 같은 일(가운데 옮기기, 시점 막대, 깊이)이 되는지를 본다.
+
+// 가장자리에 걸친 점이 이보다 적으면 그림이 화면 안에 들어온 것으로 본다. 선 하나가 가장자리를 지나면 여덟 점 이상이
+// 걸린다. 찍은 그림의 경계에 한두 점의 얼룩이 생길 수 있어 0 으로 두지 않는다.
+const EDGE_NOISE = 8;
+
+// 찍은 그림에 바탕색이 아닌 점이 있는지 본다. WebGL 캔버스는 안의 점을 바로 읽을 수 없어 찍은 그림으로 본다.
+async function drawn(page: Page) {
+  const canvas = map(page).locator("canvas").first();
+  await expect(canvas).toBeVisible();
+  const png = (await canvas.screenshot()).toString("base64");
+  return page.evaluate(async (data) => {
+    const image = new Image();
+    image.src = `data:image/png;base64,${data}`;
+    await image.decode();
+    const sheet = document.createElement("canvas");
+    sheet.width = image.width;
+    sheet.height = image.height;
+    const context = sheet.getContext("2d")!;
+    context.drawImage(image, 0, 0);
+    const pixels = context.getImageData(0, 0, sheet.width, sheet.height).data;
+    let marked = 0;
+    // 가장자리(바깥 여덟 점)에 걸친 점의 수. 그림이 화면 밖으로 나가면 여기에 걸린다.
+    let onEdge = 0;
+    const edge = 8;
+    for (let i = 0; i < pixels.length; i += 4) {
+      // 바탕은 흰색이다.
+      if ((pixels[i] ?? 255) < 235 || (pixels[i + 1] ?? 255) < 235 || (pixels[i + 2] ?? 255) < 235) {
+        marked++;
+        const x = (i / 4) % sheet.width;
+        const y = Math.floor(i / 4 / sheet.width);
+        if (x < edge || y < edge || x >= sheet.width - edge || y >= sheet.height - edge) {
+          onEdge++;
+        }
+      }
+    }
+    return { marked, onEdge };
+  }, png);
+}
+
+test("처음에는 2D 로 그리고 3D 의 코드는 내려받지 않는다", async ({ page }) => {
+  const scripts: string[] = [];
+  page.on("request", (request) => {
+    if (request.resourceType() === "script") {
+      scripts.push(request.url());
+    }
+  });
+
+  await search(page, "e2e|T|me", "2026-03-01");
+
+  await expect(map(page)).toHaveAttribute("data-view", "2d");
+  await expect(page.getByRole("radio", { name: "2D" })).toBeChecked();
+  await expect(page.getByRole("radio", { name: "3D" })).not.toBeChecked();
+  expect(scripts.filter((url) => /RelationMapGraph3D|three/i.test(url))).toEqual([]);
+});
+
+test("3D 를 고르면 같은 노드와 간선을 3D 로 그린다", async ({ page }) => {
+  await search(page, "e2e|T|me", "2026-03-01");
+  const before = await nodeIds(page);
+
+  await page.getByRole("radio", { name: "3D" }).check();
+
+  await expect(map(page)).toHaveAttribute("data-view", "3d");
+  await expect(page.getByTestId("map-3d")).toBeVisible();
+  // 그림이 그려지고, 그림 전체가 화면 안에 들어온다 (가장자리에 걸치지 않는다).
+  await expect.poll(async () => (await drawn(page)).marked, { timeout: 20_000 }).toBeGreaterThan(50);
+  await expect.poll(async () => (await drawn(page)).onEdge, { timeout: 20_000 }).toBeLessThan(EDGE_NOISE);
+  // 노드 목록은 같은 답 그대로다.
+  expect(await nodeIds(page)).toEqual(before);
+  await map(page).screenshot({ path: "test-results/relation-map-3d-me.png" });
+
+  // 2D 로 돌아갈 수 있다.
+  await page.getByRole("radio", { name: "2D" }).check();
+  await expect(map(page)).toHaveAttribute("data-view", "2d");
+  await expect(page.getByTestId("map-3d")).toHaveCount(0);
+});
+
+test("3D 에서도 가운데를 옮기고 시점 막대와 깊이를 바꾸면 다시 그리며 3D 가 유지된다", async ({ page }) => {
+  await search(page, "e2e|T|ga", "2026-03-01");
+  await page.getByRole("radio", { name: "3D" }).check();
+  await expect(page.getByTestId("map-3d")).toBeVisible();
+  expect(await nodeIds(page)).toEqual(["e2e|T|ga", "e2e|T|na"]);
+
+  // 시점 막대.
+  await page.getByLabel("시점 막대").fill("92");
+  await expect(map(page)).toHaveAttribute("data-as-of", "2026-06-01");
+  await expect(map(page)).toHaveAttribute("data-view", "3d");
+  expect(await nodeIds(page)).toEqual(["e2e|T|ga", "e2e|T|da"]);
+  await expect.poll(async () => (await drawn(page)).marked, { timeout: 20_000 }).toBeGreaterThan(50);
+  await expect.poll(async () => (await drawn(page)).onEdge, { timeout: 20_000 }).toBeLessThan(EDGE_NOISE);
+
+  // 가운데 옮기기.
+  await page.locator('li[data-node-id="e2e|T|da"]').getByRole("button", { name: "가운데로" }).click();
+  await expect(map(page)).toHaveAttribute("data-center", "e2e|T|da");
+  await expect(map(page)).toHaveAttribute("data-view", "3d");
+
+  // 깊이.
+  await page.getByLabel("깊이").selectOption("2");
+  await expect(map(page)).toHaveAttribute("data-depth", "2");
+  await expect(map(page)).toHaveAttribute("data-view", "3d");
+  await expect(page.getByTestId("map-3d")).toBeVisible();
+});
+
+test("노드가 많은 지도도 3D 로 그린다", async ({ page }) => {
+  await search(page, "e2e|T|crowd", "2026-03-01");
+
+  await page.getByRole("radio", { name: "3D" }).check();
+
+  await expect(page.getByTestId("map-3d")).toBeVisible();
+  await expect.poll(async () => (await drawn(page)).marked, { timeout: 30_000 }).toBeGreaterThan(500);
+  // 노드 200개도 화면 안에 들어온다.
+  await expect.poll(async () => (await drawn(page)).onEdge, { timeout: 30_000 }).toBeLessThan(EDGE_NOISE);
+  await expect(page.getByTestId("map-truncated")).toContainText("251개");
+  await map(page).screenshot({ path: "test-results/relation-map-3d-crowd.png" });
+});
+
+test("3D 의 코드를 받지 못하면 이유를 알리고 2D 로 돌아갈 수 있다", async ({ page }) => {
+  await search(page, "e2e|T|me", "2026-03-01");
+  await page.route(/RelationMapGraph3D/, (route) => route.abort("connectionrefused"));
+
+  await page.getByRole("radio", { name: "3D" }).check();
+
+  await expect(page.getByTestId("map-3d-failed")).toContainText("3D 그림을 불러오지 못했습니다");
+  await page.getByRole("radio", { name: "2D" }).check();
+  await expect(map(page)).toHaveAttribute("data-view", "2d");
+  await expect(map(page).locator("canvas")).toBeVisible();
+});

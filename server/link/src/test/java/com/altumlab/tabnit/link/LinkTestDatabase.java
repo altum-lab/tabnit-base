@@ -18,7 +18,7 @@ final class LinkTestDatabase {
     private static final String MIGRATIONS = "filesystem:../api/src/main/resources/db/migration";
 
     private static final PostgreSQLContainer CONTAINER = new PostgreSQLContainer(
-            DockerImageName.parse("postgres:latest"));
+            DockerImageName.parse("postgres:18"));
 
     private static final DataSource DATA_SOURCE = start();
 

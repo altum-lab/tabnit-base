@@ -26,7 +26,7 @@ final class CommonTestDatabase {
     }
 
     private static DataSource start() {
-        PostgreSQLContainer container = new PostgreSQLContainer(DockerImageName.parse("postgres:latest"));
+        PostgreSQLContainer container = new PostgreSQLContainer(DockerImageName.parse("postgres:18"));
         container.start();
         Flyway.configure()
                 .dataSource(container.getJdbcUrl(), container.getUsername(), container.getPassword())

@@ -56,7 +56,7 @@ final class LargePackRun {
      */
     static Result run(LargePack.Expected expected, Path packsDir, LargeMeasure measure) {
         List<String> lines = new ArrayList<>();
-        try (PostgreSQLContainer database = new PostgreSQLContainer(DockerImageName.parse("postgres:latest"))) {
+        try (PostgreSQLContainer database = new PostgreSQLContainer(DockerImageName.parse("postgres:18"))) {
             if (measure != null) {
                 database.withCommand(LargeMeasure.databaseCommand());
             }

@@ -115,7 +115,7 @@ public final class VerifyMain {
     /** 빈 저장소로 제품을 띄워 시나리오를 한 번 돌린다. */
     private static List<Evaluator.Result> runOnce(Path packs, Path pack, QuestionFile file) {
         String packId = pack.getFileName().toString();
-        try (PostgreSQLContainer database = new PostgreSQLContainer(DockerImageName.parse("postgres:latest"))) {
+        try (PostgreSQLContainer database = new PostgreSQLContainer(DockerImageName.parse("postgres:18"))) {
             database.start();
             Map<String, Object> settings = new LinkedHashMap<>();
             settings.put("spring.datasource.url", database.getJdbcUrl());

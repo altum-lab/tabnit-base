@@ -190,6 +190,29 @@ class RelationMapApiTests {
 			.andExpect(jsonPath("$.truncated").value(false));
 	}
 
+	// A-10 (D2 AD-370): 받는 범위 밖의 조회 시점과 쓸 수 없는 글자가 든 id 는 서버의 오류(500)가 아니라 틀린 입력(400)이다.
+	@Test
+	void 받는_범위_밖의_조회_시점과_쓸_수_없는_글자가_든_개체의_id_는_400_이다() throws Exception {
+		EntityRef a = entity("map-api-range", "a");
+
+		for (String bad : new String[] { "+10000-01-01", "+999999999-12-31", "-999999999-01-01", "0000-12-31" }) {
+			mvc.perform(get("/api/v1/relation-map").param("entityId", a.id()).param("asOf", bad))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("INVALID_AS_OF"))
+				.andExpect(jsonPath("$.field").value("asOf"));
+		}
+		mvc.perform(get("/api/v1/relation-map").param("entityId", a.id()).param("asOf", "0001-01-01"))
+			.andExpect(status().isOk());
+		mvc.perform(get("/api/v1/relation-map").param("entityId", a.id()).param("asOf", "9999-12-31"))
+			.andExpect(status().isOk());
+		for (String bad : new String[] { a.id() + "\u0000", "map-api-range|T|\uD800" }) {
+			mvc.perform(get("/api/v1/relation-map").param("entityId", bad).param("asOf", "2026-03-01"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("INVALID_ENTITY_ID"))
+				.andExpect(jsonPath("$.field").value("entityId"));
+		}
+	}
+
 	@Test
 	void 틀린_요청은_어느_항목이_틀렸는지_알린다() throws Exception {
 		EntityRef a = entity("map-api-wrong", "a");

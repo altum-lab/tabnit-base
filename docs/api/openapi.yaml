@@ -29,7 +29,7 @@ paths:
         - name: asOf
           in: query
           required: false
-          description: 조회 시점. 없으면 설치 설정의 시간대에서의 오늘
+          description: 조회 시점. 없으면 설치 설정의 시간대에서의 오늘. 0001-01-01 부터 9999-12-31 까지의 날짜만 받는다
           schema:
             type: string
             format: date
@@ -74,7 +74,7 @@ paths:
         - name: asOf
           in: query
           required: false
-          description: 조회 시점. 없으면 설치 설정의 시간대에서의 오늘
+          description: 조회 시점. 없으면 설치 설정의 시간대에서의 오늘. 0001-01-01 부터 9999-12-31 까지의 날짜만 받는다
           schema:
             type: string
             format: date

@@ -34,6 +34,22 @@ final class StorableDates {
         return null;
     }
 
+    /**
+     * 조회의 기준 날짜를 확인한다. 반드시 있어야 하고 받는 범위 안이어야 한다 (D5 3절, D2 AD-370).
+     * 범위 밖의 날짜로 물으면 저장소의 오류가 되거나, 끝없는 날짜는 오류 없이 엉뚱한 답(열려 있는 것만)을 낸다.
+     *
+     * @throws NullPointerException 날짜가 없을 때
+     * @throws IllegalArgumentException 받는 범위 밖일 때. 무엇이 틀렸고 어떻게 하면 되는지 담는다
+     */
+    static LocalDate requireAsOf(LocalDate asOf) {
+        java.util.Objects.requireNonNull(asOf, "기준 날짜는 반드시 있어야 합니다");
+        String fault = fault(asOf, "기준 날짜");
+        if (fault != null) {
+            throw new IllegalArgumentException(fault);
+        }
+        return asOf;
+    }
+
     /** 기록한 때로 담을 수 있으면 null, 아니면 까닭. */
     static String fault(Instant recordedAt) {
         Instant earliest = EARLIEST.atStartOfDay(ZoneOffset.UTC).toInstant();

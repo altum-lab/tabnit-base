@@ -82,7 +82,7 @@ final class EditionPlanner {
     @FunctionalInterface
     interface StoredValues {
 
-        /** 개체들의 속성 값 가운데 그날부터 하루라도 유효한 것. 식별자 순이다. */
+        /** 개체들의 속성 값 가운데 그날부터 하루라도 유효한 것. 개체, 속성의 이름, 시작일 순이다 (D2 AD-370). */
         List<AttributeValue> inEffectFrom(Collection<String> entityIds, LocalDate from);
     }
 
@@ -310,7 +310,7 @@ final class EditionPlanner {
     }
 
     /**
-     * 행이 적은 속성 값의 대상마다, 저장소에 이미 있는 그 개체의 그 속성의 값. 식별자 순이다.
+     * 행이 적은 속성 값의 대상마다, 저장소에 이미 있는 그 개체의 그 속성의 값. 시작일 순이다 (한 대상 안에서는 식별자 순과 같다).
      * 겹침은 출처를 보지 않으므로 (D2 AD-53) 다른 입력 자료가 넣은 값도 든다. 한 번만 읽는다.
      */
     private TreeMap<String, List<AttributeValue>> storedBySubject(TreeMap<String, List<Statement>> statedBySubject) {

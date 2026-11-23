@@ -37,7 +37,7 @@ public class AttributeValueQuery {
             where entity_id = ?
               and valid_from <= ?
               and (valid_to is null or ? < valid_to)
-            order by attribute_name collate "C", id collate "C\"""";
+            order by attribute_name collate "C", valid_from, id collate "C\"""";
 
     private static final String VALUE_AS_OF = """
             select id, pack_id, entity_id, attribute_name, value,
@@ -55,7 +55,7 @@ public class AttributeValueQuery {
             where entity_id = any(?)
               and valid_from <= ?
               and (valid_to is null or ? < valid_to)
-            order by entity_id collate "C", attribute_name collate "C", id collate "C\"""";
+            order by entity_id collate "C", attribute_name collate "C", valid_from, id collate "C\"""";
 
     /** 개체 여럿을 한 번에 묻는 수. */
     private static final int IN_EFFECT_BATCH = 1000;
@@ -66,7 +66,18 @@ public class AttributeValueQuery {
             from attribute_value
             where entity_id = any(?)
               and (valid_to is null or ? < valid_to)
-            order by id collate "C\"""";
+            order by entity_id collate "C", attribute_name collate "C", valid_from, id collate "C\"""";
+
+    /**
+     * 속성 값 여럿의 순서: 개체의 식별자, 속성의 이름, 시작일 (D5 3절, D2 AD-370). 값의 식별자 순과 다를 수 있다:
+     * 속성의 이름이 다른 이름의 앞부분이면 식별자에서는 이름 뒤의 구분자 때문에 긴 이름이 앞에 온다.
+     * (개체, 속성의 이름, 시작일)이 값 하나를 정하므로 끝까지 정해진다. 그래도 값의 식별자까지 견준다.
+     */
+    private static final Comparator<AttributeValue> VALUE_ORDER = Comparator
+        .comparing(AttributeValue::entityId, CodePointOrder.STRINGS)
+        .thenComparing(AttributeValue::attributeName, CodePointOrder.STRINGS)
+        .thenComparing(value -> value.period().from())
+        .thenComparing(AttributeValue::id, CodePointOrder.STRINGS);
 
     private final JdbcTemplate jdbc;
 
@@ -122,7 +133,7 @@ public class AttributeValueQuery {
      *
      * @param entityIds 개체의 식별자. 차례와 겹침은 결과에 닿지 않는다. 값이 없는 개체는 줄이 없다
      * @param asOf 기준 날짜
-     * @return 유효한 값. 개체의 식별자, 속성의 이름, 값의 식별자 순 (글자 코드 순). 없으면 빈 목록
+     * @return 유효한 값. 개체의 식별자, 속성의 이름, 시작일 순 (글자 코드 순). 없으면 빈 목록
      * @throws EntityNotFoundException 그런 개체가 없을 때. 개체 하나를 읽는 조회와 같다 (D3 2절). 없는 것이
      *         여럿이면 식별자의 글자 코드 순으로 첫째를 알린다
      * @throws CoreStorageException 저장소에서 읽지 못했을 때
@@ -164,10 +175,8 @@ public class AttributeValueQuery {
                     + ". 저장소의 상태를 확인한 뒤 다시 시도하세요.", e);
         }
         // 묶음은 개체의 식별자 순이고 묶음 안은 저장소가 같은 순서로 준다. 그래도 순서를 저장소의 정렬 규칙에
-        // 맡겨 두지 않고 여기서 한 번 더 정한다. 같은 개체의 같은 속성은 많아야 하나지만 값의 식별자까지 견준다.
-        found.sort(Comparator.comparing(AttributeValue::entityId, CodePointOrder.STRINGS)
-            .thenComparing(AttributeValue::attributeName, CodePointOrder.STRINGS)
-            .thenComparing(AttributeValue::id, CodePointOrder.STRINGS));
+        // 맡겨 두지 않고 여기서 한 번 더 정한다.
+        found.sort(VALUE_ORDER);
         return List.copyOf(found);
     }
 
@@ -178,7 +187,7 @@ public class AttributeValueQuery {
      *
      * @param entityIds 개체의 식별자. 차례와 겹침은 결과에 닿지 않는다. 아직 없는 개체는 값도 없다
      * @param from 이날부터 본다. 시점 조회의 기준 날짜와 달리 기간의 시작이다. 반드시 받는다
-     * @return 값. 식별자의 글자 코드 순. 없으면 빈 목록
+     * @return 값. 개체의 식별자, 속성의 이름, 시작일 순 (D2 AD-370). 한 속성에 값이 여럿 나올 수 있다. 없으면 빈 목록
      * @throws CoreStorageException 저장소에서 읽지 못했을 때
      */
     public List<AttributeValue> valuesInEffectFrom(Collection<String> entityIds, LocalDate from) {
@@ -189,8 +198,7 @@ public class AttributeValueQuery {
             Identifiers.requireNotBlank(entityId, "개체의 식별자");
             ids.add(entityId);
         }
-        // 한 번에 묻는 개체의 수를 정해 둔다. 묶음은 개체의 식별자 순이고 답은 값의 식별자 순이라, 이은 것이
-        // 값의 식별자 순이라는 보장이 없다. 마지막에 값의 식별자로 다시 정렬한다.
+        // 한 번에 묻는 개체의 수를 정해 둔다. 묶음을 이은 뒤 순서를 여기서 한 번 더 정한다.
         List<String> ordered = List.copyOf(ids);
         List<AttributeValue> found = new ArrayList<>();
         try {
@@ -206,7 +214,7 @@ public class AttributeValueQuery {
             throw new CoreStorageException("속성 값을 조회하지 못했습니다. 개체 " + ordered.size() + "개, 기준 날짜: " + from
                     + ". 저장소의 상태를 확인한 뒤 다시 시도하세요.", e);
         }
-        found.sort(Comparator.comparing(AttributeValue::id, CodePointOrder.STRINGS));
+        found.sort(VALUE_ORDER);
         return List.copyOf(found);
     }
 

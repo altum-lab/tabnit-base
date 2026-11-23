@@ -91,7 +91,9 @@ public class RelationMapQuery {
      */
     public RelationMap relationMap(String centerEntityId, LocalDate asOf, int depth, int maxNodes) {
         Objects.requireNonNull(centerEntityId, "가운데 개체의 식별자는 반드시 있어야 합니다");
-        Objects.requireNonNull(asOf, "기준 날짜는 반드시 있어야 합니다");
+        // 깨진 글자가 든 식별자와 받는 범위 밖의 날짜는 저장소까지 보내지 않는다: 틀린 입력이다 (D5 3절, D2 AD-370).
+        Identifiers.requireNotBlank(centerEntityId, "가운데 개체의 식별자");
+        StorableDates.requireAsOf(asOf);
         if (depth < 1) {
             throw new IllegalArgumentException("깊이는 1 이상이어야 합니다. 받은 값: " + depth + ".");
         }

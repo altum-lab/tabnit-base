@@ -600,7 +600,8 @@ class AttributeValueTest {
         String open = store.saveAttributeValue(value(b, "name", "열린 값", "2026-02-01", null), RECORDED_AT);
         LocalDate from = LocalDate.parse("2026-03-01");
 
-        // 종료일이 그날인 것은 그날부터 유효하지 않다 (종료일 제외). 그날 뒤에 시작하는 것도 든다. 식별자 순이다.
+        // 종료일이 그날인 것은 그날부터 유효하지 않다 (종료일 제외). 그날 뒤에 시작하는 것도 든다.
+        // 개체의 식별자, 속성의 이름, 시작일 순이다 (D5 3절, D2 AD-370). 이 자료에서는 식별자 순과 같다.
         assertThat(query.valuesInEffectFrom(List.of(b.id(), a.id(), a.id()), from)).extracting(AttributeValue::id)
             .containsExactly(ending, later, open)
             .doesNotContain(past);
@@ -610,6 +611,32 @@ class AttributeValueTest {
         // 두 번 물어도 같다.
         assertThat(query.valuesInEffectFrom(List.of(a.id(), b.id()), from))
             .isEqualTo(query.valuesInEffectFrom(List.of(b.id(), a.id()), from));
+    }
+
+    // A-10 (D2 AD-370): 속성 값 여럿은 개체, 속성의 이름, 시작일 순이다. 값의 식별자 순과 다를 수 있다.
+    @Test
+    void 속성_값_여럿은_개체와_속성의_이름과_시작일_순이고_이름이_다른_이름의_앞부분일_때도_그렇다() {
+        EntityRef a = entity("av-order-prefix", "a");
+        EntityRef b = entity("av-order-prefix", "b");
+        // 속성 n 과 nb: 식별자에서는 이름 뒤에 세로 막대가 오고, 세로 막대는 b 보다 뒤라서 값의 식별자 순으로는 nb 가 앞이다.
+        String n1 = store.saveAttributeValue(value(a, "n", "첫 값", "2026-01-01", "2026-06-01"), RECORDED_AT);
+        String n2 = store.saveAttributeValue(value(a, "n", "둘째 값", "2026-06-01", null), RECORDED_AT);
+        String nb = store.saveAttributeValue(value(a, "nb", "다른 속성", "2026-03-01", null), RECORDED_AT);
+        String bn = store.saveAttributeValue(value(b, "n", "다른 개체", "2025-01-01", null), RECORDED_AT);
+        assertThat(nb.compareTo(n1)).as("이 시험의 전제: 값의 식별자 순으로는 nb 가 n 보다 앞이다").isNegative();
+
+        // 어느 날부터 유효한 값: 한 속성에 값이 여럿 나온다. 속성의 이름이 먼저고 그 안에서 시작일 순이다.
+        assertThat(query.valuesInEffectFrom(List.of(b.id(), a.id()), LocalDate.parse("2026-01-01")))
+            .extracting(AttributeValue::id)
+            .containsExactly(n1, n2, nb, bn);
+        // 기준 날짜에 유효한 값: 속성마다 하나다. 같은 순서다.
+        assertThat(query.valuesAsOf(a.id(), LocalDate.parse("2026-07-01"))).extracting(AttributeValue::id)
+            .containsExactly(n2, nb);
+        assertThat(query.valuesAsOf(List.of(b.id(), a.id()), LocalDate.parse("2026-07-01"))).extracting(AttributeValue::id)
+            .containsExactly(n2, nb, bn);
+        // 두 번 물어도, 넘기는 차례를 바꿔도 같다.
+        assertThat(query.valuesInEffectFrom(List.of(a.id(), b.id()), LocalDate.parse("2026-01-01")))
+            .isEqualTo(query.valuesInEffectFrom(List.of(b.id(), a.id(), a.id()), LocalDate.parse("2026-01-01")));
     }
 
     @Test

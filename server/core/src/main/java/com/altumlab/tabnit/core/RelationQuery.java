@@ -68,7 +68,9 @@ public class RelationQuery {
      */
     public List<Relation> relationsAsOf(String entityId, LocalDate asOf) {
         Objects.requireNonNull(entityId, "개체의 식별자는 반드시 있어야 합니다");
-        Objects.requireNonNull(asOf, "기준 날짜는 반드시 있어야 합니다");
+        // 깨진 글자가 든 식별자와 받는 범위 밖의 날짜는 저장소까지 보내지 않는다: 틀린 입력이다 (D5 3절, D2 AD-370).
+        Identifiers.requireNotBlank(entityId, "개체의 식별자");
+        StorableDates.requireAsOf(asOf);
         try {
             Integer found = jdbc.queryForObject("select count(*) from entity where id = ?", Integer.class, entityId);
             if (found == null || found == 0) {
@@ -95,7 +97,9 @@ public class RelationQuery {
      */
     public RelationPage relationsAsOf(String entityId, LocalDate asOf, int offset, int limit) {
         Objects.requireNonNull(entityId, "개체의 식별자는 반드시 있어야 합니다");
-        Objects.requireNonNull(asOf, "기준 날짜는 반드시 있어야 합니다");
+        // 깨진 글자가 든 식별자와 받는 범위 밖의 날짜는 저장소까지 보내지 않는다: 틀린 입력이다 (D5 3절, D2 AD-370).
+        Identifiers.requireNotBlank(entityId, "개체의 식별자");
+        StorableDates.requireAsOf(asOf);
         if (offset < 0) {
             throw new IllegalArgumentException("건너뛸 수는 0 이상이어야 합니다. 받은 값: " + offset + ".");
         }

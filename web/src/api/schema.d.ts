@@ -827,7 +827,7 @@ export interface operations {
             query: {
                 /** @description 개체의 id. 서버가 준 값을 그대로 보낸다 */
                 entityId: string;
-                /** @description 조회 시점. 없으면 설치 설정의 시간대에서의 오늘 */
+                /** @description 조회 시점. 없으면 설치 설정의 시간대에서의 오늘. 0001-01-01 부터 9999-12-31 까지의 날짜만 받는다 */
                 asOf?: string;
                 /** @description 건너뛸 수. 없으면 0. 전체 수와 같거나 크면 빈 목록이다 */
                 offset?: components["parameters"]["Offset"];
@@ -861,7 +861,7 @@ export interface operations {
             query: {
                 /** @description 가운데 개체의 id. 서버가 준 값을 그대로 보낸다 */
                 entityId: string;
-                /** @description 조회 시점. 없으면 설치 설정의 시간대에서의 오늘 */
+                /** @description 조회 시점. 없으면 설치 설정의 시간대에서의 오늘. 0001-01-01 부터 9999-12-31 까지의 날짜만 받는다 */
                 asOf?: string;
                 /** @description 가운데 개체에서 따라갈 관계의 수. 없으면 1. 영어 숫자 한 글자(1, 2, 3)로 적는다 */
                 depth?: number;

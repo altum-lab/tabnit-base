@@ -51,7 +51,7 @@ final class LargeMeasure {
     }
 
     /** 오래 걸린 질의로 보는 기준 (실행 계획을 남긴다). */
-    private static final int SLOW_MILLIS = 200;
+    private static final int SLOW_MILLIS = 50;
 
     private static final int PAGE = 50;
 
@@ -252,7 +252,7 @@ final class LargeMeasure {
                     select calls, total_exec_time, mean_exec_time, max_exec_time, rows, query
                     from pg_stat_statements
                     where query not ilike '%pg_stat%' and query not ilike 'create %' and query not ilike 'analyze%'
-                    order by total_exec_time desc, query limit 12""")) {
+                    order by total_exec_time desc, query limit 25""")) {
                 while (top.next()) {
                     String query = top.getString(6).replaceAll("\\s+", " ").strip();
                     lines.add(String.format("  모두 %9.0f ms   %,9d번   평균 %8.2f ms   가장 큼 %8.1f ms   행 %,d", top.getDouble(2),

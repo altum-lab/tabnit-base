@@ -5,7 +5,8 @@ import type { RelationMap } from "../api/client";
 // 관계 지도의 그림 (D-08, D2 AD-352, AD-353). 관계 지도 API 의 답을 그대로 그린다.
 //
 // 이 화면은 계산하지 않는다.
-// - 어느 개체가 이어져 있는지, 깊이, 순서, 잘렸는지, 전체 수는 서버가 준 값이다. 화면이 다시 세거나 고르지 않는다.
+// - 어느 개체가 이어져 있는지, 깊이, 순서, 잘렸는지, 어디까지 따라갔는지, 전체 수는 서버가 준 값이다. 화면이 다시 세거나
+//   고르지 않는다.
 // - 화면이 정하는 것은 그리는 자리뿐이다. 처음 자리는 서버가 준 순서로 깊이마다 둥글게 놓고, 라이브러리의
 //   힘 배치를 정해진 횟수만 돌린 뒤 멈춘다. 같은 답이면 같은 그림이 나온다 (움직이는 그림이 아니다).
 //
@@ -89,7 +90,13 @@ export function RelationMapView({ map, onCenter }: { map: RelationMap; onCenter:
       data-as-of={map.asOf}
       data-depth={map.depth}
     >
-      {map.truncated && (
+      {map.truncated && map.reachedDepth < map.depth && (
+        <p data-testid="map-truncated">
+          이웃이 많아 깊이 {map.reachedDepth} 에서 더 따라가지 않았습니다. 거기까지 찾은 {map.totalNodes}개 가운데 가까운{" "}
+          {map.maxNodes}개만 그렸습니다. 보려는 쪽의 개체를 가운데로 옮겨 보세요.
+        </p>
+      )}
+      {map.truncated && map.reachedDepth >= map.depth && (
         <p data-testid="map-truncated">
           이웃이 많아 가까운 {map.maxNodes}개만 그렸습니다. 이 깊이 안의 개체는 모두 {map.totalNodes}개입니다. 보려는
           쪽의 개체를 가운데로 옮겨 보세요.

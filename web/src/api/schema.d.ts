@@ -277,11 +277,13 @@ export interface components {
             asOf: string;
             /** @description 가운데 개체의 id */
             centerEntityId: string;
-            /** @description 답에 쓴 깊이 */
+            /** @description 답에 쓴 깊이. 청한 깊이다 */
             depth: number;
+            /** @description 따라간 깊이. 찾은 노드가 maxNodes 를 넘은 단계에서 더 따라가지 않으므로 depth 보다 작을 수 있다. 멈추지 않았으면 depth 와 같다 */
+            reachedDepth: number;
             /** @description 담는 노드의 한도. 가운데 개체를 넣어 센다. 200 이다 */
             maxNodes: number;
-            /** @description 자르기 전의 노드의 수. 깊이 안에서 찾은 것을 가운데 개체를 넣어 센다. 깊이 너머는 세지 않는다 */
+            /** @description 자르기 전의 노드의 수. reachedDepth 까지 찾은 것을 가운데 개체를 넣어 센다. 그 너머는 세지 않는다. reachedDepth 가 depth 보다 작으면 depth 안의 전체가 아니라 멈춘 데까지의 수다 */
             totalNodes: number;
             /** @description 노드가 한도를 넘어 잘렸는가. true 이면 nodes 는 가까운 것부터 maxNodes 개다 */
             truncated: boolean;
@@ -855,7 +857,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 노드와 간선. 노드는 깊이, 개체 유형, 개체의 id 차례이고 가운데 개체가 맨 앞이다. 간선은 관계 유형, 출발 개체의 id, 도착 개체의 id, 관계의 id 차례다. 모두 글자 코드 순이다. 노드가 maxNodes 를 넘으면 앞에서부터 maxNodes 개만 담고 truncated 가 true 다. 간선은 담긴 노드끼리 이은 것만 들어 있다. 이어진 것이 없으면 노드는 가운데 개체 하나이고 간선은 빈 목록이다 */
+            /** @description 노드와 간선. 노드는 깊이, 개체 유형, 개체의 id 차례이고 가운데 개체가 맨 앞이다. 간선은 관계 유형, 출발 개체의 id, 도착 개체의 id, 관계의 id 차례다. 모두 글자 코드 순이다. 노드가 maxNodes 를 넘으면 앞에서부터 maxNodes 개만 담고 truncated 가 true 다. 찾은 노드가 maxNodes 를 넘은 단계에서 더 깊이 따라가지 않는다 (reachedDepth). 간선은 담긴 노드끼리 이은 것만 들어 있다. 이어진 것이 없으면 노드는 가운데 개체 하나이고 간선은 빈 목록이다 */
             200: {
                 headers: {
                     [name: string]: unknown;

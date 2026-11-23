@@ -175,6 +175,20 @@ test("이웃이 한도를 넘으면 서버가 담아 준 것만 그리고 잘렸
   await map(page).screenshot({ path: "test-results/relation-map-crowd.png" });
 });
 
+test("더 깊이 청해도 한도를 넘은 깊이에서 멈췄다고 서버가 준 값으로 알린다", async ({ page }) => {
+  await search(page, "e2e|T|crowd", "2026-03-01");
+  // 깊이 1 까지 본 것: 그 깊이 안의 전체다.
+  await expect(page.getByTestId("map-truncated")).toContainText("이 깊이 안의 개체는 모두 251개");
+
+  await page.getByLabel("깊이").selectOption("3");
+
+  // 깊이 1 에서 이미 한도를 넘어 더 따라가지 않았다 (D2 AD-357). 그리는 것은 같다.
+  await expect(map(page)).toHaveAttribute("data-depth", "3");
+  await expect(page.getByTestId("map-truncated")).toContainText("깊이 1 에서 더 따라가지 않았습니다");
+  await expect(page.getByTestId("map-truncated")).toContainText("거기까지 찾은 251개 가운데 가까운 200개");
+  await expect(page.getByRole("list", { name: "지도의 노드" }).locator("li")).toHaveCount(200);
+});
+
 test("잘리지 않은 지도에는 잘렸다는 말이 없다", async ({ page }) => {
   await search(page, "e2e|T|me", "2026-03-01");
 

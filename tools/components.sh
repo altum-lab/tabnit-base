@@ -23,7 +23,8 @@ group="$(sed -n 's/^group = "\(.*\)"$/\1/p' "$top/server/api/build.gradle.kts" |
 
 echo "1) 서버 파일을 만들고 그 안에 든 것을 읽습니다."
 (cd "$top/server" && ./gradlew :api:bootJar :api:cyclonedxDirectBom --console=plain --quiet)
-jar="$(ls "$top"/server/api/build/libs/*.jar | grep -v -- '-plain\.jar$' | head -n 1)"
-[ -n "$jar" ] || { echo "[실패] 서버 파일을 찾지 못했습니다 (server/api/build/libs)." >&2; exit 1; }
+# 방금 만든 그 버전의 서버 파일을 짚는다. 버전을 올린 뒤에 옛 파일이 남아 있어도 그것을 읽지 않는다.
+jar="$top/server/api/build/libs/api-$version.jar"
+[ -f "$jar" ] || { echo "[실패] 서버 파일을 찾지 못했습니다: $jar" >&2; exit 1; }
 echo "2) 화면과 바탕 이미지를 더해 목록을 만듭니다."
 python3 "$top/tools/components.py" "$top" "$top/server/api/build/components/server-bom.json" "$jar" "$version" "$group" "$out"

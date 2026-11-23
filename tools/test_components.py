@@ -95,6 +95,55 @@ class ComponentsTest(unittest.TestCase):
             ("화면", "widget", "3.1.0", "ISC"),
         ])
 
+    def test_이름_끝에_꼬리표가_붙은_서버의_라이브러리도_명세의_이름과_버전과_라이선스로_담는다(self):
+        bom = server_bom(("org.n", "native", "1.2", ["MIT"]), ("org.n", "plain", "1.0-SNAPSHOT", ["Apache-2.0"]))
+        # 꼬리표가 붙은 것, 그리고 명세에 없는 것 둘 (버전에 붙임표가 있는 것, 버전이 없는 것).
+        shipped = ["native-1.2-linux-x86_64", "plain-1.0-SNAPSHOT", "lost-2.0-RC1", "noversion"]
+
+        rows = self.collect(bom, web_lock(), base=[], shipped=shipped)
+
+        self.assertEqual([(row.name, row.version, row.license, bool(row.review)) for row in rows], [
+            ("lost", "2.0-RC1", "", True),
+            ("noversion", "", "", True),
+            ("org.n:native", "1.2", "MIT", False),
+            ("org.n:plain", "1.0-SNAPSHOT", "Apache-2.0", False),
+        ])
+
+    def test_표준_형식의_명세에는_뺀_구성요소를_가리키는_의존_관계가_남지_않는다(self):
+        bom = server_bom(("g", "kept", "1", ["MIT"]), ("g", "dropped", "1", ["MIT"]), ("g", "leaf", "1", ["MIT"]))
+        for component in bom["components"]:
+            component["bom-ref"] = "ref:" + component["name"]
+        bom["dependencies"] = [
+            {"ref": "ref:root", "dependsOn": ["ref:kept", "ref:dropped"]},
+            {"ref": "ref:kept", "dependsOn": ["ref:dropped", "ref:leaf"]},
+            {"ref": "ref:dropped", "dependsOn": ["ref:leaf"]},
+            {"ref": "ref:leaf"},
+        ]
+        shipped = ["kept-1", "leaf-1"]
+        rows = self.collect(bom, web_lock(), base=[], shipped=shipped)
+
+        with tempfile.TemporaryDirectory() as out:
+            components.write(rows, bom, "1", out, shipped)
+            with open(os.path.join(out, "bom.json"), encoding="utf-8") as merged:
+                document = json.load(merged)
+
+        refs = {component.get("bom-ref") for component in document["components"]}
+        self.assertEqual(refs, {"ref:kept", "ref:leaf"})
+        self.assertEqual(document["dependencies"], [{"dependsOn": ["ref:leaf"], "ref": "ref:kept"}, {"ref": "ref:leaf"}])
+
+    def test_바탕_이미지의_표가_잘못_적혀_있으면_어느_항목이_없는지_알린다(self):
+        for wrong, missing in (({"extra": []}, "images"), ({"images": [{"image": "a:1"}]}, "components"),
+                               ({"images": [{"image": "a:1", "where": "x", "components": [{"name": "n", "version": "1"}]}]}, "license"),
+                               ({"images": [], "extra": [{"file": "f", "name": "n", "license": "MIT"}]}, "why"),
+                               ([], "images")):
+            with self.assertRaises(SystemExit) as stopped:
+                components.described(wrong)
+            self.assertIn("deploy/base-components.json", str(stopped.exception))
+            self.assertIn(missing, str(stopped.exception))
+        base, extra = components.described({"images": BASE})
+        self.assertEqual(base, BASE)
+        self.assertEqual(extra, [])
+
     def test_개발에만_쓰는_화면의_꾸러미는_담지_않고_안쪽에_겹쳐_깔린_것은_버전마다_한_번_담는다(self):
         rows = self.collect(server_bom(), web_lock(
             ("node_modules/tool", "1.0.0", "MIT", True),

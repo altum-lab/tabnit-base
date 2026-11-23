@@ -68,18 +68,36 @@ def _review(licenses):
 
 
 def _file_name(component):
-    """서버 파일 안에서의 라이브러리의 이름 (이름-버전)."""
+    """서버 파일 안에서의 라이브러리의 이름 (이름-버전). 끝에 꼬리표가 더 붙을 수 있다 (이름-버전-꼬리표)."""
     return f"{component['name']}-{component.get('version', '')}"
+
+
+def _shipped_components(bom, shipped):
+    """명세의 구성요소 가운데 실제로 서버 파일에 든 것. 서버 파일 안의 이름마다 그 구성요소를 돌려준다.
+
+    이름과 버전이 꼭 같은 것을 먼저 맞추고, 남은 것은 꼬리표가 붙은 것(이름-버전-꼬리표)으로 맞춘다.
+    여럿이 맞으면 이름이 더 긴 쪽이다.
+    """
+    by_key = {}
+    for component in bom.get("components", []):
+        by_key.setdefault(_file_name(component), component)
+    matched = {}
+    for file_name in sorted(shipped):
+        if file_name in by_key:
+            matched[file_name] = by_key[file_name]
+            continue
+        candidates = [key for key in by_key if file_name.startswith(key + "-")]
+        if candidates:
+            matched[file_name] = by_key[max(candidates, key=len)]
+    return matched
 
 
 def _server_rows(bom, own_group, shipped, extra):
     rows = []
-    listed = set()
-    for component in bom.get("components", []):
-        # 명세에는 빌드에서만 쓰이는 것(묶음 표시용, 개발용)도 있다. 실제로 서버 파일에 든 것만 담는다.
-        if shipped is not None and _file_name(component) not in shipped:
-            continue
-        listed.add(_file_name(component))
+    # 명세에는 빌드에서만 쓰이는 것(묶음 표시용, 개발용)도 있다. 실제로 서버 파일에 든 것만 담는다.
+    matched = None if shipped is None else _shipped_components(bom, shipped)
+    kept = bom.get("components", []) if matched is None else list({id(one): one for one in matched.values()}.values())
+    for component in kept:
         group = component.get("group") or ""
         name = f"{group}:{component['name']}" if group else component["name"]
         version = component.get("version", "")
@@ -90,15 +108,17 @@ def _server_rows(bom, own_group, shipped, extra):
         rows.append(Row("서버", name, version, " / ".join(licenses), _review(licenses), "서버의 명세"))
     # 서버 파일에는 들었는데 명세에 없는 것: 빌드 도구가 서버 파일을 만들 때 넣는 것이다.
     # 따로 적어 둔 것(deploy/base-components.json 의 extra)에서 읽고, 거기에도 없으면 숨기지 않고 적는다.
-    for file_name in sorted(set(shipped or ()) - listed):
+    for file_name in sorted(set(shipped or ()) - set(matched or ())):
         known = next((one for one in extra if file_name.startswith(one["file"] + "-")), None)
         if known:
             version = file_name[len(known["file"]) + 1:]
             rows.append(Row("서버", known["name"], version, known["license"], _review([known["license"]]),
                             "따로 적어 둔 것: " + known["why"]))
         else:
-            name, _, version = file_name.rpartition("-")
-            rows.append(Row("서버", name or file_name, version if name else "", "",
+            # 이름과 버전은 "-숫자"가 처음 나오는 곳에서 나눈다. 그런 곳이 없으면 버전을 모른다.
+            split = re.match(r"^(.*?)-(\d.*)$", file_name)
+            name, version = (split.group(1), split.group(2)) if split else (file_name, "")
+            rows.append(Row("서버", name, version, "",
                             "서버 파일에는 들었는데 명세에 없다. 라이선스를 읽지 못했다", "서버 파일"))
     return rows
 
@@ -137,6 +157,29 @@ def collect(bom, lock, base, own_group, shipped=None, extra=()):
     shipped = None if shipped is None else set(shipped)
     rows = _base_rows(base) + _server_rows(bom, own_group, shipped, list(extra)) + _web_rows(lock)
     return sorted(rows, key=lambda row: (KINDS.index(row.kind), row.name, row.version))
+
+
+def described(data):
+    """deploy/base-components.json 의 내용을 확인해 바탕 이미지의 표와 따로 적어 둔 것을 돌려준다."""
+    where = "deploy/base-components.json"
+
+    def need(item, key, what):
+        if not isinstance(item, dict) or key not in item:
+            _fail(f"{where} 의 {what} 에 {key} 가 없습니다. 파일을 고쳐 다시 실행하세요.")
+        return item[key]
+
+    images = need(data, "images", "맨 위")
+    for image in images:
+        name = need(image, "image", "images 의 항목")
+        need(image, "where", f"images 의 {name}")
+        for component in need(image, "components", f"images 의 {name}"):
+            for key in ("name", "version", "license"):
+                need(component, key, f"{name} 의 components 의 항목")
+    extra = data.get("extra", [])
+    for one in extra:
+        for key in ("file", "name", "license", "why"):
+            need(one, key, "extra 의 항목")
+    return images, extra
 
 
 def require_base_matches(base, top):
@@ -205,9 +248,23 @@ def _merged_bom(rows, bom, version, shipped):
     metadata = {key: value for key, value in bom.get("metadata", {}).items() if key != "timestamp"}
     metadata["component"] = {"type": "application", "name": "tabnit-base", "version": version}
     document["metadata"] = metadata
-    listed = [component for component in bom.get("components", [])
-              if shipped is None or _file_name(component) in shipped]
+    if shipped is None:
+        listed = list(bom.get("components", []))
+    else:
+        listed = list({id(one): one for one in _shipped_components(bom, shipped).values()}.values())
     known = {_file_name(component) for component in listed}
+    # 뺀 구성요소를 가리키는 의존 관계는 함께 뺀다: 남기면 없는 것을 가리키게 된다.
+    refs = {component["bom-ref"] for component in listed if "bom-ref" in component}
+    if "dependencies" in document:
+        kept_dependencies = []
+        for dependency in document["dependencies"]:
+            if dependency.get("ref") not in refs:
+                continue
+            entry = dict(dependency)
+            if "dependsOn" in entry:
+                entry["dependsOn"] = [ref for ref in entry["dependsOn"] if ref in refs]
+            kept_dependencies.append(entry)
+        document["dependencies"] = kept_dependencies
     for row in rows:
         if row.kind == "서버" and not row.source.startswith("서버의 명세"):
             # 명세에 없던 것 (따로 적어 둔 것, 또는 서버 파일에서만 본 것).
@@ -253,14 +310,14 @@ def main(arguments):
         with open(os.path.join(top, "web", "package-lock.json"), encoding="utf-8") as handle:
             lock = json.load(handle)
         with open(os.path.join(top, "deploy", "base-components.json"), encoding="utf-8") as handle:
-            described = json.load(handle)
+            written = json.load(handle)
         # 서버 파일 안의 라이브러리: 실제로 배포되는 것이다.
         with zipfile.ZipFile(jar_path) as jar:
             shipped = sorted(name.rsplit("/", 1)[-1][:-4] for name in jar.namelist()
                              if name.startswith("BOOT-INF/lib/") and name.endswith(".jar"))
     except (OSError, ValueError, zipfile.BadZipFile) as problem:
         _fail(f"읽지 못했습니다: {problem}. 서버의 명세는 bash tools/components.sh 가 먼저 만듭니다.")
-    base, extra = described["images"], described.get("extra", [])
+    base, extra = described(written)
     require_base_matches(base, top)
     if not shipped:
         _fail(f"서버 파일({jar_path})에 라이브러리가 하나도 없습니다. 서버 파일이 맞는지 확인하세요.")

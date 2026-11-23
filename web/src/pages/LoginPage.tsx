@@ -1,4 +1,5 @@
 import { type FormEvent, useState } from "react";
+import { Brand } from "../Brand";
 import { api, type Session } from "../api/client";
 import { CONNECTION_FAILED, messageOf } from "../api/problem";
 
@@ -37,7 +38,8 @@ export function LoginPage({ notice, onLogin }: { notice: string | null; onLogin:
 
   return (
     <main>
-      <section aria-labelledby="login-title">
+      <section aria-labelledby="login-title" className="login">
+        <Brand />
         <h1 id="login-title">로그인</h1>
         {notice && <p role="status">{notice}</p>}
         <form onSubmit={submit}>

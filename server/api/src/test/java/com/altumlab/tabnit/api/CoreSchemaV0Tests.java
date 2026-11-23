@@ -92,6 +92,23 @@ class CoreSchemaV0Tests {
 	}
 
 	@Test
+	void 관계를_도착_개체로_찾는_색인이_있고_글자_코드_순이다() {
+		// 성능 점검의 측정으로 더한 색인이다 (D2 AD-356, D5 3절). 도착 개체로 시작해야 도착 쪽의 관계를 바로 찾는다.
+		String definition = jdbc.queryForObject(
+				"select indexdef from pg_indexes where schemaname = 'public' and indexname = 'relation_target_entity_idx'",
+				String.class);
+		assertThat(definition).contains("ON public.relation").contains("btree (target_entity_id)");
+		// 열의 정렬 규칙을 따른다: 저장소의 다른 곳과 같은 글자 코드 순이다.
+		String collation = jdbc.queryForObject("""
+				select c.collname
+				from pg_index i
+				join pg_class x on x.oid = i.indexrelid
+				join pg_collation c on c.oid = i.indcollation[0]
+				where x.relname = 'relation_target_entity_idx'""", String.class);
+		assertThat(collation).isEqualTo("C");
+	}
+
+	@Test
 	void 뼈대_확인용_테이블은_그대로_있다() {
 		String schema = jdbc.queryForObject("select value from tabnit_meta where key = 'schema'", String.class);
 

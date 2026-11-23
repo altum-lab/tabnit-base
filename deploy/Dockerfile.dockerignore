@@ -16,3 +16,5 @@ tools/forbidden-words.local.txt
 docs
 packs
 verify
+# 만든 배포 폴더 (이미지 파일이 들어 있어 아주 크다).
+dist

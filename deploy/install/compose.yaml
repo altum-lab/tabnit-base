@@ -1,0 +1,52 @@
+# 설치 구성: 앱(서버와 화면)과 PostgreSQL, 컨테이너 둘 (E-07, D2 AD-27, AD-363).
+#
+# 직접 부르지 않고 같은 폴더의 install.sh 를 쓴다. 그 스크립트가 이미지를 읽어 들이고, 비밀번호와 HTTPS 의 인증서를
+# 마련하고, 이 구성으로 띄운다. 이 파일에는 비밀번호를 적지 않는다: 값은 install.sh 가 만든 .env 에서 온다.
+# 이미지는 배포 폴더의 images/ 에서 읽어 들인 것을 쓴다. 띄울 때 내려받거나 빌드하지 않는다.
+name: tabnit
+
+services:
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tabnit
+      POSTGRES_USER: tabnit
+      POSTGRES_PASSWORD: ${TABNIT_DB_PASSWORD:?데이터베이스의 비밀번호가 없습니다. bash install.sh 로 설치하세요}
+    volumes:
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tabnit -d tabnit"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    # 데이터베이스는 밖으로 열지 않는다. 앱만 붙는다.
+
+  app:
+    image: tabnit-base-app:${TABNIT_VERSION:?제품의 버전이 없습니다. bash install.sh 로 설치하세요}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/tabnit
+      SPRING_DATASOURCE_USERNAME: tabnit
+      SPRING_DATASOURCE_PASSWORD: ${TABNIT_DB_PASSWORD:?데이터베이스의 비밀번호가 없습니다. bash install.sh 로 설치하세요}
+      # 조회 시점이 없는 요청의 "오늘"을 정하는 시간대 (D2 AD-40).
+      TABNIT_TIME_ZONE: ${TABNIT_TIME_ZONE:-Asia/Seoul}
+      # 자체 서명 인증서를 담은 보관소의 비밀번호. 받은 인증서를 쓸 때는 쓰이지 않는다.
+      SERVER_SSL_KEY_STORE_PASSWORD: ${TABNIT_TLS_PASSWORD:-}
+    # HTTPS 로 여는 설정. install.sh 가 인증서의 종류에 맞춰 .env 에 적는다 (자체 서명 또는 받은 인증서).
+    command: ${TABNIT_APP_ARGS:?HTTPS 의 설정이 없습니다. bash install.sh 로 설치하세요}
+    ports:
+      # 다른 PC 에서 붙을 수 있게 모든 주소로 연다. HTTPS 다.
+      - "${TABNIT_PORT:-8443}:8443"
+    volumes:
+      # Pack 을 둔 폴더. 읽기 전용이다. 관리자가 이름을 골라 적재한다 (D2 AD-272).
+      - ./packs:/app/packs:ro
+      # HTTPS 의 인증서. install.sh 가 채운다.
+      - tls:/app/tls
+
+volumes:
+  db-data:
+  tls:

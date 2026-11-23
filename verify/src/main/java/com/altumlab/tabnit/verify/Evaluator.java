@@ -27,6 +27,9 @@ final class Evaluator {
 
     static final String ACTIONS = "actions";
 
+    /** 관계 지도 (D2 AD-368). 물을 수 있지만 Pack 마다 반드시 있어야 하는 종류는 아니다. */
+    static final String RELATION_MAP = "relation-map";
+
     /** 지금 물을 수 있는 종류. 보고와 최소 수의 확인에서도 이 차례로 쓴다. */
     static final List<String> KINDS = List.of(RELATIONS, CHANGES, IMPACT, ACTIONS);
 
@@ -83,6 +86,7 @@ final class Evaluator {
                     case CHANGES -> changes(question, steps);
                     case IMPACT -> impact(question, steps);
                     case ACTIONS -> actions(question, steps);
+                    case RELATION_MAP -> relationMap(question);
                     default -> throw new Failure("아직 만들지 않은 종류입니다: " + question.kind());
                 };
                 // 묶음째로 견준다. 글자로 적은 것은 보고에만 쓴다: 값 안의 쉼표나 괄호 때문에 다른 묶음이 같은 글자가 될 수 있다.
@@ -133,6 +137,80 @@ final class Evaluator {
             actual.add(row);
         }
         return new Object[] { expected, actual };
+    }
+
+    /** 관계 지도: 노드(개체와 깊이)와 간선을 제품이 준 차례로 견준다. 수와 표시와 멈춘 깊이는 적었을 때만 견준다. */
+    private Object[] relationMap(QuestionFile.Question question) {
+        LocalDate asOf = QuestionFile.date(question.body().get("asOf"), "질문 " + question.id() + " 의 asOf");
+        int depth = mapDepth(question);
+        String entityId = Ids.entity(this.packId, question.body().get("entity"));
+        Map<?, ?> expect = expect(question);
+        Map<String, Object> expected = new LinkedHashMap<>();
+        List<Object> nodes = new ArrayList<>();
+        for (Object item : list(expect.get("nodes"), question, "nodes")) {
+            Map<?, ?> node = map(item, question, "nodes 의 항목");
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("entity", Ids.entity(this.packId, node.get("entity")));
+            row.put("depth", node.get("depth"));
+            nodes.add(row);
+        }
+        expected.put("nodes", nodes);
+        List<Object> edges = new ArrayList<>();
+        for (Object item : list(expect.get("edges"), question, "edges")) {
+            Map<?, ?> edge = map(item, question, "edges 의 항목");
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("type", String.valueOf(edge.get("type")));
+            row.put("source", Ids.entity(this.packId, edge.get("source")));
+            row.put("target", Ids.entity(this.packId, edge.get("target")));
+            row.put("validFrom", QuestionFile.date(edge.get("validFrom"), "질문 " + question.id() + " 의 validFrom").toString());
+            row.put("validTo", edge.get("validTo") == null ? null
+                    : QuestionFile.date(edge.get("validTo"), "질문 " + question.id() + " 의 validTo").toString());
+            edges.add(row);
+        }
+        expected.put("edges", edges);
+        List<String> extras = List.of("totalNodes", "truncated", "reachedDepth");
+        for (String extra : extras) {
+            if (expect.containsKey(extra)) {
+                expected.put(extra, expect.get(extra));
+            }
+        }
+        Map<?, ?> body = ok(this.product.relationMap(entityId, asOf, depth), "관계 지도");
+        Map<String, Object> actual = new LinkedHashMap<>();
+        List<Object> actualNodes = new ArrayList<>();
+        for (Object item : (List<?>) body.get("nodes")) {
+            Map<?, ?> node = (Map<?, ?>) item;
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("entity", node.get("entityId"));
+            row.put("depth", node.get("depth"));
+            actualNodes.add(row);
+        }
+        actual.put("nodes", actualNodes);
+        List<Object> actualEdges = new ArrayList<>();
+        for (Object item : (List<?>) body.get("edges")) {
+            Map<?, ?> edge = (Map<?, ?>) item;
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("type", edge.get("relationType"));
+            row.put("source", edge.get("sourceEntityId"));
+            row.put("target", edge.get("targetEntityId"));
+            row.put("validFrom", edge.get("validFrom"));
+            row.put("validTo", edge.get("validTo"));
+            actualEdges.add(row);
+        }
+        actual.put("edges", actualEdges);
+        for (String extra : extras) {
+            if (expected.containsKey(extra)) {
+                actual.put(extra, body.get(extra));
+            }
+        }
+        return new Object[] { expected, actual };
+    }
+
+    /** 관계 지도의 질문이 적은 깊이. 반드시 적는다: 제품의 기본값에 기대는 질문은 없다. */
+    private static int mapDepth(QuestionFile.Question question) {
+        if (question.body().get("depth") == null) {
+            throw new QuestionFileException("질문 " + question.id() + " 에 깊이(depth)가 없습니다. 관계 지도의 질문은 깊이를 적습니다.");
+        }
+        return QuestionFile.integer(question.body().get("depth"), "질문 " + question.id() + " 의 depth (깊이)");
     }
 
     private Object[] changes(QuestionFile.Question question, Map<Integer, Product.Reply> steps) {
@@ -287,6 +365,9 @@ final class Evaluator {
     /** 어느 날짜나 단계를 묻는가. 보고에 적는다. */
     private static String label(QuestionFile.Question question) {
         Map<String, Object> body = question.body();
+        if (RELATION_MAP.equals(question.kind())) {
+            return QuestionFile.date(body.get("asOf"), "질문 " + question.id() + " 의 asOf") + " 깊이 " + mapDepth(question);
+        }
         if (body.get("asOf") != null) {
             return QuestionFile.date(body.get("asOf"), "질문 " + question.id() + " 의 asOf").toString();
         }

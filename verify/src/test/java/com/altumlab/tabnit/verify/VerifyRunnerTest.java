@@ -744,6 +744,206 @@ class VerifyRunnerTest {
         assertThat(Report.scenario(PACK, "S-01", List.of(), List.of("Q-02"))).contains("두 번 실행: 다름 (Q-02)");
     }
 
+    // ── 관계 지도 (A-08, D2 AD-368) ─────────────────────────────────
+
+    private static final String MAP_QUESTION = """
+            questions:
+              - id: Q-01
+                kind: relation-map
+                title: 관계 지도
+                asOf: 2026-02-01
+                entity: { type: TypeA, key: k-1 }
+                depth: 2
+                expect:
+                  nodes:
+                    - { entity: { type: TypeA, key: k-1 }, depth: 0 }
+                    - { entity: { type: TypeB, key: k-9 }, depth: 1 }
+                  edges:
+                    - { type: relatesTo, source: { type: TypeA, key: k-1 }, target: { type: TypeB, key: k-9 }, validFrom: 2026-01-01, validTo: null }
+            """;
+
+    @Test
+    void 관계_지도의_질문은_노드와_간선을_제품이_준_차례_그대로_견준다() throws IOException {
+        QuestionFile file = QuestionFile.read(write("S-map.yaml", SCENARIO + MAP_QUESTION
+                + "                  totalNodes: 2\n                  truncated: false\n                  reachedDepth: 2\n".replace("                  ", "      ")));
+        FakeProduct product = new FakeProduct();
+
+        List<Evaluator.Result> results = new Evaluator(PACK, product).evaluate(file, product.steps());
+
+        assertThat(results).singleElement().satisfies(result -> {
+            assertThat(result.passed()).as(result.reason() + "\n기대: " + result.expected() + "\n실제: " + result.actual()).isTrue();
+            assertThat(result.label()).isEqualTo("2026-02-01 깊이 2");
+        });
+        // 식별자와 날짜와 깊이로 물었다.
+        assertThat(product.asked).containsExactly("relation-map p|TypeA|k-1 2026-02-01 2");
+    }
+
+    @Test
+    void 관계_지도의_질문은_차례나_수나_멈춘_깊이가_다르면_실패이고_적지_않은_수는_견주지_않는다() throws IOException {
+        String swapped = MAP_QUESTION.replace("""
+                    - { entity: { type: TypeA, key: k-1 }, depth: 0 }
+                    - { entity: { type: TypeB, key: k-9 }, depth: 1 }
+            """.replace("            ", "                "), """
+                    - { entity: { type: TypeB, key: k-9 }, depth: 1 }
+                    - { entity: { type: TypeA, key: k-1 }, depth: 0 }
+            """.replace("            ", "                "));
+        assertThat(swapped).isNotEqualTo(MAP_QUESTION);
+        FakeProduct product = new FakeProduct();
+        java.util.function.Function<String, Evaluator.Result> ask = questions -> {
+            try {
+                return new Evaluator(PACK, product).evaluate(QuestionFile.read(write("S-map-x.yaml", SCENARIO + questions)),
+                        product.steps()).get(0);
+            }
+            catch (IOException e) {
+                throw new java.io.UncheckedIOException(e);
+            }
+        };
+
+        // 수와 멈춘 깊이를 적지 않으면 노드와 간선만 견준다.
+        assertThat(ask.apply(MAP_QUESTION).passed()).isTrue();
+        // 노드는 같아도 차례가 다르면 실패다.
+        assertThat(ask.apply(swapped).passed()).isFalse();
+        // 적은 수와 표시와 멈춘 깊이는 견준다. 하나라도 다르면 실패다.
+        assertThat(ask.apply(MAP_QUESTION + "      totalNodes: 3\n").passed()).isFalse();
+        assertThat(ask.apply(MAP_QUESTION + "      truncated: true\n").passed()).isFalse();
+        assertThat(ask.apply(MAP_QUESTION + "      reachedDepth: 1\n").passed()).isFalse();
+        // 간선의 종료일이 다르다.
+        assertThat(ask.apply(MAP_QUESTION.replace("validTo: null", "validTo: 2026-05-01")).passed()).isFalse();
+        // 깊이를 적지 않은 질문과 노드가 빠진 정답은 형식이 틀린 것이다. 제품에 묻지 않는다.
+        int asked = product.asked.size();
+        assertThat(ask.apply(MAP_QUESTION.replace("    depth: 2\n", ""))).satisfies(result -> {
+            assertThat(result.passed()).isFalse();
+            assertThat(result.reason()).contains("depth");
+        });
+        assertThat(ask.apply(MAP_QUESTION.substring(0, MAP_QUESTION.indexOf("      edges:")) + "      totalNodes: 2\n")).satisfies(result -> {
+            assertThat(result.passed()).isFalse();
+            assertThat(result.reason()).contains("edges");
+        });
+        assertThat(product.asked).hasSize(asked);
+        // 없는 개체는 실패다 (제품이 404 로 답한다).
+        assertThat(ask.apply(MAP_QUESTION.replace("entity: { type: TypeA, key: k-1 }\n    depth", "entity: { type: TypeA, key: missing }\n    depth")))
+            .satisfies(result -> {
+                assertThat(result.passed()).isFalse();
+                assertThat(result.reason()).contains("404");
+            });
+    }
+
+    @Test
+    void 관계_지도의_질문은_없어도_되고_있으면_전체_수에_든다() {
+        List<QuestionFile.Question> enough = new ArrayList<>();
+        for (String kind : List.of("relations-as-of", "changes", "impact", "actions")) {
+            enough.add(question(kind + "-1", kind));
+            enough.add(question(kind + "-2", kind));
+        }
+        // 여덟 개라 둘이 모자라다. 관계 지도의 질문 둘을 더하면 열 개가 된다.
+        assertThat(Report.shortfalls(enough)).hasSize(1).first().asString().contains("8");
+        enough.add(question("M-1", "relation-map"));
+        enough.add(question("M-2", "relation-map"));
+        assertThat(Report.shortfalls(enough)).isEmpty();
+        // 관계 지도의 질문이 하나뿐이어도 모자란 것이 아니다 (종류마다 둘 이상은 네 종류의 것이다).
+        assertThat(Report.shortfalls(enough.subList(0, 9))).noneMatch(problem -> problem.contains("relation-map"));
+    }
+
+    // ── 전수 대조 (A-08, D2 AD-368) ─────────────────────────────────
+
+    private static final String CHECKS = """
+            scenario: S-1
+            checks:
+              - id: X-02
+                kind: relations-as-of
+                asOf: 2026-02-01
+                entity: { type: TypeA, key: k-1 }
+                expect:
+                  relations:
+                    - { type: relatesTo, source: { type: TypeA, key: k-1 }, target: { type: TypeB, key: k-9 }, validFrom: 2026-01-01, validTo: null }
+              - id: X-01
+                kind: relations-as-of
+                asOf: 2026-02-01
+                entity: { type: TypeA, key: k-1 }
+                expect:
+                  relations: []
+            """;
+
+    private Path packWithChecks(String name, String checks) throws IOException {
+        Path pack = Files.createDirectories(this.temp.resolve("packs-" + name).resolve("p"));
+        Files.writeString(pack.resolve("pack.ttl"), "# 지어낸 Pack\n");
+        Path questions = Files.createDirectories(pack.resolve("questions"));
+        Files.writeString(questions.resolve("S-01.yaml"), SCENARIO.replace("id: S", "id: S-1")
+                + "    - { step: 3, inputSource: src-a, file: data/a-v3.csv, effectiveDate: 2026-06-01 }\n"
+                + "questions:\n  - { id: Q-01, kind: changes, title: t, step: 1, expect: { changes: [] } }\n");
+        if (checks != null) {
+            Files.writeString(Files.createDirectories(questions.resolve("crosscheck")).resolve("S-01.yaml"), checks);
+        }
+        return pack;
+    }
+
+    @Test
+    void 대조_파일은_질문_파일과_이름이_같은_것을_찾아_같은_시나리오로_읽고_질문의_수에는_넣지_않는다() throws IOException {
+        VerifyMain.PackQuestions read = VerifyMain.readPack(packWithChecks("ok", CHECKS));
+
+        assertThat(read.files()).extracting(QuestionFile::fileName).containsExactly("S-01.yaml");
+        QuestionFile checks = read.checks().get("S-01.yaml");
+        assertThat(checks).isNotNull();
+        // 단계는 질문 파일의 것이다: 같은 자료에 묻는다.
+        assertThat(checks.steps()).isEqualTo(read.files().get(0).steps());
+        assertThat(checks.questions()).extracting(QuestionFile.Question::id).containsExactly("X-02", "X-01");
+        // 대조는 질문이 아니다: 질문의 최소 수를 채워 주지 않는다.
+        assertThat(read.problems()).anyMatch(problem -> problem.contains("질문이 1개"));
+        assertThat(read.problems()).noneMatch(problem -> problem.contains("crosscheck"));
+        // 대조 파일이 없는 Pack 은 대조가 없을 뿐이다.
+        VerifyMain.PackQuestions none = VerifyMain.readPack(packWithChecks("none", null));
+        assertThat(none.checks()).isEmpty();
+        assertThat(none.problems()).noneMatch(problem -> problem.contains("crosscheck"));
+    }
+
+    @Test
+    void 틀린_대조_파일은_건너뛰지_않고_무엇이_틀렸는지_알린다() throws IOException {
+        // 다른 시나리오의 것이다.
+        assertThat(VerifyMain.readPack(packWithChecks("other", CHECKS.replace("scenario: S-1", "scenario: S-9"))).problems())
+            .anyMatch(problem -> problem.contains("crosscheck/S-01.yaml") && problem.contains("S-9") && problem.contains("S-1"));
+        // 번호가 겹친다.
+        assertThat(VerifyMain.readPack(packWithChecks("twice", CHECKS.replace("id: X-01", "id: X-02"))).problems())
+            .anyMatch(problem -> problem.contains("crosscheck/S-01.yaml") && problem.contains("X-02"));
+        // 정답이 없다, 읽을 수 없다, 대조가 하나도 없다.
+        assertThat(VerifyMain.readPack(packWithChecks("no-expect", CHECKS.replace("    expect:\n      relations: []\n", ""))).problems())
+            .anyMatch(problem -> problem.contains("crosscheck/S-01.yaml") && problem.contains("X-01") && problem.contains("expect"));
+        assertThat(VerifyMain.readPack(packWithChecks("broken", "이것은: [닫히지 않았다\n")).problems())
+            .anyMatch(problem -> problem.contains("crosscheck/S-01.yaml"));
+        assertThat(VerifyMain.readPack(packWithChecks("empty", "scenario: S-1\nchecks: []\n")).problems())
+            .anyMatch(problem -> problem.contains("crosscheck/S-01.yaml") && problem.contains("checks"));
+        // 짝이 되는 질문 파일이 없는 대조 파일.
+        Path orphan = packWithChecks("orphan", CHECKS);
+        Files.writeString(orphan.resolve("questions/crosscheck/S-77.yaml"), CHECKS);
+        assertThat(VerifyMain.readPack(orphan).problems())
+            .anyMatch(problem -> problem.contains("crosscheck/S-77.yaml") && problem.contains("질문 파일"));
+    }
+
+    @Test
+    void 대조는_질문과_같은_방법으로_견주고_보고에는_수와_실패한_것만_적는다() throws IOException {
+        VerifyMain.PackQuestions read = VerifyMain.readPack(packWithChecks("run", CHECKS));
+        FakeProduct product = new FakeProduct();
+
+        List<Evaluator.Result> results = new Evaluator(PACK, product).evaluate(read.checks().get("S-01.yaml"), product.steps());
+
+        // 번호 순이다. X-01 은 정답을 비워 적어 실패한다.
+        assertThat(results).extracting(Evaluator.Result::id, Evaluator.Result::passed)
+            .containsExactly(org.assertj.core.groups.Tuple.tuple("X-01", false), org.assertj.core.groups.Tuple.tuple("X-02", true));
+        String text = Report.checks(PACK, "S-1", results, List.of());
+        assertThat(text).contains("대조").contains("시나리오 S-1").contains("통과 1 / 2").contains("두 번 실행: 같음");
+        assertThat(text).contains("시점 조회 2");
+        // 통과한 것은 한 줄씩 적지 않는다. 실패한 것은 기대와 실제를 적는다.
+        assertThat(text).doesNotContain("X-02");
+        assertThat(text).containsSubsequence("실패  X-01", "기대: []", "실제: [");
+        assertThat(Report.checks(PACK, "S-1", results, List.of("X-02"))).contains("두 번 실행: 다름 (X-02)");
+        // 실패가 많으면 앞의 것만 적고 나머지는 수로 알린다.
+        List<Evaluator.Result> many = new ArrayList<>();
+        for (int i = 0; i < 30; i++) {
+            many.add(new Evaluator.Result(String.format("X-%03d", i), "impact", "", false, "[a]", "[b]", null));
+        }
+        String long_ = Report.checks(PACK, "S-1", many, List.of());
+        assertThat(long_).contains("실패  X-000").contains("실패  X-019").doesNotContain("실패  X-020").contains("10건 더");
+    }
+
     // ── 도우미 ────────────────────────────────────────────────────
 
     private static final String SCENARIO = """
@@ -815,6 +1015,25 @@ class VerifyRunnerTest {
             relation.put("validTo", null);
             relation.put("recordedAt", "2026-07-01T00:00:01Z");
             return new Reply(200, Map.of("asOf", asOf.toString(), "entityId", entityId, "relations", List.of(relation)));
+        }
+
+        @Override
+        public Reply relationMap(String entityId, LocalDate asOf, int depth) {
+            if (entityId.endsWith("missing")) {
+                return new Reply(404, Map.of("code", "ENTITY_NOT_FOUND", "detail", "없다"));
+            }
+            this.asked.add("relation-map " + entityId + " " + asOf + " " + depth);
+            Map<String, Object> edge = new LinkedHashMap<>();
+            edge.put("id", "r-1");
+            edge.put("relationType", "relatesTo");
+            edge.put("sourceEntityId", "p|TypeA|k-1");
+            edge.put("targetEntityId", "p|TypeB|k-9");
+            edge.put("validFrom", "2026-01-01");
+            edge.put("validTo", null);
+            return new Reply(200, Map.of("asOf", asOf.toString(), "centerEntityId", entityId, "depth", depth, "reachedDepth",
+                    depth, "maxNodes", 200, "totalNodes", 2, "truncated", false, "nodes",
+                    List.of(Map.of("entityId", "p|TypeA|k-1", "depth", 0), Map.of("entityId", "p|TypeB|k-9", "depth", 1)),
+                    "edges", List.of(edge)));
         }
 
         @Override

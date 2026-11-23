@@ -443,6 +443,40 @@ def relations_as_of(entity, day):
     if len(keys) != len(set(keys)): raise SystemExit(f"관계 유형과 상대가 같은 관계가 둘이다: {entity}")
     return sorted(rows)
 
+def relations_as_of_all(entity, day):
+    """전수 대조용: 관계 유형과 상대가 같은 관계가 둘이어도 관계 식별자로 차례를 정한다 (D3 5절)."""
+    rows = []
+    for r in REL:
+        if valid(r[3], r[4], day) and entity in (r[1], r[2]):
+            other = r[2] if r[1] == entity else r[1]
+            rows.append((r[0], other, rel_id(r), r[1], r[2], r[3], r[4]))
+    return [(rt, other, s, t, f, to) for rt, other, _, s, t, f, to in sorted(rows)]
+
+MAX_NODES = 200
+
+def relation_map(center, day, depth):
+    """관계 지도 (D7 4절 "관계 지도", D2 AD-352, AD-357). 그 날짜에 유효한 관계를 방향과 무관하게 따라간다.
+    가까운 단계부터 따라가다가 찾은 노드가 한도를 넘으면 그 단계에서 멈춘다. 노드는 깊이, 유형, 식별자 순으로 한도까지,
+    간선은 두 끝이 모두 담긴 노드인 관계를 유형, 출발, 도착, 관계 식별자 순으로 담는다."""
+    near = {}
+    live = [r for r in REL if valid(r[3], r[4], day)]
+    for r in live:
+        near.setdefault(r[1], set()).add(r[2])
+        near.setdefault(r[2], set()).add(r[1])
+    found, frontier, reached = {center: 0}, [center], depth
+    for d in range(1, depth + 1):
+        nxt = sorted({o for n in frontier for o in near.get(n, ()) if o not in found})
+        for o in nxt: found[o] = d
+        frontier = nxt
+        if len(found) > MAX_NODES:
+            reached = d
+            break
+    ordered = sorted(found.items(), key=lambda kv: (kv[1], type_of(kv[0]), kv[0]))
+    nodes = ordered[:MAX_NODES]
+    kept = {o for o, _ in nodes}
+    edges = sorted((r for r in live if r[1] in kept and r[2] in kept), key=lambda r: (r[0], r[1], r[2], rel_id(r)))
+    return nodes, edges, len(found), len(found) > MAX_NODES, reached
+
 
 for n, (source, idx) in enumerate(STEPS, start=1): ingest(n, source, idx)
 
@@ -474,6 +508,7 @@ y.append("""# 퇴직연금 Pack 의 검증 질문. 형식은 D4 3절이다.
 #
 # 상태: 확정 (2026-11-22, D2 AD-315). 자료나 규칙을 바꿔 정답이 달라지면 다시 확정한다 (D4 4절: 정답은 대표가 정한다).
 # B-09 와 B-14 에서 달라진 Q-08, Q-16, Q-31 은 다시 확정했다 (2026-11-22, D2 AD-342).
+# 관계 지도의 질문 Q-32 ~ Q-36 은 초안이다 (2026-11-23, A-08, D2 AD-368). 대표가 확정하기 전이다.
 # 모든 이름은 지어낸 것이다. 실제 기관, 사업장, 사람, 규정과 관계가 없다.
 #
 # 정답을 만든 방법: 자료가 커서 (개체 362개) 손으로 적지 않았다. 예시 입력 파일에서 문서의 규칙
@@ -487,6 +522,9 @@ y.append("""# 퇴직연금 Pack 의 검증 질문. 형식은 D4 3절이다.
 # 한 대상에 길이가 같은 길이 여럿이면 관계 식별자가 앞선 길이 남는다 (D3 7절). 이 자료에는 그런 대상이 많다.
 #
 # 이 질문들이 묻지 않는 것: 관계 유형과 상대 개체가 같은 관계가 둘인 경우 (정답을 만든 계산이 구현하지 않았다).
+#
+# 전수 대조: 이 시나리오의 모든 변동의 영향 범위와 모든 개체의 경계 날짜의 관계를 같은 계산으로 만들어
+# questions/crosscheck/S-01.yaml 에 따로 두었다 (D4 3절 "전수 대조"). 질문이 아니다: 질문의 수에 넣지 않는다.
 """)
 y.append("scenario:\n  id: S-01\n  title: 위험자산 한도가 내려가고 보유가 바뀌고 금융기관의 등급이 내려가고 퇴직 통보가 들어오고 적립비율이 바뀌고 규약의 이름이 바뀐다\n  steps:")
 y.append("    # 2026-01-01: 처음 자료가 들어온다. 모두 첫 판이라 변동은 없다.")
@@ -617,7 +655,109 @@ a25 = q_actions("Q-25", "제도 L-01 의 적립비율이 올라 생긴 조치 (�
                 "적립비율이 바뀌었지만 새 값 1.03 은 기준 0.95 미만이 아니다. 조치가 없다.")
 a26 = q_actions("Q-26", "제도 L-04 의 적립비율이 올랐지만 여전히 기준 미만이라 생긴 조치", STEP_PLN, "L-04",
                 "0.86 에서 0.88 로 올랐지만 기준 0.95 미만이다. 규칙은 새 값만 본다 (앞 판의 값과 견주지 못한다). 조치가 생긴다.")
+
+def map_lines(out, indent, center, day, depth):
+    nodes, edges, total, truncated, reached = relation_map(center, day, depth)
+    pad = " " * indent
+    out.append(pad + "nodes:")
+    for o, d in nodes: out.append(pad + "  - { entity: %s, depth: %d }" % (ref(o), d))
+    out.append(pad + "edges:" + ("" if edges else " []"))
+    for r in edges:
+        out.append(pad + "  - { type: %s, source: %s, target: %s, validFrom: %s, validTo: %s }" % (r[0], ref(r[1]), ref(r[2]), r[3], r[4] or "null"))
+    out.append(pad + "totalNodes: %d" % total)
+    out.append(pad + "truncated: %s" % ("true" if truncated else "false"))
+    out.append(pad + "reachedDepth: %d" % reached)
+    return nodes, edges, total, truncated, reached
+
+def q_map(qid, title, t, k, day, depth, why):
+    y.append("  - id: %s\n    kind: relation-map\n    title: %s\n    asOf: %s\n    entity: { type: %s, key: %s }\n    depth: %d" % (qid, title, day, t, k, depth))
+    y.append("    # " + why)
+    y.append("    expect:")
+    result = map_lines(y, 6, eid(t, k), day, depth)
+    y.append("")
+    return result
+
+y.append("  # ── 관계 지도 ──────────────────────────────────────────────\n  # 초안이다 (대표 확정 전). 방향과 무관하게 따라간다. 노드는 깊이, 유형, 식별자 순이고 간선은 유형, 출발, 도착 순이다 (D7 4절).\n  # 간선은 담긴 노드 사이의 관계 전부다: 같은 깊이의 노드 사이의 관계도 든다.\n")
+m32 = q_map("Q-32", "계좌 A-005 가 상품을 팔기 전날의 관계 지도 (깊이 1)", T_ACC, "A-005", "2026-05-31", 1,
+            "Q-03 과 같은 날짜와 개체다. 가운데가 계좌이고 이웃은 가입자, 제도, 보유한 상품, 지정한 기본운용방법이다. 이웃끼리 이어진 관계(기본운용방법을 이루는 상품을 이 계좌가 보유한 경우)도 간선에 든다.")
+m33 = q_map("Q-33", "계좌 A-005 가 상품을 판 날의 관계 지도 (깊이 1, 경계)", T_ACC, "A-005", "2026-06-01", 1,
+            "판 상품의 보유는 이날 끝나 그 상품이 이웃에서 빠지고, 새로 산 상품이 이웃으로 든다 (시작일 포함, 종료일 제외).")
+m34 = q_map("Q-34", "현재, 저축은행 다(I-03)의 관계 지도 (깊이 2)", T_INS, "I-03", "2026-12-01", 2,
+            "영향이 퍼지는 방향과 무관하게 따라간다. 깊이 1 은 이 기관의 상품과 이 기관에 걸린 요건, 깊이 2 는 그 상품을 보유한 계좌와 그 상품으로 구성된 기본운용방법, 그 요건을 부과한 규약과 그 요건이 걸린 다른 대상이다.")
+m35 = q_map("Q-35", "현재, 기업집단 G-1 의 관계 지도 (깊이 1, 영향이 퍼지지 않는 관계도 따라간다)", T_GRP, "G-1", "2026-12-01", 1,
+            "집단지배는 영향이 퍼지지 않는 관계다 (영향 범위에서는 따라가지 않는다). 관계 지도는 영향 방향을 보지 않으므로 이 집단이 지배하는 사업장이 이웃으로 든다.")
+m36 = q_map("Q-36", "현재, 기본운용방법 D-01 의 관계 지도 (깊이 3, 노드가 한도를 넘어 잘린다)", T_OPT, "D-01", "2026-12-01", 3,
+            "깊이 3 까지 찾은 노드가 200개를 넘는다. totalNodes 는 찾은 수 전체이고, 노드는 가까운 것부터 (깊이, 유형, 식별자 순) 200개만 담는다. 잘린 노드에 닿는 관계는 간선에 없다. 깊이 3 에서 넘었으므로 reachedDepth 는 청한 깊이와 같은 3 이다. 청한 깊이보다 얕은 데서 멈추는 경우는 이 자료로는 물을 수 없다 (깊이 2 까지가 200개를 넘는 개체가 없다): core 의 일반 시험이 본다.")
+# 질문의 전제가 자료에서 정말 성립하는지 확인한다. 자료가 달라져 깨지면 멈춘다.
+if not (m32[3] is False and m33[3] is False and {o for o, _ in m32[0]} != {o for o, _ in m33[0]}):
+    raise SystemExit("Q-32, Q-33 의 전제가 깨졌다: 두 날짜의 이웃이 달라야 한다")
+if not any(r[0] == "집단지배" for r in m35[1]):
+    raise SystemExit("Q-35 의 전제가 깨졌다: 집단지배의 간선이 있어야 한다")
+if not (m36[3] is True and m36[2] > MAX_NODES and len(m36[0]) == MAX_NODES and m36[4] == 3):
+    raise SystemExit("Q-36 의 전제가 깨졌다: 깊이 3 에서 한도를 넘어 잘려야 한다")
+if m34[3] is not False:
+    raise SystemExit("Q-34 의 전제가 깨졌다: 잘리지 않아야 한다")
 open(os.path.join(OUT, "questions", "S-01.yaml"), "w", encoding="utf-8").write("\n".join(y) + "\n")
+
+# ── 전수 대조 (A-08, D2 AD-368) ─────────────────────────────────────
+# 질문이 묻지 않은 변동과 개체까지 모두, 같은 계산으로 만든 값을 적는다. 검증 질문을 돌릴 때 엔진의 답과 견준다.
+x = ["""# 퇴직연금 Pack 의 전수 대조. 형식은 D4 3절 "전수 대조"다.
+#
+# 손으로 고치지 않는다: tools/packs/retirement-pension-build.py 가 만든다.
+# 질문이 아니다. 대표가 확정한 정답이 아니라, 예시 입력 파일에서 문서의 규칙을 엔진과 따로 구현한 계산으로 만든 값이다.
+# 엔진의 답과 다르면 엔진의 결함이거나 이 계산의 잘못이다: 어느 쪽인지 가려서 고친다.
+#
+# 담은 것: 시나리오의 모든 변동의 영향 범위 (X-I), 모든 개체의 경계 날짜의 관계 (X-R: 그 개체의 관계가 시작하거나 끝나는
+# 날과 그 전날, 그리고 현재), 모든 개체의 현재의 관계 지도 깊이 1 과 유형마다 한 개체의 깊이 2, 3 (X-M).
+
+scenario: S-01
+checks:
+"""]
+CURRENT = "2026-12-01"
+ALL_ENTITIES = sorted({e for f in PREV.values() for v in f.values() for e in v[1]} | {r[1] for r in REL} | {r[2] for r in REL})
+def day_before(day): return (D(day) - datetime.timedelta(days=1)).isoformat()
+n_i = 0
+for step in sorted(EVENTS):
+    for e in EVENTS[step]:
+        n_i += 1
+        ordered, truncated, day, prev = IMPACTS[(step, e[0])]
+        x.append("  - id: X-I-%04d\n    kind: impact\n    change: { step: %d, itemKey: [%s] }\n    expect:\n      targets:%s" % (n_i, step, item_key(e[0]), "" if ordered else " []"))
+        by_type, by_depth = {}, {}
+        for o, (depth, path, start, used) in ordered:
+            rels = ", ".join("{ type: %s, source: %s, target: %s }" % (p[0], ref(p[1]), ref(p[2])) for p in path)
+            x.append("        - { entity: %s, depth: %d, path: { from: %s, asOf: %s, relations: [ %s ] } }" % (ref(o), depth, ref(start), used, rels))
+            by_type[type_of(o)] = by_type.get(type_of(o), 0) + 1
+            by_depth[depth] = by_depth.get(depth, 0) + 1
+        x.append("      countsByType: { %s }" % ", ".join("%s: %d" % kv for kv in sorted(by_type.items())))
+        x.append("      countsByDepth: { %s }" % ", ".join("%d: %d" % kv for kv in sorted(by_depth.items())))
+        x.append("      truncated: %s" % ("true" if truncated else "false"))
+n_r = 0
+for entity in ALL_ENTITIES:
+    days = {CURRENT}
+    for r in REL:
+        if entity in (r[1], r[2]):
+            for edge in (r[3], r[4]):
+                if edge is not None: days |= {edge, day_before(edge)}
+    for day in sorted(days):
+        n_r += 1
+        rows = relations_as_of_all(entity, day)
+        x.append("  - id: X-R-%05d\n    kind: relations-as-of\n    asOf: %s\n    entity: %s\n    expect:\n      relations:%s" % (n_r, day, ref(entity), "" if rows else " []"))
+        for rt, other, s_, t_, f, to in rows:
+            x.append("        - { type: %s, source: %s, target: %s, validFrom: %s, validTo: %s }" % (rt, ref(s_), ref(t_), f, to or "null"))
+n_m = 0
+deep, seen_types = [], set()
+for entity in ALL_ENTITIES:
+    if type_of(entity) not in seen_types:
+        seen_types.add(type_of(entity))
+        deep.append(entity)
+for entity, depth in [(e, 1) for e in ALL_ENTITIES] + [(e, d) for e in deep for d in (2, 3)]:
+    n_m += 1
+    x.append("  - id: X-M-%04d\n    kind: relation-map\n    asOf: %s\n    entity: %s\n    depth: %d\n    expect:" % (n_m, CURRENT, ref(entity), depth))
+    map_lines(x, 6, entity, CURRENT, depth)
+os.makedirs(os.path.join(OUT, "questions", "crosscheck"), exist_ok=True)
+open(os.path.join(OUT, "questions", "crosscheck", "S-01.yaml"), "w", encoding="utf-8").write("\n".join(x) + "\n")
+print("전수 대조: 영향 범위", n_i, "시점 조회", n_r, "관계 지도", n_m)
+print("Q-32", len(m32[0]), len(m32[1]), "| Q-33", len(m33[0]), len(m33[1]), "| Q-34", len(m34[0]), len(m34[1]), "| Q-35", len(m35[0]), len(m35[1]), "| Q-36", m36[2], m36[3], m36[4], len(m36[1]))
 
 n_entities = len({e for f in PREV.values() for x in f.values() for e in x[1]})
 print("개체", n_entities, "관계", len(REL), "단계", len(STEPS), "입력 파일", sum(len(v) for v in SOURCES.values()))

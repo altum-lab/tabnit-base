@@ -35,6 +35,7 @@ packs/<Pack 식별자>/
   mappings/          매핑 정의 (Turtle). 입력 자료 하나에 파일 하나     [AD-90]
   rules/             규칙. 형식은 D8 이 정한다                        [AD-85]
   questions/         검증 질문과 정답. 형식은 D4 가 정한다            [AD-85]
+    crosscheck/      전수 대조 (없어도 된다). 형식은 D4 3절       [AD-368]
   data/              예시 입력 파일 (CSV, xlsx). 없어도 된다           [AD-45]
 ```
 

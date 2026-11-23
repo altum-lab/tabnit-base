@@ -80,6 +80,13 @@ final class HttpProduct implements Product {
     }
 
     @Override
+    public Reply relationMap(String entityId, LocalDate asOf, int depth) {
+        // 나눠 주지 않는 답이다 (D7 4절).
+        return send("GET", "/api/v1/relation-map?entityId=" + encode(entityId) + "&asOf=" + asOf + "&depth=" + depth, null,
+                null);
+    }
+
+    @Override
     public Reply impactScope(String changeEventId) {
         return whole("/api/v1/impact-scopes?changeEventId=" + encode(changeEventId), "targets");
     }

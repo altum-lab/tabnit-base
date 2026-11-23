@@ -809,6 +809,24 @@ class ImpactQueryTest {
                 .hasMessageContaining("최대 깊이");
     }
 
+    // A-10 (D2 AD-370): 영향 범위의 기준 날짜도 같은 범위만 받는다.
+    @Test
+    void 받는_범위_밖의_기준_날짜는_요청을_만들_때_거부한다() {
+        List<String> starts = List.of("p|T|a");
+        for (LocalDate bad : List.of(LocalDate.MAX, LocalDate.MIN, LocalDate.of(10000, 1, 1), LocalDate.of(0, 12, 31))) {
+            assertThatThrownBy(() -> new ImpactRequest(starts, List.of(bad), FORWARD, 3)).as(bad.toString())
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("기준 날짜");
+            // 날짜가 여럿이면 하나만 틀려도 거부한다.
+            assertThatThrownBy(() -> new ImpactRequest(starts, List.of(DAY, bad), FORWARD, 3)).as(bad.toString())
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("기준 날짜");
+        }
+        // 범위의 두 끝은 받는다.
+        assertThat(new ImpactRequest(starts, List.of(LocalDate.of(1, 1, 1), LocalDate.of(9999, 12, 31)), FORWARD, 3).asOfDates())
+            .containsExactly(LocalDate.of(1, 1, 1), LocalDate.of(9999, 12, 31));
+    }
+
     @Test
     void 요청의_변동_대상과_날짜는_넣은_순서와_무관하게_같은_요청이_된다() {
         ImpactRequest one = new ImpactRequest(List.of("p|T|b", "p|T|a", "p|T|a"), List.of(DAY, DAY.minusDays(1)),

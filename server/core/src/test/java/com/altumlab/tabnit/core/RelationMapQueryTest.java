@@ -64,6 +64,25 @@ class RelationMapQueryTest {
             .hasMessageContaining("노드");
     }
 
+    // A-10 (D2 AD-370): 관계 지도도 같은 범위의 날짜만 받는다.
+    @Test
+    void 받는_범위_밖의_기준_날짜와_깨진_식별자는_저장소까지_가지_않고_입력이_틀렸다고_알린다() {
+        EntityRef a = entity("map-range", "T", "a");
+
+        for (LocalDate bad : List.of(LocalDate.MAX, LocalDate.MIN, LocalDate.of(10000, 1, 1), LocalDate.of(0, 12, 31))) {
+            assertThatThrownBy(() -> query.relationMap(a.id(), bad, 1, 200)).as(bad.toString())
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("기준 날짜");
+        }
+        assertThat(query.relationMap(a.id(), LocalDate.of(1, 1, 1), 1, 200).nodes()).hasSize(1);
+        assertThat(query.relationMap(a.id(), LocalDate.of(9999, 12, 31), 1, 200).nodes()).hasSize(1);
+        for (String bad : List.of("", "map-range|T|a\u0000", "map-range|T|\uD800")) {
+            assertThatThrownBy(() -> query.relationMap(bad, date("2026-03-01"), 1, 200))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("개체");
+        }
+    }
+
     // ── 방향, 깊이, 시점 ─────────────────────────────────────────
 
     @Test

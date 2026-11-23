@@ -41,7 +41,9 @@ public record ImpactRequest(List<String> startEntityIds, List<LocalDate> asOfDat
         }
         TreeSet<LocalDate> dates = new TreeSet<>();
         for (LocalDate date : asOfDates) {
-            dates.add(Objects.requireNonNull(date, "기준 날짜는 비어 있을 수 없습니다"));
+            Objects.requireNonNull(date, "기준 날짜는 비어 있을 수 없습니다");
+            // 받는 범위 밖의 날짜로는 따라가지 않는다 (D5 3절, D2 AD-370).
+            dates.add(StorableDates.requireAsOf(date));
         }
         TreeMap<String, ImpactDirection> byType = new TreeMap<>(CodePointOrder.STRINGS);
         for (Map.Entry<String, ImpactDirection> entry : directions.entrySet()) {

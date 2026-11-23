@@ -3,6 +3,7 @@ package com.altumlab.tabnit.api;
 import com.altumlab.tabnit.core.RelationMap;
 import com.altumlab.tabnit.core.RelationMapNode;
 import com.altumlab.tabnit.core.RelationMapQuery;
+import com.altumlab.tabnit.rules.ActionRecords;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -56,6 +57,12 @@ class RelationMapController {
 			throw new ApiProblemException(HttpStatus.BAD_REQUEST, "MISSING_ENTITY_ID", "entityId",
 					"개체의 id 가 없습니다. entityId 에 가운데에 둘 개체의 id 를 넣어 다시 보내세요.");
 		}
+		// 쓸 수 없는 글자(NUL, 깨진 글자)가 든 id 의 개체는 있을 수 없다: 없는 개체가 아니라 틀린 입력이다 (D2 AD-370).
+		// 조치의 API 와 같은 기준이다.
+		if (!ActionRecords.isReadableEntityId(entityId)) {
+			throw new ApiProblemException(HttpStatus.BAD_REQUEST, "INVALID_ENTITY_ID", "entityId",
+					"개체의 id 에 쓸 수 없는 글자가 있습니다. 서버가 준 id 를 그대로 넣어 다시 보내세요.");
+		}
 		LocalDate date = resolveAsOf(asOf);
 		int levels = resolveDepth(depth);
 		AuditTrail.asOf(date);
@@ -91,13 +98,20 @@ class RelationMapController {
 		if (asOf == null) {
 			return LocalDate.now(clock.withZone(installationZone));
 		}
+		LocalDate date;
 		try {
-			return LocalDate.parse(asOf);
+			date = LocalDate.parse(asOf);
 		}
 		catch (DateTimeParseException e) {
 			throw new ApiProblemException(HttpStatus.BAD_REQUEST, "INVALID_AS_OF", "asOf",
 					"조회 시점의 형식이 틀렸습니다. 2026-03-01 과 같이 적어 다시 보내세요.");
 		}
+		// 받는 날짜는 0001-01-01 부터 9999-12-31 까지다 (D7 2절, D2 AD-370). 그 밖의 날짜는 엔진이 받지 않는다.
+		if (date.getYear() < 1 || date.getYear() > 9999) {
+			throw new ApiProblemException(HttpStatus.BAD_REQUEST, "INVALID_AS_OF", "asOf",
+					"조회 시점 " + asOf + " 은(는) 쓸 수 없는 날짜입니다. 0001-01-01 부터 9999-12-31 까지의 날짜를 넣어 다시 보내세요.");
+		}
+		return date;
 	}
 
 }

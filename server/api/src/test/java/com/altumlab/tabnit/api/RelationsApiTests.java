@@ -169,6 +169,28 @@ class RelationsApiTests {
 			.andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("api-none|T|missing")));
 	}
 
+	// A-10 (D2 AD-370): 받는 범위 밖의 조회 시점과 쓸 수 없는 글자가 든 id 는 서버의 오류(500)가 아니라 틀린 입력(400)이다.
+	@Test
+	void 받는_범위_밖의_조회_시점과_쓸_수_없는_글자가_든_개체의_id_는_400_이다() throws Exception {
+		EntityRef a = entity("api-range", "a");
+
+		for (String bad : new String[] { "+10000-01-01", "+999999999-12-31", "-999999999-01-01", "0000-12-31", "-0001-01-01" }) {
+			mvc.perform(get("/api/v1/relations").param("entityId", a.id()).param("asOf", bad))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("INVALID_AS_OF"))
+				.andExpect(jsonPath("$.field").value("asOf"));
+		}
+		// 범위의 두 끝은 받는다.
+		mvc.perform(get("/api/v1/relations").param("entityId", a.id()).param("asOf", "0001-01-01")).andExpect(status().isOk());
+		mvc.perform(get("/api/v1/relations").param("entityId", a.id()).param("asOf", "9999-12-31")).andExpect(status().isOk());
+		for (String bad : new String[] { a.id() + "\u0000", "api-range|T|\uD800" }) {
+			mvc.perform(get("/api/v1/relations").param("entityId", bad).param("asOf", "2026-03-01"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("INVALID_ENTITY_ID"))
+				.andExpect(jsonPath("$.field").value("entityId"));
+		}
+	}
+
 	@Test
 	void 조회_시점의_형식이_틀리면_400_과_틀린_항목을_알린다() throws Exception {
 		EntityRef a = entity("api-badasof", "a");
@@ -197,10 +219,18 @@ class RelationsApiTests {
 
 	@Test
 	void 오류_응답에_내부_예외_문구가_나가지_않는다() throws Exception {
-		// NUL 글자가 든 id 는 저장소가 받지 않는다. 그래도 내부 문구나 스택이 나가면 안 된다.
+		// 이 시험은 NUL 글자가 든 id 로 서버의 오류(500)를 일으켜 봤다. 그 입력은 이제 틀린 입력(400)으로 답한다
+		// (D2 AD-370). 그래서 처리기에 내부 문구가 든 예외를 바로 넘겨 본다. 실제 요청에서 난 서버의 오류의 응답은
+		// AuditFailureApiTests 가 끝에서 끝으로 본다.
+		org.springframework.http.ProblemDetail problem = new ApiExceptionHandler(org.springframework.util.unit.DataSize.ofMegabytes(20))
+			.handle(new IllegalStateException("SQL state 08006: PSQLException 지어낸 내부 문구"));
+		org.assertj.core.api.Assertions.assertThat(problem.getStatus()).isEqualTo(500);
+		org.assertj.core.api.Assertions.assertThat(problem.getProperties()).containsEntry("code", "INTERNAL");
+		org.assertj.core.api.Assertions.assertThat(problem.getDetail()).doesNotContain("Exception", "SQL", "지어낸 내부 문구");
+		// 틀린 입력의 응답에도 내부 문구가 없다.
 		mvc.perform(get("/api/v1/relations").param("entityId", "a\u0000b").param("asOf", "2026-03-01"))
-			.andExpect(status().is5xxServerError())
-			.andExpect(jsonPath("$.code").value("INTERNAL"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("INVALID_ENTITY_ID"))
 			.andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("Exception"))))
 			.andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("SQL"))));
 	}

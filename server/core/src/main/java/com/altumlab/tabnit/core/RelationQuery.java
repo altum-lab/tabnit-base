@@ -65,10 +65,14 @@ public class RelationQuery {
      * @return 유효한 관계. 없으면 빈 목록
      * @throws EntityNotFoundException 그런 개체가 없을 때
      * @throws CoreStorageException 저장소에서 읽지 못했을 때
+     * @throws IllegalArgumentException 기준 날짜가 받는 범위(0001-01-01 ~ 9999-12-31) 밖이거나, 개체의 식별자가 비었거나
+     *         쓸 수 없는 글자(NUL, 짝 없는 대리 문자)를 담았을 때 (D5 3절, D2 AD-370)
      */
     public List<Relation> relationsAsOf(String entityId, LocalDate asOf) {
         Objects.requireNonNull(entityId, "개체의 식별자는 반드시 있어야 합니다");
-        Objects.requireNonNull(asOf, "기준 날짜는 반드시 있어야 합니다");
+        // 깨진 글자가 든 식별자와 받는 범위 밖의 날짜는 저장소까지 보내지 않는다: 틀린 입력이다 (D5 3절, D2 AD-370).
+        Identifiers.requireNotBlank(entityId, "개체의 식별자");
+        StorableDates.requireAsOf(asOf);
         try {
             Integer found = jdbc.queryForObject("select count(*) from entity where id = ?", Integer.class, entityId);
             if (found == null || found == 0) {
@@ -92,10 +96,14 @@ public class RelationQuery {
      * @return 그 쪽의 관계와, 나누기 전의 전체 수
      * @throws EntityNotFoundException 그런 개체가 없을 때
      * @throws CoreStorageException 저장소에서 읽지 못했을 때
+     * @throws IllegalArgumentException 기준 날짜가 받는 범위(0001-01-01 ~ 9999-12-31) 밖이거나, 개체의 식별자가 비었거나
+     *         쓸 수 없는 글자(NUL, 짝 없는 대리 문자)를 담았을 때 (D5 3절, D2 AD-370)
      */
     public RelationPage relationsAsOf(String entityId, LocalDate asOf, int offset, int limit) {
         Objects.requireNonNull(entityId, "개체의 식별자는 반드시 있어야 합니다");
-        Objects.requireNonNull(asOf, "기준 날짜는 반드시 있어야 합니다");
+        // 깨진 글자가 든 식별자와 받는 범위 밖의 날짜는 저장소까지 보내지 않는다: 틀린 입력이다 (D5 3절, D2 AD-370).
+        Identifiers.requireNotBlank(entityId, "개체의 식별자");
+        StorableDates.requireAsOf(asOf);
         if (offset < 0) {
             throw new IllegalArgumentException("건너뛸 수는 0 이상이어야 합니다. 받은 값: " + offset + ".");
         }

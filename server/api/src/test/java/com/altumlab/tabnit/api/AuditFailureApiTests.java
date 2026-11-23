@@ -109,6 +109,10 @@ class AuditFailureApiTests {
 			.andExpect(status().isInternalServerError())
 			.andExpect(content().contentTypeCompatibleWith("application/problem+json"))
 			.andExpect(jsonPath("$.code").value("INTERNAL"))
+			// 실제 요청에서 난 서버의 오류다. 응답에 내부 예외의 문구가 나가지 않는다 (A-10: RelationsApiTests 가
+			// NUL 글자가 든 id 로 보던 것을, 그 입력이 400 이 된 뒤로 여기서 끝에서 끝으로 본다).
+			.andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("Exception"))))
+			.andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("SQL"))))
 			.andExpect(jsonPath("$.packs").doesNotExist());
 		// 변경: 하지 않는다.
 		this.mvc.perform(post("/api/v1/pack-loads").with(admin).with(csrf())

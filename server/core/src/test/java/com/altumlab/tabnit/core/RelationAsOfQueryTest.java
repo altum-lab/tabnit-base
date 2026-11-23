@@ -49,6 +49,34 @@ class RelationAsOfQueryTest {
                 .hasMessageContaining("기준 날짜");
     }
 
+    // A-10 (D2 AD-370): 관계의 조회도 속성 값의 조회와 같은 범위의 날짜만 받는다.
+    @Test
+    void 받는_범위_밖의_기준_날짜와_깨진_식별자는_저장소까지_가지_않고_입력이_틀렸다고_알린다() {
+        EntityRef a = entity("pack-range", "a");
+
+        for (LocalDate bad : List.of(LocalDate.MAX, LocalDate.MIN, LocalDate.of(10000, 1, 1), LocalDate.of(0, 12, 31),
+                LocalDate.of(5874898, 1, 1))) {
+            assertThatThrownBy(() -> query.relationsAsOf(a.id(), bad)).as(bad.toString())
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("기준 날짜");
+            assertThatThrownBy(() -> query.relationsAsOf(a.id(), bad, 0, 10)).as(bad.toString())
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("기준 날짜");
+        }
+        // 범위의 두 끝은 받는다.
+        assertThat(query.relationsAsOf(a.id(), LocalDate.of(1, 1, 1))).isEmpty();
+        assertThat(query.relationsAsOf(a.id(), LocalDate.of(9999, 12, 31))).isEmpty();
+        assertThat(query.relationsAsOf(a.id(), LocalDate.of(9999, 12, 31), 0, 10).relations()).isEmpty();
+        // NUL 글자와 짝 없는 대리 문자와 빈 글자는 없는 개체가 아니라 틀린 입력이다.
+        for (String bad : List.of("", "pack-range|T|a\u0000", "pack-range|T|\uD800")) {
+            assertThatThrownBy(() -> query.relationsAsOf(bad, date("2026-03-01"))).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("개체");
+            assertThatThrownBy(() -> query.relationsAsOf(bad, date("2026-03-01"), 0, 10))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("개체");
+        }
+    }
+
     @Test
     void 개체_식별자_없이는_조회할_수_없다() {
         assertThatThrownBy(() -> query.relationsAsOf(null, date("2026-03-01")))

@@ -220,7 +220,8 @@ class RelationsApiTests {
 	@Test
 	void 오류_응답에_내부_예외_문구가_나가지_않는다() throws Exception {
 		// 이 시험은 NUL 글자가 든 id 로 서버의 오류(500)를 일으켜 봤다. 그 입력은 이제 틀린 입력(400)으로 답한다
-		// (D2 AD-370). 그래서 서버의 오류는 처리기에 내부 문구가 든 예외를 바로 넘겨 본다: 보려는 것은 그대로다.
+		// (D2 AD-370). 그래서 처리기에 내부 문구가 든 예외를 바로 넘겨 본다. 실제 요청에서 난 서버의 오류의 응답은
+		// AuditFailureApiTests 가 끝에서 끝으로 본다.
 		org.springframework.http.ProblemDetail problem = new ApiExceptionHandler(org.springframework.util.unit.DataSize.ofMegabytes(20))
 			.handle(new IllegalStateException("SQL state 08006: PSQLException 지어낸 내부 문구"));
 		org.assertj.core.api.Assertions.assertThat(problem.getStatus()).isEqualTo(500);

@@ -88,6 +88,8 @@ public class RelationMapQuery {
      * @return 노드와 간선. 이어진 것이 없으면 가운데 개체만 든다
      * @throws EntityNotFoundException 가운데 개체가 없을 때
      * @throws CoreStorageException 저장소에서 읽지 못했을 때
+     * @throws IllegalArgumentException 기준 날짜가 받는 범위(0001-01-01 ~ 9999-12-31) 밖이거나, 개체의 식별자가 비었거나
+     *         쓸 수 없는 글자(NUL, 짝 없는 대리 문자)를 담았을 때 (D5 3절, D2 AD-370)
      */
     public RelationMap relationMap(String centerEntityId, LocalDate asOf, int depth, int maxNodes) {
         Objects.requireNonNull(centerEntityId, "가운데 개체의 식별자는 반드시 있어야 합니다");

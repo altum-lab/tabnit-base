@@ -149,6 +149,9 @@ final class Evaluator {
         List<Object> nodes = new ArrayList<>();
         for (Object item : list(expect.get("nodes"), question, "nodes")) {
             Map<?, ?> node = map(item, question, "nodes 의 항목");
+            if (node.get("depth") == null) {
+                throw new Failure("정답의 형식이 틀렸습니다: nodes 의 항목에 깊이(depth)가 없습니다.");
+            }
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("entity", Ids.entity(this.packId, node.get("entity")));
             row.put("depth", node.get("depth"));
@@ -158,6 +161,9 @@ final class Evaluator {
         List<Object> edges = new ArrayList<>();
         for (Object item : list(expect.get("edges"), question, "edges")) {
             Map<?, ?> edge = map(item, question, "edges 의 항목");
+            if (edge.get("type") == null) {
+                throw new Failure("정답의 형식이 틀렸습니다: edges 의 항목에 관계 유형(type)이 없습니다.");
+            }
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("type", String.valueOf(edge.get("type")));
             row.put("source", Ids.entity(this.packId, edge.get("source")));

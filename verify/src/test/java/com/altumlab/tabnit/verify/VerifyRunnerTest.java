@@ -819,7 +819,24 @@ class VerifyRunnerTest {
             assertThat(result.passed()).isFalse();
             assertThat(result.reason()).contains("edges");
         });
+        // 깊이가 수가 아니다, 노드에 깊이가 없다, 간선에 관계 유형이 없다: 무엇이 틀렸는지 알린다.
+        assertThat(ask.apply(MAP_QUESTION.replace("    depth: 2\n", "    depth: abc\n")).reason()).contains("depth").contains("abc");
+        assertThat(ask.apply(MAP_QUESTION.replace("{ entity: { type: TypeB, key: k-9 }, depth: 1 }", "{ entity: { type: TypeB, key: k-9 } }")))
+            .satisfies(result -> {
+                assertThat(result.passed()).isFalse();
+                assertThat(result.reason()).contains("nodes").contains("depth");
+            });
+        assertThat(ask.apply(MAP_QUESTION.replace("- { type: relatesTo, source:", "- { source:"))).satisfies(result -> {
+            assertThat(result.passed()).isFalse();
+            assertThat(result.reason()).contains("edges").contains("type");
+        });
         assertThat(product.asked).hasSize(asked);
+        // 간선이 없다고 적은 정답은 형식이 맞다: 제품의 답(간선 하나)과 달라 실패한다.
+        assertThat(ask.apply(MAP_QUESTION.substring(0, MAP_QUESTION.indexOf("      edges:")) + "      edges: []\n")).satisfies(result -> {
+            assertThat(result.passed()).isFalse();
+            assertThat(result.reason()).isNull();
+            assertThat(result.expected()).contains("edges: []");
+        });
         // 없는 개체는 실패다 (제품이 404 로 답한다).
         assertThat(ask.apply(MAP_QUESTION.replace("entity: { type: TypeA, key: k-1 }\n    depth", "entity: { type: TypeA, key: missing }\n    depth")))
             .satisfies(result -> {

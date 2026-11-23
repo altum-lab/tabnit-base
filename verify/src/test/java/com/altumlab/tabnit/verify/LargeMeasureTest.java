@@ -15,6 +15,16 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class LargeMeasureTest {
 
+    @Test
+    void 목표는_영향_대상_천_개쯤에서_영점일_초_만_개쯤에서_일_초이고_그_아래로는_잡지_않는다() {
+        assertThat(LargeMeasure.targetMillis(0)).isEqualTo(100.0);
+        assertThat(LargeMeasure.targetMillis(110)).isEqualTo(100.0);
+        assertThat(LargeMeasure.targetMillis(1_000)).isEqualTo(100.0);
+        assertThat(LargeMeasure.targetMillis(5_000)).isEqualTo(500.0);
+        assertThat(LargeMeasure.targetMillis(10_000)).isEqualTo(1_000.0);
+        assertThat(LargeMeasure.targetMillis(10_100)).isEqualTo(1_010.0);
+    }
+
     @TempDir
     Path temp;
 
@@ -37,6 +47,9 @@ class LargeMeasureTest {
                 .anyMatch(line -> line.contains(what) && line.matches(".*가운데 +[0-9.]+ ms.*가장 큼 +[0-9.]+ ms.*6번.*"));
         }
         assertThat(all).contains("변동 하나에", "저장소의 크기", "시간을 많이 쓴 질의");
+        // 목표와 견준 줄이 있다 (D2 AD-355). 넘어도 실패로 끝내지 않으므로 여기서는 줄의 모양만 본다.
+        assertThat(result.lines()).anyMatch(line -> line
+            .matches("  (목표 안|목표 넘음)  영향 범위 계산 \\(core\\) 의 가운데 값 [0-9.]+ ms, 목표 100\\.0 ms \\(영향 대상 110개\\)"));
         assertThat(temp.resolve("slow.log")).isRegularFile();
     }
 }

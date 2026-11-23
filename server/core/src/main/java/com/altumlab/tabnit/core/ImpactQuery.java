@@ -23,7 +23,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  *
  * <p>이 모듈은 출발 개체가 왜 출발 개체인지, 기준 날짜들이 무엇을 뜻하는지 모른다. 받은 값으로 따라갈 뿐이다.
  *
- * <p>깊이 한 단계마다 저장소에서 그 단계의 개체에 닿은 관계를 읽는다. 한 번 찾은 개체는 다시 펼치지 않으므로
+ * <p>깊이 한 단계마다 저장소에서, 그 단계의 개체에서 영향이 퍼져 나가는 쪽의 관계와 방향을 넘겨받지 못한 유형의
+ * 관계를 읽는다 (그 끝에서 퍼지지 않는 관계는 읽지 않는다. 결과는 모두 읽을 때와 같다). 한 번 찾은 개체는 다시 펼치지 않으므로
  * 관계가 돌아오는 구조에서도 끝난다.
  *
  * <p>계산 하나는 저장소를 여러 번 읽는다. 그 사이에 다른 쪽이 관계를 저장해도 단계마다 다른 상태를 보지 않도록,
@@ -32,17 +33,72 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class ImpactQuery {
 
     /*
+     * 한 단계에서 읽는 관계 (A-07 의 측정으로 고쳤다. D9 의 A-07).
+     *
+     * 그 단계의 개체에서 영향이 퍼져 나가는 쪽의 관계만 읽는다: 개체가 출발 쪽이면 출발에서 도착으로 퍼지는 유형,
+     * 도착 쪽이면 도착에서 출발로 퍼지는 유형, 그리고 어느 쪽이든 방향을 넘겨받지 못한 유형이다.
+     * 방향을 아는데 그 끝에서는 퍼지지 않는 유형의 관계는 읽지 않는다. 읽어도 따라가지 않으므로 결과는 같고,
+     * 읽는 양이 준다 (마지막 단계의 개체로 들어오기만 하는 관계가 가장 많았다).
+     * 방향을 모르는 유형은 어느 끝에서 닿든 읽어서 알린다 (D2 AD-123).
+     *
+     * "그 끝에서 퍼지지 않는, 방향을 아는 유형"을 하나씩 빼는 조건으로 적는다. 문장에 이어 붙는 것은 자리표시자뿐이다.
+     * 자리표시자의 수가 유형의 수의 두 배까지 는다: 유형이 수만 개인 요청은 저장소의 인자 한도에 걸릴 수 있다
+     * (그런 Pack 은 없다고 보고 두었다).
+     *
      * 유효기간: 시작일 포함, 종료일 제외. 종료일이 없으면 계속 유효하다 (D3 4절).
      * 순서는 결과에 닿지 않게 계산하지만, 읽는 차례도 정해 둔다.
      */
-    private static final String RELATIONS_TOUCHING = """
+    private static final String RELATION_COLUMNS = """
             select id, pack_id, source_entity_id, target_entity_id, relation_type,
                    valid_from, valid_to, input_source_id, edition_no, recorded_at
             from relation
-            where (source_entity_id = any(?) or target_entity_id = any(?))
+            where (""";
+
+    private static final String RELATION_PERIOD_AND_ORDER = """
+            )
               and valid_from <= ?
               and (valid_to is null or ? < valid_to)
             order by id collate "C\"""";
+
+    /**
+     * 요청 하나에 쓰는 단계의 질의. 관계 유형마다의 방향이 요청 안에서 같으므로 한 번 만든다.
+     *
+     * @param sql 질의. 자리: 출발 쪽의 개체들, 출발 쪽에서 뺄 유형들, 도착 쪽의 개체들, 도착 쪽에서 뺄 유형들, 기준 날짜 둘
+     * @param notFromSource 방향을 알고, 출발 쪽에서는 퍼지지 않는 유형 (도착에서 출발로만 퍼지거나 퍼지지 않는 것)
+     * @param notFromTarget 방향을 알고, 도착 쪽에서는 퍼지지 않는 유형 (출발에서 도착으로만 퍼지거나 퍼지지 않는 것)
+     */
+    private record StepQuery(String sql, List<String> notFromSource, List<String> notFromTarget) {
+
+        static StepQuery of(Map<String, ImpactDirection> directions) {
+            List<String> notFromSource = new ArrayList<>();
+            List<String> notFromTarget = new ArrayList<>();
+            // 유형의 차례는 요청이 정해 둔 글자 코드 순이다: 같은 요청이면 같은 문장이 나온다.
+            for (Map.Entry<String, ImpactDirection> entry : directions.entrySet()) {
+                ImpactDirection direction = entry.getValue();
+                if (direction != ImpactDirection.SOURCE_TO_TARGET && direction != ImpactDirection.BOTH) {
+                    notFromSource.add(entry.getKey());
+                }
+                if (direction != ImpactDirection.TARGET_TO_SOURCE && direction != ImpactDirection.BOTH) {
+                    notFromTarget.add(entry.getKey());
+                }
+            }
+            String sql = RELATION_COLUMNS + "(source_entity_id = any(?)" + " and relation_type <> ?".repeat(notFromSource.size())
+                    + ")\n   or (target_entity_id = any(?)" + " and relation_type <> ?".repeat(notFromTarget.size()) + ")"
+                    + RELATION_PERIOD_AND_ORDER;
+            return new StepQuery(sql, List.copyOf(notFromSource), List.copyOf(notFromTarget));
+        }
+
+        Object[] arguments(String[] entityIds, LocalDate asOf) {
+            List<Object> arguments = new ArrayList<>();
+            arguments.add(entityIds);
+            arguments.addAll(notFromSource);
+            arguments.add(entityIds);
+            arguments.addAll(notFromTarget);
+            arguments.add(asOf);
+            arguments.add(asOf);
+            return arguments.toArray();
+        }
+    }
 
     private static final String ENTITY_TYPES = """
             select id, pack_id, entity_type from entity where id = any(?) order by id collate "C\"""";
@@ -89,9 +145,10 @@ public class ImpactQuery {
             requireEntitiesExist(request.startEntityIds());
 
             // 날짜마다 최대 깊이까지 따라간다.
+            StepQuery stepQuery = StepQuery.of(request.directions());
             List<Traversal> traversals = new ArrayList<>();
             for (LocalDate asOf : request.asOfDates()) {
-                Traversal traversal = new Traversal(asOf, request);
+                Traversal traversal = new Traversal(asOf, request, stepQuery);
                 traversal.advanceTo(request.maxDepth());
                 traversals.add(traversal);
             }
@@ -214,6 +271,8 @@ public class ImpactQuery {
 
         private final ImpactRequest request;
 
+        private final StepQuery stepQuery;
+
         /** 이 날짜에 찾은 개체. 출발 개체도 들어 있다 (경로가 빈 것). */
         private final TreeMap<String, Found> visited = new TreeMap<>(CodePointOrder.STRINGS);
 
@@ -222,9 +281,10 @@ public class ImpactQuery {
 
         private int depth;
 
-        Traversal(LocalDate asOf, ImpactRequest request) {
+        Traversal(LocalDate asOf, ImpactRequest request, StepQuery stepQuery) {
             this.asOf = asOf;
             this.request = request;
+            this.stepQuery = stepQuery;
             for (String start : request.startEntityIds()) {
                 Found found = new Found(start, start, asOf, List.of(), List.of());
                 visited.put(start, found);
@@ -265,10 +325,13 @@ public class ImpactQuery {
             return false;
         }
 
-        /** 한 단계 나아간다. 가장 최근 단계의 개체에 닿은 관계를 읽어, 아직 찾지 못한 개체를 새 단계로 삼는다. */
+        /**
+         * 한 단계 나아간다. 가장 최근 단계의 개체에서 영향이 퍼져 나가는 쪽의 관계(와 방향을 모르는 유형의 관계)를 읽어,
+         * 아직 찾지 못한 개체를 새 단계로 삼는다.
+         */
         private void step() {
             String[] ids = frontier.keySet().toArray(String[]::new);
-            List<Relation> relations = jdbc.query(RELATIONS_TOUCHING, ImpactQuery::toRelation, ids, ids, asOf, asOf);
+            List<Relation> relations = jdbc.query(stepQuery.sql(), ImpactQuery::toRelation, stepQuery.arguments(ids, asOf));
             TreeMap<String, Found> next = new TreeMap<>(CodePointOrder.STRINGS);
             for (Relation relation : relations) {
                 ImpactDirection direction = request.directions().get(relation.relationType());

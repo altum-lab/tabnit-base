@@ -1201,7 +1201,7 @@ components:
             다음에 받아들여진 판을 올릴 때 처리된다
     EditionChange:
       type: object
-      required: [changeEventId, itemKey, kind, primaryEntityId, targetEntityIds, processing]
+      required: [changeEventId, itemKey, kind, primaryEntityId, targetEntityIds, changedValues, processing]
       properties:
         changeEventId:
           type: string
@@ -1209,6 +1209,13 @@ components:
         itemKey:
           type: string
           description: 바뀐 항목의 키
+        changedValues:
+          type: [array, 'null']
+          description: >-
+            그 행에서 바뀐 속성 값. 개체의 id, 속성의 이름의 글자 코드 순이다. 빈 목록은 바뀐 속성 값이 없다는 뜻이고,
+            null 은 이전 값을 알 수 없다는 뜻이다 (바뀐 값을 남기기 전에 들어간 판과 견준 변동)
+          items:
+            $ref: '#/components/schemas/ChangedValue'
         kind:
           type: string
           enum: [ADDED, CHANGED, REMOVED]
@@ -1223,6 +1230,26 @@ components:
             type: string
         processing:
           $ref: '#/components/schemas/ChangeProcessing'
+    ChangedValue:
+      type: object
+      description: 그 행에서 바뀐 속성 값 하나. 값은 저장한 글자 그대로다
+      required: [entityId, attributeName, attributeLabel, before, after]
+      properties:
+        entityId:
+          type: string
+          description: 어느 개체의 속성인가
+        attributeName:
+          type: string
+          description: 속성의 이름
+        attributeLabel:
+          type: string
+          description: Pack 이 정한 속성의 이름표. 없으면 속성의 이름이다
+        before:
+          type: [string, 'null']
+          description: 앞 판에서 그 행이 넣었던 값. 없었으면 null (추가된 행, 빈 칸이던 속성)
+        after:
+          type: [string, 'null']
+          description: 새 판에서 그 행이 넣은 값. 없어졌으면 null (삭제된 행, 빈 칸이 된 속성)
     ChangeProcessing:
       type: object
       description: 변동 하나를 영향 범위 계산과 조치 생성까지 처리한 결과

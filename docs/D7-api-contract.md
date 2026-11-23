@@ -345,6 +345,9 @@ Content-Type: multipart/form-data
       "kind": "CHANGED",
       "primaryEntityId": "p|T|ga",
       "targetEntityIds": ["p|T|ga"],
+      "changedValues": [
+        { "entityId": "p|T|ga", "attributeName": "limit", "attributeLabel": "한도", "before": "0.8", "after": "0.7" }
+      ],
       "processing": { "status": "PROCESSED", "failedStage": null, "failureCode": null, "failures": [], "actionCount": 2 }
     }
   ],
@@ -358,6 +361,7 @@ Content-Type: multipart/form-data
 
 - `outcome`: `ACCEPTED` 는 새 판을 만들었다. `UNCHANGED` 는 내용이 바로 앞 판과 같아 판을 만들지 않았다 [AD-155]: 이때 `editionId`, `editionNo`, `effectiveDate` 는 그 앞 판의 것이고 `changes` 와 `notices` 는 비어 있다.
 - `changes`: 앞 판과 비교해 바뀐 항목. **순서**는 항목의 키의 글자 코드 순이다. 첫 판이면 비어 있다. [AD-148] [AD-122]
+- `changes[].changedValues`: 그 행에서 바뀐 속성 값. 속성마다 이전 값(`before`)과 새 값(`after`)이다. 값은 저장한 글자 그대로다 (2절 "값의 표기"). 변경된 행은 두 판에서 그 행이 만든 것이 다른 속성 값이고 (값은 같고 유효기간만 달라진 것도 들어간다: 두 값이 같다), 추가된 행은 넣은 것 전부이며 `before` 가 null, 삭제된 행은 넣었던 것 전부이며 `after` 가 null 이다. `attributeLabel` 은 Pack 이 정한 속성의 이름표다: 없으면 속성의 이름이다. **순서**는 개체의 `id`, 속성의 이름의 글자 코드 순이다. **이전 값을 알 수 없으면 목록 전체가 null 이다** (바뀐 값을 남기기 전에 들어간 판과 견준 변동): 빈 목록은 바뀐 속성 값이 없다는 뜻이고 null 은 모른다는 뜻이다. 바뀐 관계는 여기에 없다. [AD-367] [AD-291]
 - `changes[].processing`: 그 변동을 조치까지 처리한 결과. `PROCESSED` 는 영향 범위와 조치를 저장했다. `FAILED` 는 실패했고 (단계와 이유의 코드, 평가에 실패한 규칙의 목록 `failures` 가 붙는다) 다음에 받아들여진 판을 올릴 때, 또는 관리자가 다시 처리할 때 다시 시도된다 (아래 "처리되지 않은 변동과 다시 처리"). `PENDING` 은 아직 처리하지 못했다. 변동 하나가 실패해도 나머지는 처리된다. [AD-236]
 - `notices`: 투입의 알림 (건너뛴 행 등). 종류와 이유의 코드와 값, 그리고 그것을 풀어 쓴 한국어 문구 `message` 가 있다. **순서**는 행 번호, 종류, 코드, 내용 순이다. [AD-153]
 - **알림의 문구** (`notices[].message`): 몇 번째 행의 어느 열(또는 어느 개체의 어느 속성)이 왜 걸렸는지와 무엇을 하면 되는지를 적는다. 문구는 거부의 문구와 같이 api 가 코드마다 가진다. 문구를 따로 두지 않은 코드는 코드와 값을 그대로 넣은 문구로 낸다. 화면이 가르는 데는 `kind` 와 `code` 를 쓴다: 문구는 바뀔 수 있다. 문구는 저장하지 않고 응답을 만들 때 만든다. [AD-326] [AD-348]

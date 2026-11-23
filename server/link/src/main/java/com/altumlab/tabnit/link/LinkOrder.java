@@ -48,6 +48,27 @@ final class LinkOrder {
         return joined.toString();
     }
 
+    /** 세로 막대로 이은 글자를 원래 값들로 돌려준다. join 의 반대다. */
+    static java.util.List<String> parts(String joined) {
+        java.util.List<String> parts = new java.util.ArrayList<>();
+        StringBuilder part = new StringBuilder();
+        for (int i = 0; i < joined.length(); i++) {
+            char c = joined.charAt(i);
+            if (c == '\\' && i + 1 < joined.length()) {
+                part.append(joined.charAt(++i));
+            }
+            else if (c == '|') {
+                parts.add(part.toString());
+                part.setLength(0);
+            }
+            else {
+                part.append(c);
+            }
+        }
+        parts.add(part.toString());
+        return java.util.List.copyOf(parts);
+    }
+
     /** 세로 막대로 이은 글자의 마지막 값. 이을 때 붙인 역빗금을 떼어 원래 값으로 돌려준다. */
     static String lastPart(String joined) {
         StringBuilder last = new StringBuilder();

@@ -392,6 +392,12 @@ button:disabled {
   border-color: var(--accent-line);
 }
 
+/* 바뀐 값: 긴 글(조문)의 줄바꿈을 그대로 보인다. */
+.changed-value {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 details > summary {
   cursor: pointer;
   color: var(--accent);

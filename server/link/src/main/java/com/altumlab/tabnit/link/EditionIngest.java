@@ -197,7 +197,7 @@ public class EditionIngest {
                 // 만든 것의 식별자는 길 수 있어 색인에 넣지 않는다. 유일은 그 해시로 지킨다 (D2 AD-187).
                 outputs.add(new Object[] { editionId, item.itemKey(), output.kind().name(), output.objectId(),
                         LinkHash.sha256Hex(output.objectId().getBytes(java.nio.charset.StandardCharsets.UTF_8)),
-                        output.subject(), output.factHash(), output.validFrom(), output.validTo() });
+                        output.subject(), output.factHash(), output.validFrom(), output.validTo(), output.value() });
             }
         }
         jdbc.batchUpdate("""
@@ -206,20 +206,29 @@ public class EditionIngest {
                 """, items);
         jdbc.batchUpdate("""
                 insert into edition_item_output (edition_id, item_key, kind, object_id, object_hash, subject, fact_hash,
-                                                 valid_from, valid_to)
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                                 valid_from, valid_to, value)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, outputs, new int[] { java.sql.Types.VARCHAR, java.sql.Types.VARCHAR, java.sql.Types.VARCHAR,
                         java.sql.Types.VARCHAR, java.sql.Types.VARCHAR, java.sql.Types.VARCHAR, java.sql.Types.VARCHAR,
-                        java.sql.Types.DATE, java.sql.Types.DATE });
+                        java.sql.Types.DATE, java.sql.Types.DATE, java.sql.Types.VARCHAR });
         // 변동 이벤트: 바뀐 항목마다 하나. 뒤 단계를 아직 하지 않았으므로 PENDING 이다 (D2 AD-154, AD-164).
         List<Object[]> events = new ArrayList<>();
         List<Object[]> targets = new ArrayList<>();
         List<Object[]> changedItems = new ArrayList<>();
+        List<Object[]> changedValues = new ArrayList<>();
         for (ItemChange change : outcome.changes()) {
             String eventId = LinkOrder.join(List.of(attempt.packId(), attempt.inputSourceId(),
                     Integer.toString(editionNo), change.itemKey()));
+            // 바뀐 값을 모르면 (값을 남기기 전에 들어간 판과 견줬다) 남기지 않고, 남기지 않았다고 표시한다 (D2 AD-367).
             events.add(new Object[] { eventId, editionId, change.itemKey(), change.kind().name(),
-                    change.primaryEntityId(), ChangeEventStatus.PENDING.name() });
+                    change.primaryEntityId(), ChangeEventStatus.PENDING.name(), change.changedValues() != null });
+            if (change.changedValues() != null) {
+                int seq = 0;
+                for (ValueChange value : change.changedValues()) {
+                    changedValues.add(new Object[] { eventId, ++seq, value.entityId(), value.attributeName(),
+                            value.before(), value.after() });
+                }
+            }
             for (String entityId : change.targetEntityIds()) {
                 targets.add(new Object[] { eventId, entityId });
             }
@@ -233,12 +242,18 @@ public class EditionIngest {
         // 그 행에서 바뀐 것을 함께 남긴다. 남겼다는 표시가 있어야 "바뀐 것이 없다"와 "모른다"가 갈린다 (D2 AD-291).
         jdbc.batchUpdate("""
                 insert into change_event (id, edition_id, item_key, change_kind, primary_entity_id, status,
-                                          changed_items_recorded)
-                values (?, ?, ?, ?, ?, ?, true)
+                                          changed_items_recorded, changed_values_recorded)
+                values (?, ?, ?, ?, ?, ?, true, ?)
                 """, events);
         jdbc.batchUpdate("insert into change_target (change_event_id, entity_id) values (?, ?)", targets);
         jdbc.batchUpdate("insert into change_event_changed_item (change_event_id, item_kind, name) values (?, ?, ?)",
                 changedItems);
+        jdbc.batchUpdate("""
+                insert into change_event_changed_value (change_event_id, seq, entity_id, attribute_name, before_value,
+                                                        after_value)
+                values (?, ?, ?, ?, ?, ?)
+                """, changedValues, new int[] { java.sql.Types.VARCHAR, java.sql.Types.INTEGER, java.sql.Types.VARCHAR,
+                        java.sql.Types.VARCHAR, java.sql.Types.VARCHAR, java.sql.Types.VARCHAR });
         // 알림의 번호는 정해진 차례(행 번호, 종류, 코드, 내용)로 1 부터 매긴다 (D2 AD-153). 결과가 이미 그 차례다.
         List<Object[]> notices = new ArrayList<>();
         int noticeNo = 0;

@@ -22,9 +22,11 @@ final class EditionPlan {
      * @param factHash 행이 적은 것 한 줄의 해시. 다음 판의 행이 같은 것을 적으면 이 기록의 것을 잇는다
      * @param validFrom 저장된 시작일. 개체에는 없다
      * @param validTo 만들 때의 종료일. 없으면 열려 있다
+     * @param value 속성 값이면 그 값. 저장한 글자 그대로다. 개체와 관계에는 없다. 값을 남기기 전에 들어간 판의 속성 값도
+     *        없다: 그때는 모르는 것이다 (D2 AD-367)
      */
     record OutputDetail(ItemOutput.Kind kind, String objectId, String subject, String factHash, LocalDate validFrom,
-            LocalDate validTo) {
+            LocalDate validTo, String value) {
     }
 
     /** 앞 판의 항목 하나. */

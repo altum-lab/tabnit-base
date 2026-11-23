@@ -7,10 +7,13 @@ import com.altumlab.tabnit.link.Edition;
 import com.altumlab.tabnit.link.IngestNotice;
 import com.altumlab.tabnit.link.IngestOutcome;
 import com.altumlab.tabnit.link.MappingOutcome;
+import com.altumlab.tabnit.link.ValueChange;
+import com.altumlab.tabnit.pack.PackDefinition;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 
 /**
@@ -22,8 +25,28 @@ record EditionSubmissionResponse(String outcome, String editionId, String packId
 		LocalDate effectiveDate, int itemCount, List<Change> changes, List<Notice> notices, List<Retried> retriedChanges,
 		boolean processingNotStarted) {
 
+	/**
+	 * @param changedValues 그 행에서 바뀐 속성 값. 이전 값을 알 수 없으면 null 이다 (D2 AD-367)
+	 */
 	record Change(String changeEventId, String itemKey, String kind, String primaryEntityId, List<String> targetEntityIds,
-			Processing processing) {
+			List<ChangedValue> changedValues, Processing processing) {
+	}
+
+	/** 규격의 ChangedValue. 값과 차례는 link 가 준 그대로다. 이름표는 Pack 의 정의에서 온다: 없으면 속성의 이름이다. */
+	record ChangedValue(String entityId, String attributeName, String attributeLabel, String before, String after) {
+		static List<ChangedValue> of(List<ValueChange> values, Optional<PackDefinition> pack) {
+			if (values == null) {
+				return null;
+			}
+			// 이름표를 이름으로 찾는 데만 쓴다.
+			Map<String, String> labels = new TreeMap<>();
+			pack.ifPresent(definition -> definition.attributes()
+				.forEach(attribute -> labels.put(attribute.name(), attribute.label())));
+			return values.stream()
+				.map(value -> new ChangedValue(value.entityId(), value.attributeName(),
+						labels.getOrDefault(value.attributeName(), value.attributeName()), value.before(), value.after()))
+				.toList();
+		}
 	}
 
 	/** 규격의 ChangeProcessing. */
@@ -56,8 +79,10 @@ record EditionSubmissionResponse(String outcome, String editionId, String packId
 	/**
 	 * @param edition 만든 판, 또는 내용이 같았던 앞 판
 	 * @param events 그 판의 저장된 변동 이벤트. 항목의 키의 글자 코드 순이다. 내용이 같았으면 넘기지 않는다
+	 * @param pack 그 Pack 의 정의. 속성의 이름표를 읽는다. 읽지 못했으면 비어 있다
 	 */
-	static EditionSubmissionResponse of(EditionProcessingResult result, Edition edition, List<ChangeEvent> events) {
+	static EditionSubmissionResponse of(EditionProcessingResult result, Edition edition, List<ChangeEvent> events,
+			Optional<PackDefinition> pack) {
 		boolean accepted = result.ingest().outcome() == IngestOutcome.ACCEPTED;
 		MappingOutcome mapping = accepted ? result.ingest().mapping() : null;
 		// 이 요청이 처리한 것을 변동 이벤트의 식별자로 찾는 데만 쓴다.
@@ -80,7 +105,7 @@ record EditionSubmissionResponse(String outcome, String editionId, String packId
 				// 상태와 실패의 단계와 코드는 저장된 변동 이벤트의 것이다. 조치의 수와 평가에 실패한 규칙은 이 요청이
 				// 처리한 결과에서 온다 (저장한 것과 같은 것이다).
 				changes.add(new Change(event.id(), event.itemKey(), event.kind().name(), event.primaryEntityId(),
-						event.targetEntityIds(),
+						event.targetEntityIds(), ChangedValue.of(event.changedValues(), pack),
 						new Processing(event.status().name(), event.failedStage(), event.failureCode(),
 								done == null || event.status() != ChangeEventStatus.FAILED ? List.of()
 										: Failure.of(done.failures()),

@@ -44,6 +44,8 @@ class RelationMapQueryTest {
         assertThat(map.edges()).isEmpty();
         assertThat(map.totalNodes()).isEqualTo(1);
         assertThat(map.truncated()).isFalse();
+        // 더 따라갈 것이 없어 끝까지 간 것이다: 요청한 깊이를 적는다.
+        assertThat(map.reachedDepth()).isEqualTo(3);
     }
 
     @Test
@@ -166,13 +168,17 @@ class RelationMapQueryTest {
         // 가운데와 깊이 1 의 앞의 셋. 깊이 2 의 것은 유형이 앞서도 뒤다.
         assertThat(cut.nodes()).extracting(RelationMapNode::entityId)
             .containsExactly(center.id(), near.get(0).id(), near.get(1).id(), near.get(2).id());
-        assertThat(cut.totalNodes()).isEqualTo(7);
+        // 깊이 1 에서 이미 한도를 넘었다 (가운데와 이웃 다섯). 더 깊이 따라가지 않는다 (D2 AD-357):
+        // 수는 따라간 데까지 찾은 것이고, 깊이 2 의 far 는 세지 않는다.
+        assertThat(cut.reachedDepth()).isEqualTo(1);
+        assertThat(cut.totalNodes()).isEqualTo(6);
         assertThat(cut.truncated()).isTrue();
         // 간선은 담긴 노드끼리의 것만.
         assertThat(cut.edges()).hasSize(3);
         // 한도와 꼭 같으면 잘리지 않았다.
         RelationMap exact = query.relationMap(center.id(), date("2026-03-01"), 2, 7);
         assertThat(exact.truncated()).isFalse();
+        assertThat(exact.reachedDepth()).isEqualTo(2);
         assertThat(exact.nodes()).hasSize(7);
         assertThat(exact.edges()).hasSize(6);
         // 한도가 1 이면 가운데만.
@@ -180,6 +186,8 @@ class RelationMapQueryTest {
         assertThat(one.nodes()).extracting(RelationMapNode::entityId).containsExactly(center.id());
         assertThat(one.edges()).isEmpty();
         assertThat(one.truncated()).isTrue();
+        assertThat(one.reachedDepth()).isEqualTo(1);
+        assertThat(one.totalNodes()).isEqualTo(6);
     }
 
     @Test
@@ -259,6 +267,7 @@ class RelationMapQueryTest {
         // 깊이 너머의 개체(e)는 세지 않는다.
         assertThat(map.totalNodes()).isEqualTo(4);
         assertThat(map.truncated()).isFalse();
+        assertThat(map.reachedDepth()).isEqualTo(3);
     }
 
     @Test
@@ -288,6 +297,8 @@ class RelationMapQueryTest {
             .containsExactly(top.id(), left.id(), right.id(), bottoms.get(0).id(), bottoms.get(1).id());
         assertThat(cut.totalNodes()).isEqualTo(7);
         assertThat(cut.truncated()).isTrue();
+        // 깊이 1 까지는 한도 안이라 깊이 2 까지 따라갔다.
+        assertThat(cut.reachedDepth()).isEqualTo(2);
         // 담긴 노드끼리의 관계만: 위의 둘과, 담긴 아래 둘에 닿는 넷.
         assertThat(cut.edges()).hasSize(6);
     }
@@ -324,6 +335,94 @@ class RelationMapQueryTest {
         // 한도로 자를 때도 같은 순서다.
         assertThat(query.relationMap(center.id(), date("2026-03-01"), 1, 2).nodes()).extracting(RelationMapNode::entityId)
             .containsExactly(center.id(), bmp.id());
+    }
+
+    @Test
+    void 한도를_넘은_단계에서_멈춰도_담기는_노드와_간선은_끝까지_따라갔을_때와_같다() {
+        // 가운데에서 이웃 여섯, 그 이웃마다 다시 이웃 셋 (깊이 2 에 열여덟).
+        String pack = "map-stop";
+        EntityRef center = entity(pack, "T", "center");
+        for (int i = 0; i < 6; i++) {
+            EntityRef near = entity(pack, "T", "near-" + i);
+            relation(center, near, "R", "2026-01-01", null);
+            for (int j = 0; j < 3; j++) {
+                // 유형의 이름이 앞서도 깊이가 먼저다: 깊이 2 의 것은 담기지 않는다.
+                relation(near, entity(pack, "A", "far-" + i + "-" + j), "R", "2026-01-01", null);
+            }
+        }
+
+        // 한도 5: 깊이 1 에서 일곱이 되어 넘는다. 깊이 3 을 청해도 깊이 1 에서 멈춘다.
+        RelationMap stopped = query.relationMap(center.id(), date("2026-03-01"), 3, 5);
+        assertThat(stopped.reachedDepth()).isEqualTo(1);
+        assertThat(stopped.totalNodes()).isEqualTo(7);
+        assertThat(stopped.truncated()).isTrue();
+        // 담기는 것은 깊이를 1 로 청했을 때와 같다.
+        RelationMap shallow = query.relationMap(center.id(), date("2026-03-01"), 1, 5);
+        assertThat(stopped.nodes()).isEqualTo(shallow.nodes());
+        assertThat(stopped.edges()).isEqualTo(shallow.edges());
+        assertThat(stopped.nodes()).extracting(RelationMapNode::entityId)
+            .containsExactly(center.id(), id(pack, "near-0"), id(pack, "near-1"), id(pack, "near-2"), id(pack, "near-3"));
+        assertThat(stopped.edges()).hasSize(4);
+
+        // 한도가 넉넉하면 끝까지 따라간다.
+        RelationMap whole = query.relationMap(center.id(), date("2026-03-01"), 3, 200);
+        assertThat(whole.reachedDepth()).isEqualTo(3);
+        assertThat(whole.totalNodes()).isEqualTo(25);
+        assertThat(whole.truncated()).isFalse();
+        // 한도와 꼭 같은 수에서는 멈추지 않는다: 깊이 1 까지 일곱, 한도 일곱.
+        RelationMap exactly = query.relationMap(center.id(), date("2026-03-01"), 2, 7);
+        assertThat(exactly.reachedDepth()).isEqualTo(2);
+        assertThat(exactly.totalNodes()).isEqualTo(25);
+        assertThat(exactly.truncated()).isTrue();
+        assertThat(exactly.nodes()).hasSize(7);
+    }
+
+    @Test
+    void 가운데_단계에서_한도를_넘으면_그_단계에서_멈추고_더_깊은_노드는_담지도_세지도_않는다() {
+        // 깊이 1 에 둘, 깊이 2 에 여섯, 깊이 3 에 열둘. 깊이 3 의 유형은 글자 순으로 가장 앞선다.
+        String pack = "map-stop-middle";
+        EntityRef center = entity(pack, "T", "center");
+        for (int i = 0; i < 2; i++) {
+            EntityRef one = entity(pack, "T", "one-" + i);
+            relation(center, one, "R", "2026-01-01", null);
+            for (int j = 0; j < 3; j++) {
+                EntityRef two = entity(pack, "T", "two-" + i + "-" + j);
+                relation(one, two, "R", "2026-01-01", null);
+                for (int k = 0; k < 2; k++) {
+                    relation(two, entity(pack, "A", "three-" + i + "-" + j + "-" + k), "R", "2026-01-01", null);
+                }
+            }
+        }
+        // 깊이 2 의 노드 둘을 깊이 3 의 노드 하나를 거쳐서도 잇는다. 깊이 2 의 노드끼리 바로 잇는 관계도 하나 둔다.
+        relation(entity(pack, "T", "two-0-1"), entity(pack, "A", "three-0-0-0"), "R", "2026-01-01", null);
+        String sibling = relation(entity(pack, "T", "two-0-0"), entity(pack, "T", "two-0-1"), "R", "2026-01-01", null);
+
+        // 한도 5: 깊이 1 까지 셋(넘지 않음), 깊이 2 까지 아홉(넘음). 깊이 3 을 청해도 깊이 2 에서 멈춘다.
+        RelationMap stopped = query.relationMap(center.id(), date("2026-03-01"), 3, 5);
+
+        assertThat(stopped.reachedDepth()).isEqualTo(2);
+        assertThat(stopped.totalNodes()).isEqualTo(9);
+        assertThat(stopped.truncated()).isTrue();
+        // 깊이 1 의 둘과 깊이 2 의 앞의 둘. 깊이 3 의 것은 유형이 앞서도 없다.
+        assertThat(depths(stopped)).containsExactly(center.id() + "=0", id(pack, "one-0") + "=1", id(pack, "one-1") + "=1",
+                id(pack, "two-0-0") + "=2", id(pack, "two-0-1") + "=2");
+        // 간선: 가운데에서 둘, one-0 에서 담긴 둘, 그리고 담긴 깊이 2 의 노드끼리의 하나.
+        assertThat(stopped.edges()).hasSize(5);
+        assertThat(stopped.edges()).extracting(Relation::id).contains(sibling);
+        // 깊이 2 로 청한 것과 같다.
+        RelationMap two = query.relationMap(center.id(), date("2026-03-01"), 2, 5);
+        assertThat(stopped.nodes()).isEqualTo(two.nodes());
+        assertThat(stopped.edges()).isEqualTo(two.edges());
+        // 한도가 넉넉하면 깊이 3 까지 간다: 스물하나.
+        RelationMap whole = query.relationMap(center.id(), date("2026-03-01"), 3, 200);
+        assertThat(whole.reachedDepth()).isEqualTo(3);
+        assertThat(whole.totalNodes()).isEqualTo(21);
+        // 끝까지 따라갔을 때의 앞의 다섯이 멈췄을 때 담긴 것과 같다.
+        assertThat(whole.nodes().subList(0, 5)).isEqualTo(stopped.nodes());
+    }
+
+    private static String id(String pack, String key) {
+        return new EntityRef(pack, "T", key).id();
     }
 
     private static List<String> depths(RelationMap map) {

@@ -16,20 +16,22 @@ import java.util.Map;
  * @param centerEntityId 가운데 개체의 id
  * @param depth 답에 쓴 깊이
  * @param maxNodes 담는 노드의 한도
- * @param totalNodes 자르기 전의 노드의 수. core 가 센 값이다
+ * @param reachedDepth 따라간 깊이. 한도를 넘은 단계에서 멈추면 답에 쓴 깊이보다 작다. core 가 정한 값이다
+ * @param totalNodes 자르기 전의 노드의 수. 따라간 깊이까지 찾은 것이다. core 가 센 값이다
  * @param truncated 한도를 넘어 잘렸는가
  * @param nodes 노드. core 가 준 순서 그대로다
  * @param edges 간선. core 가 준 순서 그대로다
  */
-record RelationMapResponse(String asOf, String centerEntityId, int depth, int maxNodes, int totalNodes, boolean truncated,
-		List<NodeItem> nodes, List<EdgeItem> edges) {
+record RelationMapResponse(String asOf, String centerEntityId, int depth, int reachedDepth, int maxNodes, int totalNodes,
+		boolean truncated, List<NodeItem> nodes, List<EdgeItem> edges) {
 
 	/**
 	 * @param entities 담긴 노드의 개체. 식별자로 찾는다. 표시 이름은 조회 시점의 값이다
 	 */
 	static RelationMapResponse of(LocalDate asOf, String centerEntityId, int depth, int maxNodes, RelationMap map,
 			Map<String, EntityViews.Item> entities) {
-		return new RelationMapResponse(asOf.toString(), centerEntityId, depth, maxNodes, map.totalNodes(), map.truncated(),
+		return new RelationMapResponse(asOf.toString(), centerEntityId, depth, map.reachedDepth(), maxNodes, map.totalNodes(),
+				map.truncated(),
 				map.nodes().stream().map(node -> NodeItem.of(node, entities)).toList(),
 				map.edges().stream().map(EdgeItem::of).toList());
 	}

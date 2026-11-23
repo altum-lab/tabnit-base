@@ -87,6 +87,7 @@ class RelationMapApiTests {
 			.andExpect(jsonPath("$.asOf").value("2026-03-01"))
 			.andExpect(jsonPath("$.centerEntityId").value(center.id()))
 			.andExpect(jsonPath("$.depth").value(1))
+			.andExpect(jsonPath("$.reachedDepth").value(1))
 			.andExpect(jsonPath("$.maxNodes").value(200))
 			.andExpect(jsonPath("$.totalNodes").value(3))
 			.andExpect(jsonPath("$.truncated").value(false))
@@ -131,6 +132,8 @@ class RelationMapApiTests {
 		mvc.perform(get("/api/v1/relation-map").param("entityId", a.id()).param("asOf", "2026-03-01").param("depth", "3"))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.depth").value(3))
+			// 한도를 넘지 않았으면 청한 깊이까지 본 것이다 (이어진 것이 그 전에 끝났어도).
+			.andExpect(jsonPath("$.reachedDepth").value(3))
 			.andExpect(jsonPath("$.nodes[*].entityId", contains(a.id(), b.id(), c.id())))
 			.andExpect(jsonPath("$.nodes[*].depth", contains(0, 1, 2)))
 			.andExpect(jsonPath("$.edges", hasSize(2)));
@@ -157,6 +160,19 @@ class RelationMapApiTests {
 			.andExpect(jsonPath("$.nodes[0].entityId").value(center.id()))
 			.andExpect(jsonPath("$.nodes[199].entityId").value(pack + "|T|n-198"))
 			// 간선은 담긴 노드끼리의 것만.
+			.andExpect(jsonPath("$.edges", hasSize(199)));
+
+		// 이웃의 이웃이 있어도, 깊이 1 에서 이미 한도를 넘었으므로 더 따라가지 않는다 (D2 AD-357).
+		// 담기는 노드와 간선은 같고, 수는 따라간 데까지 찾은 것이다. 어디까지 따라갔는지를 함께 준다.
+		relation(entity(pack, "n-000"), entity(pack, "far"), "R", "2026-01-01", null);
+		mvc.perform(get("/api/v1/relation-map").param("entityId", center.id()).param("asOf", "2026-03-01").param("depth", "3"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.depth").value(3))
+			.andExpect(jsonPath("$.reachedDepth").value(1))
+			.andExpect(jsonPath("$.totalNodes").value(251))
+			.andExpect(jsonPath("$.truncated").value(true))
+			.andExpect(jsonPath("$.nodes", hasSize(200)))
+			.andExpect(jsonPath("$.nodes[199].entityId").value(pack + "|T|n-198"))
 			.andExpect(jsonPath("$.edges", hasSize(199)));
 	}
 

@@ -30,6 +30,11 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <p>깊이 한 단계마다 저장소를 읽는다. 그 사이에 다른 쪽이 관계를 저장해도 단계마다 다른 상태를 보지 않도록,
  * 읽기 전용 트랜잭션 하나(같은 상태를 되풀이해 읽는 격리 수준)로 묶는다. 한 번 찾은 개체는 다시 펼치지 않으므로
  * 관계가 돌아오는 구조에서도 끝난다.
+ *
+ * <p>찾은 노드가 한도를 넘은 단계에서 멈춘다 (D2 AD-357). 가까운 것부터 담으므로 더 깊은 곳의 노드는 어차피
+ * 담기지 않는다: 담기는 노드와 간선은 끝까지 따라갔을 때와 같다. 달라지는 것은 자르기 전의 수다 (따라간 데까지의 수).
+ * 한도를 넘은 단계까지만 읽는다. 그 단계는 끝까지 읽으므로 (개체 maxNodes 개 이하에 닿은 관계 모두), 관계가 아주
+ * 많이 몰린 개체가 그 안에 있으면 그만큼 읽는다.
  */
 public class RelationMapQuery {
 
@@ -79,7 +84,7 @@ public class RelationMapQuery {
      * @param centerEntityId 가운데 개체의 식별자
      * @param asOf 기준 날짜
      * @param depth 따라갈 깊이. 1 이상. 위쪽 한도는 부르는 쪽이 정한다
-     * @param maxNodes 담을 노드의 한도. 1 이상. 가운데 개체를 넣어 센다
+     * @param maxNodes 담을 노드의 한도. 1 이상. 가운데 개체를 넣어 센다. 찾은 노드가 이 수를 넘은 단계에서 멈춘다
      * @return 노드와 간선. 이어진 것이 없으면 가운데 개체만 든다
      * @throws EntityNotFoundException 가운데 개체가 없을 때
      * @throws CoreStorageException 저장소에서 읽지 못했을 때
@@ -112,6 +117,8 @@ public class RelationMapQuery {
         depthOf.put(center, 0);
         TreeSet<String> frontier = new TreeSet<>(CodePointOrder.STRINGS);
         frontier.add(center);
+        // 따라간 깊이. 한도를 넘은 단계에서 멈추면 그 단계다. 멈추지 않았으면 청한 깊이다.
+        int reachedDepth = depth;
         for (int level = 1; level <= depth && !frontier.isEmpty(); level++) {
             String[] ids = frontier.toArray(String[]::new);
             TreeSet<String> next = new TreeSet<>(CodePointOrder.STRINGS);
@@ -127,6 +134,11 @@ public class RelationMapQuery {
                 depthOf.put(id, level);
             }
             frontier = next;
+            if (depthOf.size() > maxNodes) {
+                // 이 단계까지로 한도를 넘었다. 이 단계의 노드는 모두 찾았으므로 가까운 것부터 고르는 데 모자람이 없다.
+                reachedDepth = level;
+                break;
+            }
         }
         // 유형은 찾은 개체 모두에서 읽는다: 자르는 순서(깊이, 유형, 식별자)에 유형이 든다.
         Map<String, String> typeOf = new TreeMap<>(CodePointOrder.STRINGS);
@@ -148,7 +160,7 @@ public class RelationMapQuery {
         List<RelationMapNode> kept = total > maxNodes ? nodes.subList(0, maxNodes) : nodes;
         String[] keptIds = kept.stream().map(RelationMapNode::entityId).toArray(String[]::new);
         List<Relation> edges = jdbc.query(EDGES_AMONG, RelationMapQuery::toRelation, keptIds, keptIds, asOf, asOf);
-        return new RelationMap(kept, edges, total, total > maxNodes);
+        return new RelationMap(kept, edges, total, total > maxNodes, reachedDepth);
     }
 
     private static Relation toRelation(ResultSet rs, int rowNum) throws SQLException {

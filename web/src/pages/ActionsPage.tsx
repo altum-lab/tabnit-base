@@ -450,6 +450,11 @@ function Detail({ action, onAction }: { action: Action; onAction: (changed: Acti
         ) : (
           <Path scope={scope} entityId={action.target.entityId} onRetry={() => void loadScope()} />
         )}
+        {/* 이 조치를 만든 변동의 영향 범위로 가는 길. 변동 감지 화면에는 방금 올린 판의 변동만 남으므로,
+            지난 변동의 영향 범위로는 여기서 간다 (D-10 의 리허설에서 돌아갈 길이 없었다). */}
+        <p>
+          <Link to={`/impact?${new URLSearchParams({ changeEventId: action.changeEventId })}`}>이 조치를 만든 변동의 영향 범위</Link>
+        </p>
       </section>
 
       <section aria-label="이력">

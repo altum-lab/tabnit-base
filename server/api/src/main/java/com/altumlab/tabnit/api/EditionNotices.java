@@ -42,6 +42,10 @@ final class EditionNotices {
 					+ ". 쉼표와 큰따옴표를 확인하고" + FIX_ROW;
 			case "TEXT_AFTER_QUOTE" -> row + "을 건너뛰었습니다. 닫는 큰따옴표 뒤에 글자가 이어집니다. 큰따옴표를 확인하고"
 					+ FIX_ROW;
+			case "FORMULA_WITHOUT_RESULT" -> row + "을 건너뛰었습니다." + column + "의 칸이 수식인데 파일에 계산 결과가 저장되어"
+					+ " 있지 않습니다. 엑셀에서 파일을 열어 다시 저장하거나 값을 직접 적고" + FIX_ROW;
+			case "CELL_ERROR" -> row + "을 건너뛰었습니다." + column + "의 칸이 오류 값입니다" + value
+					+ ". 그 칸의 수식이나 값을 고치고" + FIX_ROW;
 			case "INVALID_CHARACTER" -> row + "을 건너뛰었습니다. 쓸 수 없는 글자가 들어 있습니다. 그 글자를 빼고" + FIX_ROW;
 			// 넣지 않은 값: 행의 나머지는 넣었다.
 			case "CONFLICTING_VALUES" -> row + "의" + target(subject) + " 값을 넣지 않았습니다. 이 판의 다른 행이 같은 것을 다른 값이나"

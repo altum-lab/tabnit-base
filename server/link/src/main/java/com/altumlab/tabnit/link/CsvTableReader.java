@@ -68,7 +68,7 @@ final class CsvTableReader {
     }
 
     /** 칸의 앞뒤 빈칸을 뗀다. 가운데의 빈칸은 그대로 둔다 (D2 AD-167). */
-    private static String trim(CharSequence cell) {
+    static String trim(CharSequence cell) {
         int start = 0;
         int end = cell.length();
         while (start < end && isBlank(cell.charAt(start))) {

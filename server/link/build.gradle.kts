@@ -28,6 +28,11 @@ dependencies {
     api(project(":pack"))
     api(project(":core"))
     implementation("org.springframework:spring-jdbc")
+    // 엑셀(xlsx) 파일을 읽는다. link 안에서만 쓴다 (D2 AD-93). Spring Boot 가 버전을 관리하지 않아 여기 한 곳에 적는다
+    // (D2 AD-126, AD-373).
+    // XlsxTableReader 는 POI 를 따라온 commons-compress 의 ZipFile 도 직접 쓴다 (POI 가 압축 파일을 그 형으로 받는다).
+    // POI 를 올릴 때 함께 본다.
+    implementation("org.apache.poi:poi-ooxml:6.0.0")
     testImplementation("org.junit.jupiter:junit-jupiter")
     // 시험은 실제 PostgreSQL 에 api 모듈의 스키마 변경 파일을 적용해 돌린다 (D2 AD-10, AD-46).
     testImplementation("org.testcontainers:testcontainers-postgresql")

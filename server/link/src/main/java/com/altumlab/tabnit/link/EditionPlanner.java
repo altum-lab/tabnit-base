@@ -705,9 +705,21 @@ final class EditionPlanner {
         return itemKey;
     }
 
+    /**
+     * 그 행에서 그 열의 값을 읽는다. 값을 읽지 못한 칸(엑셀의 계산 결과가 없는 수식, 오류 값)이면 그 행을 건너뛴다
+     * (D2 AD-375). 매핑이 읽는 열만 여기에 오므로, 매핑이 쓰지 않는 열의 그런 칸은 행을 건너뛰게 하지 않는다.
+     */
+    private String value(TableRow row, String column) {
+        UnreadableCell unreadable = file.unreadable(row, column);
+        if (unreadable != null) {
+            throw new RowSkipped(row.rowNo(), unreadable.code(), column, unreadable.detail());
+        }
+        return file.value(row, column);
+    }
+
     /** 키 열의 값을 읽는다. 너무 길면 그 행을 건너뛴다. 저장소가 받지 못해 실행 전체가 실패하지 않게 한다 (D2 AD-177). */
     private String key(TableRow row, String column) {
-        String value = file.value(row, column);
+        String value = value(row, column);
         int length = value.codePointCount(0, value.length());
         if (length > MAX_KEY_LENGTH) {
             throw new RowSkipped(row.rowNo(), "KEY_TOO_LONG", column, Integer.toString(length));
@@ -724,7 +736,7 @@ final class EditionPlanner {
         RowPlan plan = new RowPlan(rowNo, itemKey);
         // 주 개체는 행이 나타내는 개체다 (D2 AD-120). 개체 정의가 없고 관계의 끝으로만 적혀 있어도, 관계의 다른 끝이
         // 비어 있어도 만든다.
-        plan.primary = ref(mapping.primaryEntity(), file.value(row, mapping.primaryEntity().keyColumn()));
+        plan.primary = ref(mapping.primaryEntity(), value(row, mapping.primaryEntity().keyColumn()));
         plan.entities.put(plan.primary.id(), plan.primary);
 
         for (MappedEntity mapped : mapping.entities()) {
@@ -733,7 +745,7 @@ final class EditionPlanner {
                 // 주 개체가 아닌 개체의 키가 비면 그 개체만 만들지 않는다. 그런데 속성 칸에 값이 있으면 자료가 어긋난 것이다
                 // (D2 AD-175).
                 for (MappedAttribute attribute : mapped.attributes()) {
-                    if (!file.value(row, attribute.column()).isEmpty()) {
+                    if (!value(row, attribute.column()).isEmpty()) {
                         throw new RowSkipped(rowNo, "VALUE_WITHOUT_KEY", mapped.keyColumn(), null);
                     }
                 }
@@ -742,7 +754,7 @@ final class EditionPlanner {
             EntityRef entity = new EntityRef(pack.packId(), mapped.entityType(), key);
             plan.entities.put(entity.id(), entity);
             for (MappedAttribute attribute : mapped.attributes()) {
-                String raw = file.value(row, attribute.column());
+                String raw = value(row, attribute.column());
                 if (raw.isEmpty()) {
                     // 빈 칸은 값이 없는 것이다 (D2 AD-94).
                     continue;
@@ -750,9 +762,17 @@ final class EditionPlanner {
                 ValueFormat format = formats.get(attribute.attributeName());
                 String pattern = attribute.datePattern() != null ? attribute.datePattern()
                         : mapping.defaultDatePattern();
+                // 파일이 형식을 아는 칸은 표준 표기로 적혀 있다. 먼저 표준 표기로 읽는다. 그렇게 읽히지 않으면 매핑에 적힌
+                // 모양으로 읽는다 (수로 적은 날짜 20260301, 수 1 과 0 으로 적은 참·거짓). 자릿수 구분 기호는 쓰지 않는다:
+                // 저장된 수에는 그 기호가 없고, 기호가 마침표인 매핑에서 소수점이 지워진다 (D2 AD-374).
+                boolean typed = file.typed(row, attribute.column());
                 String value = format == null ? null
+                        : typed ? parser.canonical(format, raw, null, null, null, null)
                         : parser.canonical(format, raw, pattern, attribute.groupingSeparator(), attribute.trueValue(),
                                 attribute.falseValue());
+                if (value == null && typed && format != null) {
+                    value = parser.canonical(format, raw, pattern, null, attribute.trueValue(), attribute.falseValue());
+                }
                 if (value == null) {
                     throw new RowSkipped(rowNo, "INVALID_VALUE", attribute.column(), raw);
                 }
@@ -838,11 +858,15 @@ final class EditionPlanner {
         if (column == null) {
             return null;
         }
-        String raw = file.value(row, column);
+        String raw = value(row, column);
         if (raw.isEmpty()) {
             return null;
         }
-        LocalDate date = parser.date(raw, mapping.defaultDatePattern());
+        // 파일이 형식을 아는 칸은 먼저 표준 표기로 읽고, 읽히지 않으면 매핑의 모양으로 읽는다 (D2 AD-374).
+        LocalDate date = file.typed(row, column) ? parser.date(raw, null) : null;
+        if (date == null) {
+            date = parser.date(raw, mapping.defaultDatePattern());
+        }
         if (date == null) {
             throw new RowSkipped(row.rowNo(), "INVALID_VALUE", column, raw);
         }

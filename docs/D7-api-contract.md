@@ -342,7 +342,7 @@ Content-Type: multipart/form-data
   "itemCount": 3,
   "changes": [
     {
-      "changeEventId": "p\\|src\\|2|ga",
+      "changeEventId": "p|src|2|ga",
       "itemKey": "ga",
       "kind": "CHANGED",
       "primaryEntityId": "p|T|ga",
@@ -472,7 +472,7 @@ GET /api/v1/actions?packId={Pack 의 식별자}&status={상태}&changeEventId={�
   "actions": [
     {
       "id": "p\\|src\\|2\\|ga|0001|p\\|T\\|na",
-      "changeEventId": "p\\|src\\|2|ga",
+      "changeEventId": "p|src|2|ga",
       "ruleNo": "0001",
       "ruleLabel": "규칙의 이름",
       "actionText": "해야 할 일",
@@ -519,7 +519,7 @@ GET /api/v1/impact-scopes?changeEventId={변동 이벤트의 id}&entityId={영�
 
 ```json
 {
-  "changeEventId": "p\\|src\\|2|ga",
+  "changeEventId": "p|src|2|ga",
   "packId": "p",
   "asOfPrevious": "2026-02-28",
   "asOfEffective": "2026-03-01",

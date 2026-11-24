@@ -270,6 +270,14 @@ def changed_names(old, new):
     names = {k[1] for k in set(old_att) | set(new_att) if old_att.get(k) != new_att.get(k)}
     return names | {rel[0] for rel in old_rel ^ new_rel}
 PREV = {}
+CHANGED_VALUES = {}  # (단계, 항목의 키) → [(개체, 속성, 이전 값, 새 값)]
+
+def changed_values(old, new):
+    """그 행에서 바뀐 속성의 이전 값과 새 값 (D5 5절 change_event_changed_value, D2 AD-367). 바뀐 속성의 이름과 같은 기준이다:
+    추가는 넣은 것 전부 (이전 값이 없다), 삭제는 넣었던 것 전부 (새 값이 없다), 변경은 두 판에서 다른 것. 개체, 속성의 이름 순."""
+    old_att = old[2] if old else {}
+    new_att = new[2] if new else {}
+    return [(k[0], k[1], old_att.get(k), new_att.get(k)) for k in sorted(set(old_att) | set(new_att)) if old_att.get(k) != new_att.get(k)]
 def ingest(step_no, source, idx):
     name, date, cols, rows = SOURCES[source][idx]
     EDITION_NO[source] = EDITION_NO.get(source, 0) + 1
@@ -284,6 +292,7 @@ def ingest(step_no, source, idx):
                 kind, targets, prim = "CHANGED", sorted(set(new[k][1]) | set(old[k][1])), new[k][0]
             else: continue
             events.append((k, kind, prim, targets, date, source, EDITION_NO[source], changed_names(old.get(k), new.get(k))))
+            CHANGED_VALUES[(step_no, k)] = changed_values(old.get(k), new.get(k))
     # 관계: 이 입력 자료가 넣은 것 가운데 새 판에 없는 것은 적용일로 끝내고, 새로 생긴 것은 적용일부터 시작한다.
     now_rels = {rel for f in new.values() for rel in f[3]}
     for r in REL:
@@ -604,6 +613,7 @@ x = ["""# 제조 안전 Pack 의 전수 대조. 형식은 D4 3절 "전수 대조
 # 담은 것: 시나리오의 모든 변동의 영향 범위 (X-I), 모든 개체의 경계 날짜의 관계 (X-R: 그 개체의 관계가 시작하거나 끝나는
 # 날과 그 전날, 그리고 현재), 모든 개체의 현재의 관계 지도 깊이 1 과 유형마다 한 개체의 깊이 2, 3 (X-M).
 # 모든 변동의 조치 (X-A: 근거 규칙, 우선순위, 대상, 기한, 근거 조항과 그 판).
+# 모든 단계의 바뀐 항목과 바뀐 값 (X-C: 항목의 키, 추가·변경·삭제, 속성마다 이전 값과 새 값).
 
 scenario: S-01
 checks:
@@ -626,6 +636,24 @@ for step in sorted(EVENTS):
         x.append("      countsByType: { %s }" % ", ".join("%s: %d" % kv for kv in sorted(by_type.items())))
         x.append("      countsByDepth: { %s }" % ", ".join("%d: %d" % kv for kv in sorted(by_depth.items())))
         x.append("      truncated: %s" % ("true" if truncated else "false"))
+# 변동 (C-10, D2 AD-372): 모든 단계의 바뀐 항목과 바뀐 값. 첫 판의 단계는 변동이 없다. 항목의 키 순이다.
+# 바뀐 값은 저장한 글자로 견준다 (D5 5절). 참·거짓 속성은 매핑이 적은 글자("예", "아니오")가 아니라 true, false 로
+# 저장된다 (D6 5절의 값의 형식, 7절의 trueValue 와 falseValue). 이 자료의 참·거짓 속성은 아래 둘이다 (온톨로지와 같아야 한다).
+# 이 Pack 의 다른 형식(글자, 수, 날짜)의 값은 파일에 적힌 글자가 저장되는 글자와 같다.
+BOOLEAN_ATTRIBUTES = {"자료특별관리", "특별관리여부"}
+def stored(prop, v):
+    if v is None or prop not in BOOLEAN_ATTRIBUTES: return v
+    return {"예": "true", "아니오": "false"}[v]
+def yaml_text(v): return "null" if v is None else '"%s"' % v.replace("\\", "\\\\").replace('"', '\\"')
+n_c = 0
+for step in sorted(EVENTS):
+    n_c += 1
+    x.append("  - id: X-C-%04d\n    kind: changes\n    step: %d\n    expect:\n      changes:%s" % (n_c, step, "" if EVENTS[step] else " []"))
+    for e in EVENTS[step]:
+        vals = CHANGED_VALUES[(step, e[0])]
+        x.append("        - itemKey: [%s]\n          kind: %s\n          changedValues:%s" % (", ".join(e[0].split("|")), e[1].lower(), "" if vals else " []"))
+        for entity, prop, before, after in vals:
+            x.append("            - { entity: %s, attribute: %s, before: %s, after: %s }" % (ref(entity), prop, yaml_text(stored(prop, before)), yaml_text(stored(prop, after))))
 # 조치 (B-10, D2 AD-371): 모든 변동의 조치. 제품이 내놓는 순서다 (기한, 우선순위, 규칙 번호, 대상의 식별자).
 n_a = 0
 for step in sorted(EVENTS):
@@ -668,5 +696,5 @@ for entity, depth in [(e, 1) for e in ALL_ENTITIES] + [(e, d) for e in deep for 
     x.append("      totalNodes: %d\n      truncated: %s\n      reachedDepth: %d" % (total, "true" if truncated else "false", reached))
 os.makedirs(os.path.join(OUT, "questions", "crosscheck"), exist_ok=True)
 open(os.path.join(OUT, "questions", "crosscheck", "S-01.yaml"), "w", encoding="utf-8").write("\n".join(x) + "\n")
-print("전수 대조: 영향 범위", n_i, "조치", n_a, sum(len(v) for v in ACTIONS.values()), "건", "시점 조회", n_r, "관계 지도", n_m, "| 얕은 데서 멈춘 지도", cut_short)
+print("전수 대조: 변동", n_c, "단계", sum(len(v) for v in CHANGED_VALUES.values()), "값 | 영향 범위", n_i, "조치", n_a, sum(len(v) for v in ACTIONS.values()), "건", "시점 조회", n_r, "관계 지도", n_m, "| 얕은 데서 멈춘 지도", cut_short)
 

@@ -7,6 +7,7 @@
 # 담은 것: 시나리오의 모든 변동의 영향 범위 (X-I), 모든 개체의 경계 날짜의 관계 (X-R: 그 개체의 관계가 시작하거나 끝나는
 # 날과 그 전날, 그리고 현재), 모든 개체의 현재의 관계 지도 깊이 1 과 유형마다 한 개체의 깊이 2, 3 (X-M).
 # 모든 변동의 조치 (X-A: 근거 규칙, 우선순위, 대상, 기한, 근거 조항과 그 판).
+# 모든 단계의 바뀐 항목과 바뀐 값 (X-C: 항목의 키, 추가·변경·삭제, 속성마다 이전 값과 새 값).
 
 scenario: S-01
 checks:
@@ -1351,6 +1352,229 @@ checks:
       countsByType: { 가입사업장: 14, 연금가입자: 53, 연금계좌: 55, 운영요건: 2, 운용상품: 4 }
       countsByDepth: { 1: 2, 2: 4, 3: 55, 4: 53, 5: 14 }
       truncated: true
+  - id: X-C-0001
+    kind: changes
+    step: 1
+    expect:
+      changes: []
+  - id: X-C-0002
+    kind: changes
+    step: 2
+    expect:
+      changes: []
+  - id: X-C-0003
+    kind: changes
+    step: 3
+    expect:
+      changes: []
+  - id: X-C-0004
+    kind: changes
+    step: 4
+    expect:
+      changes: []
+  - id: X-C-0005
+    kind: changes
+    step: 5
+    expect:
+      changes: []
+  - id: X-C-0006
+    kind: changes
+    step: 6
+    expect:
+      changes: []
+  - id: X-C-0007
+    kind: changes
+    step: 7
+    expect:
+      changes: []
+  - id: X-C-0008
+    kind: changes
+    step: 8
+    expect:
+      changes: []
+  - id: X-C-0009
+    kind: changes
+    step: 9
+    expect:
+      changes: []
+  - id: X-C-0010
+    kind: changes
+    step: 10
+    expect:
+      changes: []
+  - id: X-C-0011
+    kind: changes
+    step: 11
+    expect:
+      changes: []
+  - id: X-C-0012
+    kind: changes
+    step: 12
+    expect:
+      changes: []
+  - id: X-C-0013
+    kind: changes
+    step: 13
+    expect:
+      changes: []
+  - id: X-C-0014
+    kind: changes
+    step: 14
+    expect:
+      changes: []
+  - id: X-C-0015
+    kind: changes
+    step: 15
+    expect:
+      changes: []
+  - id: X-C-0016
+    kind: changes
+    step: 16
+    expect:
+      changes: []
+  - id: X-C-0017
+    kind: changes
+    step: 17
+    expect:
+      changes: []
+  - id: X-C-0018
+    kind: changes
+    step: 18
+    expect:
+      changes: []
+  - id: X-C-0019
+    kind: changes
+    step: 19
+    expect:
+      changes:
+        - itemKey: [RQ-01]
+          kind: changed
+          changedValues:
+            - { entity: { type: 운영요건, key: RQ-01 }, attribute: 위험자산한도, before: "0.8", after: "0.7" }
+        - itemKey: [RQ-05]
+          kind: changed
+          changedValues:
+            - { entity: { type: 운영요건, key: RQ-05 }, attribute: 요건명칭, before: "운영 요건 5", after: "운영 요건 5 (문구 정비)" }
+  - id: X-C-0020
+    kind: changes
+    step: 20
+    expect:
+      changes:
+        - itemKey: [A-005, P-03]
+          kind: removed
+          changedValues: []
+        - itemKey: [A-005, P-06]
+          kind: added
+          changedValues: []
+        - itemKey: [A-020, P-12]
+          kind: removed
+          changedValues: []
+        - itemKey: [A-033, P-26]
+          kind: removed
+          changedValues: []
+        - itemKey: [A-040, P-13]
+          kind: added
+          changedValues: []
+  - id: X-C-0021
+    kind: changes
+    step: 21
+    expect:
+      changes:
+        - itemKey: [I-03]
+          kind: changed
+          changedValues:
+            - { entity: { type: 금융기관, key: I-03 }, attribute: 등급점수, before: "11", after: "9" }
+            - { entity: { type: 금융기관, key: I-03 }, attribute: 신용등급, before: "BBB", after: "BB+" }
+        - itemKey: [I-04]
+          kind: changed
+          changedValues:
+            - { entity: { type: 금융기관, key: I-04 }, attribute: 등급점수, before: "12", after: "10" }
+            - { entity: { type: 금융기관, key: I-04 }, attribute: 신용등급, before: "BBB+", after: "BBB-" }
+        - itemKey: [I-05]
+          kind: changed
+          changedValues:
+            - { entity: { type: 금융기관, key: I-05 }, attribute: 등급점수, before: "13", after: "14" }
+            - { entity: { type: 금융기관, key: I-05 }, attribute: 신용등급, before: "A-", after: "A" }
+        - itemKey: [I-06]
+          kind: changed
+          changedValues:
+            - { entity: { type: 금융기관, key: I-06 }, attribute: 등급점수, before: "16", after: "9" }
+            - { entity: { type: 금융기관, key: I-06 }, attribute: 신용등급, before: "AA-", after: "BB+" }
+        - itemKey: [I-10]
+          kind: changed
+          changedValues:
+            - { entity: { type: 금융기관, key: I-10 }, attribute: 기관명칭, before: "여신전문 차", after: "여신전문 차 (상호 변경)" }
+  - id: X-C-0022
+    kind: changes
+    step: 22
+    expect:
+      changes:
+        - itemKey: [N-003]
+          kind: changed
+          changedValues:
+            - { entity: { type: 연금가입자, key: N-003 }, attribute: 퇴직일, before: null, after: "2026-09-30" }
+        - itemKey: [N-015]
+          kind: changed
+          changedValues:
+            - { entity: { type: 연금가입자, key: N-015 }, attribute: 퇴직일, before: null, after: "2026-09-30" }
+        - itemKey: [N-040]
+          kind: changed
+          changedValues:
+            - { entity: { type: 연금가입자, key: N-040 }, attribute: 퇴직일, before: null, after: "2026-09-30" }
+        - itemKey: [N-052]
+          kind: changed
+          changedValues:
+            - { entity: { type: 연금가입자, key: N-052 }, attribute: 퇴직일, before: null, after: "2026-10-01" }
+        - itemKey: [N-066]
+          kind: changed
+          changedValues:
+            - { entity: { type: 연금가입자, key: N-066 }, attribute: 퇴직일, before: null, after: "2026-10-31" }
+        - itemKey: [N-077]
+          kind: changed
+          changedValues:
+            - { entity: { type: 연금가입자, key: N-077 }, attribute: 출생연도, before: "1976", after: "1977" }
+  - id: X-C-0023
+    kind: changes
+    step: 23
+    expect:
+      changes:
+        - itemKey: [L-01]
+          kind: changed
+          changedValues:
+            - { entity: { type: 연금제도, key: L-01 }, attribute: 적립비율, before: "1.02", after: "1.03" }
+        - itemKey: [L-02]
+          kind: changed
+          changedValues:
+            - { entity: { type: 연금제도, key: L-02 }, attribute: 적립비율, before: "0.97", after: "0.91" }
+        - itemKey: [L-03]
+          kind: changed
+          changedValues:
+            - { entity: { type: 연금제도, key: L-03 }, attribute: 적립비율, before: "0.83", after: "0.78" }
+        - itemKey: [L-04]
+          kind: changed
+          changedValues:
+            - { entity: { type: 연금제도, key: L-04 }, attribute: 적립비율, before: "0.86", after: "0.88" }
+        - itemKey: [L-06]
+          kind: changed
+          changedValues:
+            - { entity: { type: 연금제도, key: L-06 }, attribute: 적립비율, before: "0.99", after: "0.95" }
+  - id: X-C-0024
+    kind: changes
+    step: 24
+    expect:
+      changes:
+        - itemKey: [A-013, P-07]
+          kind: removed
+          changedValues: []
+  - id: X-C-0025
+    kind: changes
+    step: 25
+    expect:
+      changes:
+        - itemKey: [RG-05]
+          kind: changed
+          changedValues:
+            - { entity: { type: 운영규약, key: RG-05 }, attribute: 규약명칭, before: "사내 연금 운영 규약 제5조", after: "사내 연금 운영 규약 제5조 (개정)" }
   - id: X-A-0001
     kind: actions
     change: { step: 19, itemKey: [RQ-01] }

@@ -439,6 +439,87 @@ class EditionDiffTest {
             .isEqualTo("옛 이름");
         assertThat(second.mapping().notices()).containsExactly(new IngestNotice("PERIOD_ADJUSTED", 2, "ALREADY_PAST",
                 "d-past|Base|B-1|title", "2025-01-01~2026-01-01"));
+        // 저장된 것이 바뀌지 않았으므로 변동도 없다 (C-10, D2 AD-372). 그 행은 앞 판의 값을 그대로 이어 적는다.
+        assertThat(records.changeEvents("d-past|src|2")).isEmpty();
+        // 다음 판에서도 같다: 알림은 다시 나오고 변동은 없다.
+        IngestResult third = put(pack, 3, D3, "code,title,from,to\nB-1,고친 옛 이름,2025-01-01,2026-01-01\n\n");
+        assertThat(third.outcome()).isEqualTo(IngestOutcome.ACCEPTED);
+        assertThat(third.mapping().notices()).extracting(IngestNotice::code).containsExactly("ALREADY_PAST");
+        assertThat(records.changeEvents("d-past|src|3")).isEmpty();
+    }
+
+    // C-10 (D2 AD-372): 지난 기간의 값을 고친 것은 변동이 아니지만, 열려 있던 값을 지난 날짜로 끝냈다고 적은 것은
+    // 저장된 값이 실제로 끝나므로 변동이다.
+    @Test
+    void 열려_있던_값을_지난_종료일로_적으면_값이_끝나고_변동이다() {
+        PackDefinition pack = pack("d-past-open", dated());
+        put(pack, 1, D1, "code,title,from,to\nB-1,이름,2026-01-01,\n");
+
+        // 종료일 2026-04-01 은 둘째 판의 적용일(2026-06-01)보다 앞이다: 새 줄은 넣지 않고, 열려 있던 앞의 값은 적용일로 끝난다.
+        IngestResult second = put(pack, 2, D2, "code,title,from,to\nB-1,이름,2026-01-01,2026-04-01\n");
+
+        assertThat(second.outcome()).isEqualTo(IngestOutcome.ACCEPTED);
+        assertThat(titleAt("d-past-open|Base|B-1", D2.minusDays(1))).isEqualTo("이름");
+        assertThat(titleAt("d-past-open|Base|B-1", D2)).isNull();
+        assertThat(records.changeEvents("d-past-open|src|2")).extracting(ChangeEvent::itemKey, ChangeEvent::changedValues)
+            .containsExactly(tuple("B-1", List.of(new ValueChange("d-past-open|Base|B-1", "title", "이름", null))));
+    }
+
+    // C-10 (D2 AD-372): 시작일을 비우고 종료일만 적은 행.
+    @Test
+    void 시작일을_비우고_종료일만_적은_행은_그_종료일이_지난_뒤의_판에서도_건너뛰지_않고_이어진다() {
+        PackDefinition pack = pack("d-blank-from", datedWithCount());
+        String header = "code,title,from,to,count\n";
+        // 첫 판(적용일 2026-03-01): 시작일이 빈 칸이면 적용일부터다. 2026-05-01 에 끝난다.
+        put(pack, 1, D1, header + "B-1,이름,,2026-05-01,1\nB-2,둘째,,,2\n");
+
+        // 둘째 판(적용일 2026-06-01)은 그 종료일이 지난 뒤다. B-1 은 그대로이고 B-2 의 수만 바뀐다.
+        IngestResult second = put(pack, 2, D2, header + "B-1,이름,,2026-05-01,1\nB-2,둘째,,,20\n");
+
+        assertThat(second.outcome()).isEqualTo(IngestOutcome.ACCEPTED);
+        // 바뀐 것이 없는 행을 건너뛰지 않고 알림도 내지 않는다.
+        assertThat(second.mapping().notices()).isEmpty();
+        assertThat(records.changeEvents("d-blank-from|src|2")).extracting(ChangeEvent::itemKey).containsExactly("B-2");
+        // 셋째 판: 그 행의 다른 칸(수)을 고치면 반영된다. 지난 제목은 그대로다.
+        IngestResult third = put(pack, 3, D3, header + "B-1,이름,,2026-05-01,7\nB-2,둘째,,,20\n");
+        assertThat(third.mapping().notices()).isEmpty();
+        assertThat(values.valueAsOf("d-blank-from|Base|B-1", "count", D3).orElseThrow().value()).isEqualTo("7");
+        assertThat(titleAt("d-blank-from|Base|B-1", LocalDate.parse("2026-04-30"))).isEqualTo("이름");
+        assertThat(records.changeEvents("d-blank-from|src|3")).extracting(ChangeEvent::itemKey, ChangeEvent::changedValues)
+            .containsExactly(tuple("B-1", List.of(new ValueChange("d-blank-from|Base|B-1", "count", "1", "7"))));
+    }
+
+    @Test
+    void 둘째_판에_새로_나온_시작일_빈_칸과_지난_종료일은_그_값만_넣지_않고_행의_나머지는_받는다() {
+        PackDefinition pack = pack("d-blank-new", datedWithCount());
+        String header = "code,title,from,to,count\n";
+        put(pack, 1, D1, header + "B-1,이름,,,1\n");
+
+        // B-3 은 새 행이다. 제목의 종료일 2026-04-01 은 적용일(2026-06-01)보다 앞이라 넣을 기간이 없다.
+        IngestResult second = put(pack, 2, D2, header + "B-1,이름,,,1\nB-3,지난 이름,,2026-04-01,3\n");
+
+        assertThat(second.outcome()).isEqualTo(IngestOutcome.ACCEPTED);
+        assertThat(second.mapping().notices()).containsExactly(new IngestNotice("PERIOD_ADJUSTED", 3, "ALREADY_PAST",
+                "d-blank-new|Base|B-3|title", "~2026-04-01"));
+        // 행은 받았다: 개체가 생기고 수가 들어갔다. 제목은 없다.
+        assertThat(values.valueAsOf("d-blank-new|Base|B-3", "count", D2).orElseThrow().value()).isEqualTo("3");
+        assertThat(titleAt("d-blank-new|Base|B-3", D2)).isNull();
+        assertThat(records.changeEvents("d-blank-new|src|2")).extracting(ChangeEvent::itemKey, ChangeEvent::kind,
+                ChangeEvent::changedValues)
+            .containsExactly(tuple("B-3", ChangeKind.ADDED, List.of(new ValueChange("d-blank-new|Base|B-3", "count", null, "3"))));
+    }
+
+    @Test
+    void 첫_판에서_시작일을_비우고_적용일보다_앞선_종료일을_적은_행은_기간이_틀린_것이라_건너뛴다() {
+        PackDefinition pack = pack("d-blank-first", datedWithCount());
+
+        // 첫 판은 적힌 그대로 넣는다. 빈 시작일은 적용일(2026-03-01)이고 종료일 2026-02-01 은 그보다 앞이다.
+        IngestResult first = put(pack, 1, D1, "code,title,from,to,count\nB-1,이름,,2026-02-01,1\nB-2,둘째,,,2\n");
+
+        assertThat(first.outcome()).isEqualTo(IngestOutcome.ACCEPTED);
+        assertThat(first.mapping().notices()).extracting(IngestNotice::kind, IngestNotice::rowNo, IngestNotice::code)
+            .containsExactly(tuple("SKIPPED_ROW", 2, "INVALID_PERIOD"));
+        assertThat(records.items("d-blank-first|src|1")).extracting(IngestedItem::itemKey).containsExactly("B-2");
     }
 
     @Test
@@ -1081,6 +1162,15 @@ class EditionDiffTest {
                 List.of(new MappedEntity("Base", "code",
                         List.of(new MappedAttribute("title", "t1", "from1", "to1", null, null, null, null),
                                 new MappedAttribute("title", "t2", "from2", "to2", null, null, null, null)))),
+                List.of());
+    }
+
+    /** 제목은 유효기간을 열에서 읽고 수는 읽지 않는 매핑. 열: code, title, from, to, count. */
+    private static MappingDefinition datedWithCount() {
+        return new MappingDefinition("src", MappingFileFormat.CSV, null, null, List.of(), List.of("code"), BASE_BY_CODE,
+                List.of(new MappedEntity("Base", "code",
+                        List.of(new MappedAttribute("title", "title", "from", "to", null, null, null, null),
+                                new MappedAttribute("count", "count", null, null, null, null, null, null)))),
                 List.of());
     }
 

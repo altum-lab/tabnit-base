@@ -29,4 +29,14 @@ record TableFile(List<String> columns, List<TableRow> rows, List<SkippedRow> ski
         }
         return row.values().get(index);
     }
+
+    /** 그 행에서 그 열의 칸이 값을 읽지 못한 칸이면 그 이유를 돌려준다. 아니면 null 이다. */
+    UnreadableCell unreadable(TableRow row, String column) {
+        return row.unreadable().get(columns.indexOf(column));
+    }
+
+    /** 그 행에서 그 열의 칸이 파일이 형식을 아는 칸인가 (엑셀의 수, 날짜, 참·거짓). 그러면 값이 표준 표기다. */
+    boolean typed(TableRow row, String column) {
+        return row.typed().contains(columns.indexOf(column));
+    }
 }

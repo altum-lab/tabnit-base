@@ -113,12 +113,19 @@ public class MappingExecutor {
             .findFirst()
             .orElseThrow(() -> new IllegalArgumentException("Pack " + pack.packId() + " 에 입력 자료 " + inputSourceId
                     + " 의 매핑이 없습니다. 입력 자료의 식별자를 확인하세요."));
-        if (mapping.fileFormat() != MappingFileFormat.CSV) {
-            throw new TableFileRejectedException("UNSUPPORTED_FORMAT",
-                    "입력 자료 " + inputSourceId + " 은(는) 엑셀 파일로 받게 되어 있습니다. 엑셀 파일은 아직 읽지 못합니다. CSV 로 받는 매핑을 쓰세요.");
+        TreeSet<String> used = usedColumns(mapping);
+        TableFile file;
+        if (mapping.fileFormat() == MappingFileFormat.XLSX) {
+            file = XlsxTableReader.read(content, mapping.sheetName());
         }
-        TableFile file = CsvTableReader.read(content);
-        requireColumns(mapping, file);
+        else {
+            if (looksLikeZip(content)) {
+                throw new TableFileRejectedException("NOT_CSV", "입력 자료 " + inputSourceId
+                        + " 은(는) CSV 파일로 받게 되어 있는데 엑셀 파일이 왔습니다. CSV 로 저장해 다시 넣으세요.");
+            }
+            file = CsvTableReader.read(content);
+        }
+        requireColumns(used, file);
         return new EditionPlanner(pack, mapping, file, new Provenance(inputSourceId, editionNo), effectiveDate,
                 previousItems, attributeValueQuery::valuesInEffectFrom).plan();
     }
@@ -154,8 +161,8 @@ public class MappingExecutor {
         }
     }
 
-    /** 매핑이 쓰는 열과 반드시 있어야 하는 열이 모두 파일에 있는지 본다 (D2 AD-174). */
-    private static void requireColumns(MappingDefinition mapping, TableFile file) {
+    /** 매핑이 쓰는 열. 글자 코드 순이다. */
+    private static TreeSet<String> usedColumns(MappingDefinition mapping) {
         TreeSet<String> needed = new TreeSet<>(LinkOrder.STRINGS);
         needed.addAll(mapping.requiredColumns());
         needed.addAll(mapping.itemKeyColumns());
@@ -174,6 +181,16 @@ public class MappingExecutor {
             addIfPresent(needed, relation.validFromColumn());
             addIfPresent(needed, relation.validToColumn());
         }
+        return needed;
+    }
+
+    /** xlsx 는 zip 이다. zip 의 머리로 시작하는 파일은 CSV 가 아니다. */
+    private static boolean looksLikeZip(byte[] content) {
+        return content.length >= 4 && content[0] == 'P' && content[1] == 'K' && content[2] == 3 && content[3] == 4;
+    }
+
+    /** 매핑이 쓰는 열과 반드시 있어야 하는 열이 모두 파일에 있는지 본다 (D2 AD-174). */
+    private static void requireColumns(TreeSet<String> needed, TableFile file) {
         List<String> missing = needed.stream().filter(column -> !file.hasColumn(column)).toList();
         if (!missing.isEmpty()) {
             throw new TableFileRejectedException("MISSING_COLUMN", String.join(", ", missing), "파일에 있어야 하는 열이 없습니다: "

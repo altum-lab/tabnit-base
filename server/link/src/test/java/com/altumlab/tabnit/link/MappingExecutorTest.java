@@ -440,13 +440,13 @@ class MappingExecutorTest {
     }
 
     @Test
-    void 엑셀_매핑과_없는_입력_자료는_받지_않는다() {
+    void 엑셀_매핑에_CSV_가_오거나_없는_입력_자료이면_받지_않는다() {
         MappingDefinition xlsx = new MappingDefinition("sheet", MappingFileFormat.XLSX, "자료", null, List.of(),
                 List.of("code"), BASE_BY_CODE, List.of(new MappedEntity("Base", "code", List.of())), List.of());
         PackDefinition pack = pack("x-format", xlsx);
 
         assertThat(catchThrowableOfType(TableFileRejectedException.class,
-                () -> run(pack, "sheet", 1, "code\nB-1\n")).code()).isEqualTo("UNSUPPORTED_FORMAT");
+                () -> run(pack, "sheet", 1, "code\nB-1\n")).code()).isEqualTo("NOT_XLSX");
         assertThatThrownBy(() -> run(pack, "nowhere", 1, "code\nB-1\n")).isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("nowhere");
     }

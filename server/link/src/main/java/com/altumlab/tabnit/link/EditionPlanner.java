@@ -376,9 +376,11 @@ final class EditionPlanner {
                 OutputDetail same = continued.get(i);
                 notices.add(new IngestNotice(attribute ? "ATTRIBUTE_CONFLICT" : "RELATION_CONFLICT",
                         statement.row().rowNo, attribute ? "CONFLICTING_VALUES" : "CONFLICTING_PERIODS",
+                        // 잇지 못한 줄은 적힌 글자 그대로 알린다: 시작일을 비운 줄은 읽은 기간이 적용일부터라
+                        // 종료일이 지났으면 끝이 시작보다 앞선 모양이 된다 (D2 AD-372).
                         statement.noticeSubject(), attribute ? statement.value()
-                                : (same == null ? statement.period()
-                                        : new Period(same.validFrom(), same.validTo())).shown()));
+                                : same == null ? statement.stated()
+                                        : new Period(same.validFrom(), same.validTo()).shown()));
             }
             // 앞 판의 것은 그대로 둔다. 다음 판이 다시 가릴 수 있게 누군가의 항목에 적혀 있어야 한다:
             // 앞 판에서 그것을 적었던 행에 이어 적고, 그런 행이 이 대상을 적은 행 가운데 없으면 적은 행 모두에 적는다.

@@ -924,12 +924,17 @@ class VerifyRunnerTest {
         Evaluator.Result result = askValues(VALUES_QUESTION, List.of());
 
         assertThat(result.passed()).as(result.reason() + "\n기대: " + result.expected() + "\n실제: " + result.actual()).isTrue();
-        // 값이 다르다, 없던 값이 있다고 적었다, 차례가 다르다: 실패다.
+        // 값이 다르다, 없던 값이 있다고 적었다, 속성의 이름이 다르다: 실패다.
         assertThat(askValues(VALUES_QUESTION.replace("after: \"0.7\"", "after: \"0.70\""), List.of()).passed()).isFalse();
         assertThat(askValues(VALUES_QUESTION.replace("before: null, after: \"새로 적음\"", "before: \"\", after: \"새로 적음\""), List.of())
             .passed()).isFalse();
         assertThat(askValues(VALUES_QUESTION.replace("attribute: limit, before: \"0.8\"", "attribute: zz, before: \"0.8\""), List.of())
             .passed()).isFalse();
+        // 항목은 같아도 차례가 다르면 실패다: 정답의 두 줄을 바꿔 적는다.
+        String first = "            - { entity: { type: TypeA, key: k-1 }, attribute: limit, before: \"0.8\", after: \"0.7\" }\n";
+        String second = "            - { entity: { type: TypeA, key: k-1 }, attribute: note, before: null, after: \"새로 적음\" }\n";
+        assertThat(VALUES_QUESTION).contains(first + second);
+        assertThat(askValues(VALUES_QUESTION.replace(first + second, second + first), List.of()).passed()).isFalse();
         // 제품이 바뀐 값이 하나 더 있다고 답하면 실패다.
         assertThat(askValues(VALUES_QUESTION, List.of(value("p|TypeA|k-3", "limit", "1", "2"))).passed()).isFalse();
     }
@@ -943,6 +948,23 @@ class VerifyRunnerTest {
         assertThat(unknown).isNotEqualTo(VALUES_QUESTION);
         assertThat(askValues(unknown, null).passed()).isTrue();
         assertThat(askValues(unknown, List.of()).passed()).isFalse();
+    }
+
+    @Test
+    void 제품의_답에_바뀐_값의_항목이_아예_없으면_모른다는_답으로_보지_않고_실패로_알린다() throws IOException {
+        // 정답은 셋째 변동의 바뀐 값을 모른다(null)고 적었다. 제품은 그 항목을 아예 주지 않았다.
+        String unknown = VALUES_QUESTION.replace("          changedValues: []", "          changedValues: null");
+        QuestionFile file = QuestionFile.read(write("S-values-missing.yaml", SCENARIO
+                + "    - { step: 3, inputSource: src-a, file: data/a-v3.csv, effectiveDate: 2026-06-01 }\n" + unknown));
+        Map<Integer, Product.Reply> steps = stepsWithValues(null);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> changes = (List<Map<String, Object>>) ((Map<String, Object>) steps.get(3).body()).get("changes");
+        changes.get(2).remove("changedValues");
+
+        Evaluator.Result result = new Evaluator(PACK, new FakeProduct()).evaluate(file, steps).get(0);
+
+        assertThat(result.passed()).isFalse();
+        assertThat(result.reason()).contains("changedValues").contains("k-3");
     }
 
     @Test
@@ -967,7 +989,10 @@ class VerifyRunnerTest {
             assertThat(result.passed()).isFalse();
             assertThat(result.reason()).contains("changedValues");
         });
-        // 개체나 속성이 빠진 바뀐 값.
+        // 개체가 빠진 바뀐 값도 형식이 틀린 것이다.
+        assertThat(askValues(VALUES_QUESTION.replace("{ entity: { type: TypeA, key: k-2 }, attribute: limit", "{ attribute: limit"),
+                List.of()).passed()).isFalse();
+        // 속성이 빠진 바뀐 값.
         assertThat(askValues(VALUES_QUESTION.replace("attribute: note, ", ""), List.of())).satisfies(result -> {
             assertThat(result.passed()).isFalse();
             assertThat(result.reason()).contains("attribute");

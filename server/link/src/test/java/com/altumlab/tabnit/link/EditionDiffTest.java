@@ -509,6 +509,55 @@ class EditionDiffTest {
             .containsExactly(tuple("B-3", ChangeKind.ADDED, List.of(new ValueChange("d-blank-new|Base|B-3", "count", null, "3"))));
     }
 
+    // 고친 것의 검토에서 나온 경우를 시험으로 고정한다 (C-10).
+    @Test
+    void 시작일을_비운_행의_종료일을_아직_오지_않은_날에서_지난_날로_당기면_판_전체를_거부한다() {
+        PackDefinition pack = pack("d-blank-pull", datedWithCount());
+        String header = "code,title,from,to,count\n";
+        // 첫 판: [2026-03-01, 2026-09-01) 로 저장된다.
+        put(pack, 1, D1, header + "B-1,이름,,2026-09-01,1\n");
+
+        // 둘째 판(적용일 2026-06-01): 종료일을 2026-05-01 로 당겼다. 저장된 값은 2026-09-01 에 끝나기로 되어 있고
+        // 한 번 넣은 종료일은 바꾸지 않으므로 (D2 AD-162, AD-198) 당겨 끝낼 수 없다. 시작일을 적은 행과 같다.
+        IngestResult second = put(pack, 2, D2, header + "B-1,이름,,2026-05-01,1\n");
+
+        assertThat(second.outcome()).isEqualTo(IngestOutcome.REJECTED);
+        assertThat(second.reasonCode()).isEqualTo("CANNOT_END");
+        assertThat(records.findEdition("d-blank-pull|src|2")).isEmpty();
+        assertThat(titleAt("d-blank-pull|Base|B-1", LocalDate.parse("2026-08-31"))).isEqualTo("이름");
+    }
+
+    @Test
+    void 종료일이_판의_적용일과_같은_날인_시작일_빈_칸의_줄도_이미_지난_것이다() {
+        PackDefinition pack = pack("d-blank-edge", datedWithCount());
+        String header = "code,title,from,to,count\n";
+        // 종료일이 둘째 판의 적용일(2026-06-01)과 같다: 종료일은 제외이므로 그날에는 유효하지 않다.
+        put(pack, 1, D1, header + "B-1,이름,,2026-06-01,1\n");
+
+        IngestResult second = put(pack, 2, D2, header + "B-1,이름,,2026-06-01,2\n");
+
+        assertThat(second.outcome()).isEqualTo(IngestOutcome.ACCEPTED);
+        assertThat(second.mapping().notices()).isEmpty();
+        assertThat(titleAt("d-blank-edge|Base|B-1", D2.minusDays(1))).isEqualTo("이름");
+        assertThat(titleAt("d-blank-edge|Base|B-1", D2)).isNull();
+        assertThat(records.changeEvents("d-blank-edge|src|2").get(0).changedValues())
+            .containsExactly(new ValueChange("d-blank-edge|Base|B-1", "count", "1", "2"));
+    }
+
+    @Test
+    void 지난_기간의_값의_칸을_비우면_저장된_것은_그대로여도_그_행이_더는_적지_않으므로_변동이다() {
+        PackDefinition pack = pack("d-past-blank", dated());
+        put(pack, 1, D1, "code,title,from,to\nB-1,옛 이름,2025-01-01,2026-01-01\n");
+
+        // 값을 고친 것과 다르다: 칸을 비우면 그 행은 그 속성을 더는 적지 않는다. 지난 값은 저장소에 그대로 남는다.
+        put(pack, 2, D2, "code,title,from,to\nB-1,,2025-01-01,2026-01-01\n");
+
+        assertThat(values.valueAsOf("d-past-blank|Base|B-1", "title", LocalDate.parse("2025-06-01")).orElseThrow().value())
+            .isEqualTo("옛 이름");
+        assertThat(records.changeEvents("d-past-blank|src|2")).extracting(ChangeEvent::kind, ChangeEvent::changedValues)
+            .containsExactly(tuple(ChangeKind.CHANGED, List.of(new ValueChange("d-past-blank|Base|B-1", "title", "옛 이름", null))));
+    }
+
     @Test
     void 첫_판에서_시작일을_비우고_적용일보다_앞선_종료일을_적은_행은_기간이_틀린_것이라_건너뛴다() {
         PackDefinition pack = pack("d-blank-first", datedWithCount());

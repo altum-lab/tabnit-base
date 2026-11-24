@@ -250,6 +250,10 @@ final class Evaluator {
             row.put("itemKey", change.get("itemKey"));
             row.put("kind", change.get("kind"));
             if (values) {
+                // 모른다(null)는 항목이 있고 값이 비어 있는 것이다. 항목이 아예 없는 답은 모른다가 아니라 빠진 것이다.
+                if (!change.containsKey("changedValues")) {
+                    throw new Failure("제품의 답에 바뀐 값(changedValues)이 없습니다: 항목 " + change.get("itemKey"));
+                }
                 row.put("changedValues", actualValues(change.get("changedValues")));
             }
             actual.add(row);

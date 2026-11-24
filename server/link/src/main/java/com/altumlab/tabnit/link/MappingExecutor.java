@@ -116,6 +116,10 @@ public class MappingExecutor {
         TreeSet<String> used = usedColumns(mapping);
         TableFile file;
         if (mapping.fileFormat() == MappingFileFormat.XLSX) {
+            if (mapping.sheetName() == null) {
+                throw new IllegalArgumentException("Pack " + pack.packId() + " 의 입력 자료 " + inputSourceId
+                        + " 은(는) 엑셀로 받는데 매핑에 읽을 시트의 이름이 없습니다. 매핑에 tabnit:sheetName 을 적고 Pack 을 다시 적재하세요.");
+            }
             file = XlsxTableReader.read(content, mapping.sheetName());
         }
         else {

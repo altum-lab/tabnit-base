@@ -154,7 +154,9 @@ final class XlsxTableReader {
             // 라이브러리는 파일의 모양이 틀린 것을 여러 종류의 예외로 알린다. 어느 것이든 이 파일을 엑셀로 읽지 못한 것이다.
             // 원인은 사람에게 보이는 문구에 넣지 않고 서버의 기록에 남긴다: 투입 기록에는 코드만 남으므로, 여기서 남기지
             // 않으면 이 코드의 결함으로 읽지 못한 것과 파일이 틀린 것을 가릴 수 없다.
-            LOG.log(System.Logger.Level.WARNING, "엑셀 파일을 읽지 못해 거부한다 (NOT_XLSX)", e);
+            // 예외의 문구에는 올린 파일의 글자가 들어 있을 수 있다. 통째로 남기지 않고 종류와, 자르고 씻은 문구만 남긴다:
+            // 줄바꿈이 든 값으로 기록에 지어낸 줄을 만들거나, 매우 긴 값으로 기록을 불리지 못하게 한다.
+            LOG.log(System.Logger.Level.WARNING, "엑셀 파일을 읽지 못해 거부한다 (NOT_XLSX). 원인: {0}", causes(e));
             TableFileRejectedException rejected = new TableFileRejectedException("NOT_XLSX",
                     "엑셀(xlsx) 파일로 읽을 수 없습니다. 옛 형식(xls), CSV, 암호가 걸린 파일은 받지 않습니다."
                             + " 엑셀에서 \"Excel 통합 문서(.xlsx)\"로 암호 없이 저장해 다시 넣으세요.");
@@ -402,6 +404,32 @@ final class XlsxTableReader {
         return found[0];
     }
 
+    /** 예외와 그 원인을 종류와 짧은 문구로 적는다. 다섯 겹까지다. 줄바꿈 같은 제어 글자는 물음표로 바꾼다. */
+    private static String causes(Throwable e) {
+        StringBuilder text = new StringBuilder();
+        int depth = 0;
+        for (Throwable cause = e; cause != null && depth < 5; cause = cause.getCause(), depth++) {
+            if (depth > 0) {
+                text.append(" <- ");
+            }
+            text.append(cause.getClass().getName());
+            String message = cause.getMessage();
+            if (message != null) {
+                text.append(": ");
+                String shown = brief(message);
+                for (int i = 0; i < shown.length(); i++) {
+                    char c = shown.charAt(i);
+                    text.append(Character.isISOControl(c) || c == '\u2028' || c == '\u2029' ? '?' : c);
+                }
+            }
+            StackTraceElement[] stack = cause.getStackTrace();
+            if (stack.length > 0) {
+                text.append(" (").append(stack[0]).append(')');
+            }
+        }
+        return text.toString();
+    }
+
     /** 문구와 알림에 싣는 글자를 자른다. */
     private static String brief(String text) {
         return text.length() <= MAX_DETAIL_CHARS ? text : text.substring(0, MAX_DETAIL_CHARS) + "…";
@@ -551,7 +579,8 @@ final class XlsxTableReader {
             if (into == null || tooLong) {
                 return;
             }
-            if (into.length() + length > MAX_CELL_CHARS) {
+            // 풀기 전의 글자로 센다. 적는 법(_x000D_)은 글자 하나를 일곱 자로 적으므로 그만큼 넉넉히 받고, 푼 뒤에 다시 본다.
+            if (into.length() + length > 7 * MAX_CELL_CHARS) {
                 // 엑셀의 칸에 들 수 없는 길이다. 더 모으지 않는다.
                 tooLong = true;
                 return;
@@ -621,12 +650,7 @@ final class XlsxTableReader {
                         catch (RuntimeException e) {
                             throw new SAXException("공유 문자열에 없는 자리를 가리키는 칸이 있습니다: " + raw, e);
                         }
-                        if (shared.length() > MAX_CELL_CHARS) {
-                            row.put(column, null, CELL_ERROR);
-                        }
-                        else {
-                            text(shared);
-                        }
+                        text(shared);
                     }
                 }
                 // 공유 문자열은 라이브러리가 적는 법(_x000D_ 같은 것)을 풀어 준다. 칸에 바로 적힌 글자도 같게 푼다.
@@ -686,6 +710,10 @@ final class XlsxTableReader {
         }
 
         private void text(String written) {
+            if (written.length() > MAX_CELL_CHARS) {
+                row.put(column, null, CELL_ERROR);
+                return;
+            }
             String normalized = CsvTableReader.trim(written.replace("\r\n", "\n").replace('\r', '\n'));
             if (!normalized.isEmpty()) {
                 row.put(column, normalized, TEXT);
@@ -727,8 +755,11 @@ final class XlsxTableReader {
                         row.put(column, null, CELL_ERROR);
                         return;
                     }
-                    // 반올림해 다음 날이 된 값(0.9999999)도 날짜가 있는 것으로 본다.
-                    row.put(column, shown(at, Math.floor(serial + 0.5 / 86_400) >= 1), TYPED);
+                    // 반올림해 다음 날이 된 값(0.9999999)도 날짜가 있는 것으로 본다. 날짜를 1904년부터 세는 파일의 0 은
+                    // 1904-01-01 이라는 날짜다 (1900년부터 세는 파일의 0 은 없는 날이다).
+                    boolean hasDate = Math.floor(serial + 0.5 / 86_400) >= 1
+                            || (date1904 && at.toLocalTime().equals(LocalTime.MIDNIGHT));
+                    row.put(column, shown(at, hasDate), TYPED);
                     return;
                 }
             }

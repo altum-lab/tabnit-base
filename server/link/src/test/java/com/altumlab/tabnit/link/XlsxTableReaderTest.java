@@ -192,6 +192,25 @@ class XlsxTableReaderTest {
     }
 
     @Test
+    void 날짜를_1904년부터_세는_파일의_0_은_날짜이고_1_보다_작은_나머지는_시각이다() {
+        byte[] content = XlsxFiles.workbook(wb -> {
+            (wb.getCTWorkbook().isSetWorkbookPr() ? wb.getCTWorkbook().getWorkbookPr()
+                    : wb.getCTWorkbook().addNewWorkbookPr()).setDate1904(true);
+            Sheet sheet = wb.createSheet("s");
+            strings(sheet, 0, "code", "since");
+            for (int i = 0; i < 2; i++) {
+                Cell cell = sheet.createRow(i + 1).createCell(1);
+                cell.setCellValue(i * 0.5);
+                cell.setCellStyle(style(wb, 14, null));
+            }
+        });
+
+        TableFile file = XlsxTableReader.read(content, "s");
+
+        assertThat(file.rows()).extracting(row -> row.values().get(1)).containsExactly("1904-01-01", "12:00:00");
+    }
+
+    @Test
     void 한국어_엑셀에_들어_있는_날짜_서식의_칸도_날짜로_읽는다() {
         byte[] content = XlsxFiles.workbook(wb -> {
             Sheet sheet = wb.createSheet("s");
@@ -651,6 +670,23 @@ class XlsxTableReaderTest {
     }
 
     @Test
+    void 적는_법을_풀기_전에는_한도보다_길어도_푼_뒤가_한도_안이면_읽는다() {
+        // 줄바꿈 2만 개를 _x000D_ 로 적으면 14만 자다. 풀면 2만 자에 앞뒤의 글자다.
+        String written = "가" + "_x000D_".repeat(20_000) + "나";
+        byte[] content = XlsxFiles.handWritten("s", new String[] { "code", written },
+                "<row r=\"1\"><c r=\"A1\" t=\"s\"><v>0</v></c></row>"
+                        + "<row r=\"2\"><c r=\"A2\" t=\"inlineStr\"><is><t>" + written + "</t></is></c></row>"
+                        + "<row r=\"3\"><c r=\"A3\" t=\"s\"><v>1</v></c></row>");
+
+        TableFile file = XlsxTableReader.read(content, "s");
+
+        assertThat(file.rows()).hasSize(2).allSatisfy(row -> {
+            assertThat(file.unreadable(row, "code")).isNull();
+            assertThat(row.values().get(0)).hasSize(20_002).startsWith("가\n").endsWith("\n나");
+        });
+    }
+
+    @Test
     void 시트의_자료_밖에_있는_같은_이름의_원소는_행이나_칸으로_읽지_않는다() {
         // 양식 컨트롤(단추 등)을 넣은 시트는 자료의 뒤에 그 자리를 row 와 col 이라는 이름으로 적는다.
         // 시트의 마지막 행에 서식이 걸려 있으면 그 뒤의 row 가 범위 밖이 되어 파일 전체가 거부됐다.
@@ -681,6 +717,45 @@ class XlsxTableReaderTest {
         assertThat(file.rows()).containsExactly(new TableRow(2, List.of("첫 줄\n둘째 줄", "첫 줄\n둘째 줄")),
                 new TableRow(3, List.of("첫 줄\n둘째 줄", ""), Set.of(),
                         Map.of(1, new UnreadableCell("FORMULA_WITHOUT_RESULT", null))));
+    }
+
+    @Test
+    void 거부할_때_서버의_기록에는_파일의_글자를_자르고_줄바꿈을_지워_남긴다() {
+        // 행의 자리에 줄바꿈과 지어낸 기록의 줄, 그리고 매우 긴 글자를 넣은 파일.
+        byte[] content = XlsxFiles.handWritten("s", new String[] { "code" },
+                "<row r=\"x&#10;2026-01-01 관리자 로그인 성공 " + "가".repeat(5_000) + "\"><c t=\"s\"><v>0</v></c></row>");
+        List<String> logged = new java.util.ArrayList<>();
+        java.util.logging.Logger logger = java.util.logging.Logger.getLogger(XlsxTableReader.class.getName());
+        java.util.logging.Handler handler = new java.util.logging.Handler() {
+
+            @Override
+            public void publish(java.util.logging.LogRecord record) {
+                logged.add(new java.util.logging.SimpleFormatter().formatMessage(record));
+                assertThat(record.getThrown()).isNull();
+            }
+
+            @Override
+            public void flush() {
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+        logger.addHandler(handler);
+        try {
+            TableFileRejectedException e = catchThrowableOfType(TableFileRejectedException.class,
+                    () -> XlsxTableReader.read(content, "s"));
+
+            assertThat(e.code()).isEqualTo("NOT_XLSX");
+        }
+        finally {
+            logger.removeHandler(handler);
+        }
+        assertThat(logged).singleElement().satisfies(line -> {
+            assertThat(line).contains("NOT_XLSX").contains("SAXException").doesNotContain("\n").doesNotContain("\r");
+            assertThat(line.length()).isLessThan(1_500);
+        });
     }
 
     // ── 엑셀이 저장하는 모양 ───────────────────────────────────────

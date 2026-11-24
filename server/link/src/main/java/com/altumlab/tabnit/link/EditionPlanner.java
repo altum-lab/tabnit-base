@@ -376,9 +376,11 @@ final class EditionPlanner {
                 OutputDetail same = continued.get(i);
                 notices.add(new IngestNotice(attribute ? "ATTRIBUTE_CONFLICT" : "RELATION_CONFLICT",
                         statement.row().rowNo, attribute ? "CONFLICTING_VALUES" : "CONFLICTING_PERIODS",
+                        // 잇지 못한 줄은 적힌 글자 그대로 알린다: 시작일을 비운 줄은 읽은 기간이 적용일부터라
+                        // 종료일이 지났으면 끝이 시작보다 앞선 모양이 된다 (D2 AD-372).
                         statement.noticeSubject(), attribute ? statement.value()
-                                : (same == null ? statement.period()
-                                        : new Period(same.validFrom(), same.validTo())).shown()));
+                                : same == null ? statement.stated()
+                                        : new Period(same.validFrom(), same.validTo()).shown()));
             }
             // 앞 판의 것은 그대로 둔다. 다음 판이 다시 가릴 수 있게 누군가의 항목에 적혀 있어야 한다:
             // 앞 판에서 그것을 적었던 행에 이어 적고, 그런 행이 이 대상을 적은 행 가운데 없으면 적은 행 모두에 적는다.
@@ -452,6 +454,22 @@ final class EditionPlanner {
                 }
             }
             if (past) {
+                // 넣지 않는다. 저장된 것이 바뀌지 않으므로 변동도 만들지 않는다 (D2 AD-201, AD-372): 그 행이 앞 판에서
+                // 적었던, 이미 지난 기간의 것은 그대로 남으므로 그 행이 만든 것으로 이어 적는다. 열려 있어 이 판에서
+                // 끝나는 것은 이어 적지 않는다: 그것은 실제로 바뀐 것이다.
+                for (Statement statement : same) {
+                    PreviousItem before = previous.get(statement.row().itemKey);
+                    if (before == null) {
+                        continue;
+                    }
+                    for (OutputDetail detail : before.outputs()) {
+                        if (detail.kind() == statement.kind() && detail.subject().equals(statement.subject())
+                                && live.containsKey(detail.objectId()) && detail.validTo() != null
+                                && !detail.validTo().isAfter(effectiveDate)) {
+                            statement.row().made(detail);
+                        }
+                    }
+                }
                 continue;
             }
             // 저장소에 이미 있는 값 가운데 이 입력 자료의 앞 판이 넣은 것이 아닌 것 (다른 입력 자료가 넣었거나 앞앞 판에서
@@ -795,7 +813,13 @@ final class EditionPlanner {
         LocalDate to = date(row, toColumn);
         Period period = new Period(from == null ? effectiveDate : from, to);
         if (to != null && !to.isAfter(period.from())) {
-            throw new RowSkipped(row.rowNo(), "INVALID_PERIOD", toColumn, period.shown());
+            // 시작일을 비운 행의 종료일이 이 판의 적용일과 같거나 앞이다. 둘째 판부터는 기간이 틀린 것이 아니라 이미 지난
+            // 것이다: 빈 시작일은 판마다 그 판의 적용일로 읽히므로, 종료일이 지난 뒤의 판에서는 언제나 이렇게 된다.
+            // 행을 건너뛰지 않는다. 앞 판과 같은 줄이면 그대로 이어지고, 새 줄이면 그 값만 넣지 않고 알린다
+            // (D5 5절, D2 AD-200, AD-372). 첫 판과, 시작일을 적은 행은 적힌 기간이 정말 틀린 것이다.
+            if (from != null || previous == null) {
+                throw new RowSkipped(row.rowNo(), "INVALID_PERIOD", toColumn, period.shown());
+            }
         }
         return period;
     }

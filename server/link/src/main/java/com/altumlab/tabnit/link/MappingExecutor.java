@@ -59,6 +59,9 @@ public class MappingExecutor {
      * 파일 하나를 앞 판 없이 매핑에 따라 넣는다. 모두 새로 넣는다. 실행 하나는 트랜잭션 하나다.
      * 판으로 남기고 앞 판과 비교하는 투입은 {@link EditionIngest} 가 한다.
      *
+     * <p>이 모듈 안에서만 부른다 (D2 AD-372): 판과 원본과 투입 기록을 남기지 않고 바로 적재하는 길이라, 밖에서 부르면
+     * "원본을 보관하지 못하면 적재도 하지 않는다"를 비켜 간다. 밖에서는 {@link EditionIngest} 로만 넣는다.
+     *
      * @param pack Pack 의 정의. 매핑과 속성의 형식을 여기서 읽는다
      * @param inputSourceId 입력 자료의 식별자. 이 Pack 의 매핑 가운데 하나여야 한다
      * @param content 파일의 바이트
@@ -69,7 +72,7 @@ public class MappingExecutor {
      * @throws TableFileRejectedException 파일 수준의 문제로 파일 전체를 거부했을 때
      * @throws MappingExecutionException 저장소가 받지 않았을 때. 이 실행에서 넣은 것은 남지 않는다
      */
-    public MappingOutcome execute(PackDefinition pack, String inputSourceId, byte[] content, int editionNo,
+    MappingOutcome execute(PackDefinition pack, String inputSourceId, byte[] content, int editionNo,
             LocalDate effectiveDate, Instant recordedAt) {
         Objects.requireNonNull(recordedAt, "기록한 때는 반드시 있어야 합니다");
         EditionPlan plan;

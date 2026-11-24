@@ -7,6 +7,7 @@
 # 담은 것: 시나리오의 모든 변동의 영향 범위 (X-I), 모든 개체의 경계 날짜의 관계 (X-R: 그 개체의 관계가 시작하거나 끝나는
 # 날과 그 전날, 그리고 현재), 모든 개체의 현재의 관계 지도 깊이 1 과 유형마다 한 개체의 깊이 2, 3 (X-M).
 # 모든 변동의 조치 (X-A: 근거 규칙, 우선순위, 대상, 기한, 근거 조항과 그 판).
+# 모든 단계의 바뀐 항목과 바뀐 값 (X-C: 항목의 키, 추가·변경·삭제, 속성마다 이전 값과 새 값).
 
 scenario: S-01
 checks:
@@ -434,6 +435,220 @@ checks:
       countsByType: { 공정설비: 4, 작업인원: 9, 제조공정: 2, 화학물질: 1 }
       countsByDepth: { 1: 1, 2: 2, 3: 13 }
       truncated: true
+  - id: X-C-0001
+    kind: changes
+    step: 1
+    expect:
+      changes: []
+  - id: X-C-0002
+    kind: changes
+    step: 2
+    expect:
+      changes: []
+  - id: X-C-0003
+    kind: changes
+    step: 3
+    expect:
+      changes: []
+  - id: X-C-0004
+    kind: changes
+    step: 4
+    expect:
+      changes: []
+  - id: X-C-0005
+    kind: changes
+    step: 5
+    expect:
+      changes: []
+  - id: X-C-0006
+    kind: changes
+    step: 6
+    expect:
+      changes: []
+  - id: X-C-0007
+    kind: changes
+    step: 7
+    expect:
+      changes: []
+  - id: X-C-0008
+    kind: changes
+    step: 8
+    expect:
+      changes: []
+  - id: X-C-0009
+    kind: changes
+    step: 9
+    expect:
+      changes: []
+  - id: X-C-0010
+    kind: changes
+    step: 10
+    expect:
+      changes: []
+  - id: X-C-0011
+    kind: changes
+    step: 11
+    expect:
+      changes: []
+  - id: X-C-0012
+    kind: changes
+    step: 12
+    expect:
+      changes: []
+  - id: X-C-0013
+    kind: changes
+    step: 13
+    expect:
+      changes: []
+  - id: X-C-0014
+    kind: changes
+    step: 14
+    expect:
+      changes: []
+  - id: X-C-0015
+    kind: changes
+    step: 15
+    expect:
+      changes: []
+  - id: X-C-0016
+    kind: changes
+    step: 16
+    expect:
+      changes: []
+  - id: X-C-0017
+    kind: changes
+    step: 17
+    expect:
+      changes: []
+  - id: X-C-0018
+    kind: changes
+    step: 18
+    expect:
+      changes: []
+  - id: X-C-0019
+    kind: changes
+    step: 19
+    expect:
+      changes: []
+  - id: X-C-0020
+    kind: changes
+    step: 20
+    expect:
+      changes: []
+  - id: X-C-0021
+    kind: changes
+    step: 21
+    expect:
+      changes:
+        - itemKey: [SDS-01]
+          kind: changed
+          changedValues:
+            - { entity: { type: 물질안전자료, key: SDS-01 }, attribute: 유해성구분, before: "급성독성 구분3", after: "급성독성 구분2" }
+            - { entity: { type: 물질안전자료, key: SDS-01 }, attribute: 자료개정일, before: "2025-01-15", after: "2026-09-02" }
+            - { entity: { type: 물질안전자료, key: SDS-01 }, attribute: 자료특별관리, before: "false", after: "true" }
+            - { entity: { type: 물질안전자료, key: SDS-01 }, attribute: 자료판번호, before: "6", after: "7" }
+        - itemKey: [SDS-04]
+          kind: changed
+          changedValues:
+            - { entity: { type: 물질안전자료, key: SDS-04 }, attribute: 노출기준값, before: "0.2", after: "0.1" }
+            - { entity: { type: 물질안전자료, key: SDS-04 }, attribute: 자료개정일, before: "2025-04-15", after: "2026-09-02" }
+            - { entity: { type: 물질안전자료, key: SDS-04 }, attribute: 자료판번호, before: "6", after: "7" }
+  - id: X-C-0022
+    kind: changes
+    step: 22
+    expect:
+      changes:
+        - itemKey: [W-1003]
+          kind: changed
+          changedValues: []
+        - itemKey: [W-1024]
+          kind: changed
+          changedValues:
+            - { entity: { type: 작업인원, key: W-1024 }, attribute: 교육이수일, before: "2025-01-22", after: "2026-09-25" }
+        - itemKey: [W-1038]
+          kind: changed
+          changedValues:
+            - { entity: { type: 작업인원, key: W-1038 }, attribute: 교육이수일, before: "2025-03-14", after: "2026-09-15" }
+        - itemKey: [W-1039]
+          kind: changed
+          changedValues:
+            - { entity: { type: 작업인원, key: W-1039 }, attribute: 교육이수일, before: "2025-10-25", after: "2026-09-14" }
+        - itemKey: [W-1052]
+          kind: removed
+          changedValues:
+            - { entity: { type: 작업인원, key: W-1052 }, attribute: 교육이수일, before: "2025-05-06", after: null }
+            - { entity: { type: 작업인원, key: W-1052 }, attribute: 인원역할, before: "파트장", after: null }
+            - { entity: { type: 작업인원, key: W-1052 }, attribute: 인원이름, before: "누리 3", after: null }
+        - itemKey: [W-1061]
+          kind: added
+          changedValues:
+            - { entity: { type: 작업인원, key: W-1061 }, attribute: 교육이수일, before: null, after: "2026-09-20" }
+            - { entity: { type: 작업인원, key: W-1061 }, attribute: 인원역할, before: null, after: "운전원" }
+            - { entity: { type: 작업인원, key: W-1061 }, attribute: 인원이름, before: null, after: "가람 4" }
+  - id: X-C-0023
+    kind: changes
+    step: 23
+    expect:
+      changes:
+        - itemKey: [나-세정-03]
+          kind: changed
+          changedValues:
+            - { entity: { type: 제조공정, key: 나-세정-03 }, attribute: 공정상태, before: "계획", after: "운영" }
+  - id: X-C-0024
+    kind: changes
+    step: 24
+    expect:
+      changes:
+        - itemKey: [나-세정-03-E1]
+          kind: changed
+          changedValues:
+            - { entity: { type: 공정설비, key: 나-세정-03-E1 }, attribute: 설비상태, before: "계획", after: "운영" }
+        - itemKey: [나-세정-03-E2]
+          kind: changed
+          changedValues:
+            - { entity: { type: 공정설비, key: 나-세정-03-E2 }, attribute: 설비상태, before: "계획", after: "운영" }
+        - itemKey: [나-세정-03-E3]
+          kind: changed
+          changedValues:
+            - { entity: { type: 공정설비, key: 나-세정-03-E3 }, attribute: 설비상태, before: "계획", after: "운영" }
+        - itemKey: [나-세정-03-E4]
+          kind: changed
+          changedValues:
+            - { entity: { type: 공정설비, key: 나-세정-03-E4 }, attribute: 설비상태, before: "계획", after: "운영" }
+  - id: X-C-0025
+    kind: changes
+    step: 25
+    expect:
+      changes:
+        - itemKey: [MAT-02]
+          kind: changed
+          changedValues:
+            - { entity: { type: 화학물질, key: MAT-02 }, attribute: 물질명칭, before: "암모니아수", after: "암모니아수 (희석)" }
+  - id: X-C-0026
+    kind: changes
+    step: 26
+    expect:
+      changes:
+        - itemKey: [다-세정-01, MAT-01]
+          kind: removed
+          changedValues: []
+  - id: X-C-0027
+    kind: changes
+    step: 27
+    expect:
+      changes:
+        - itemKey: [SDS-01]
+          kind: changed
+          changedValues:
+            - { entity: { type: 물질안전자료, key: SDS-01 }, attribute: 유해성구분, before: "급성독성 구분2", after: "급성독성 구분1" }
+            - { entity: { type: 물질안전자료, key: SDS-01 }, attribute: 자료개정일, before: "2026-09-02", after: "2026-11-20" }
+            - { entity: { type: 물질안전자료, key: SDS-01 }, attribute: 자료판번호, before: "7", after: "8" }
+        - itemKey: [SDS-06]
+          kind: changed
+          changedValues:
+            - { entity: { type: 물질안전자료, key: SDS-06 }, attribute: 유해성구분, before: "인화성 가스 구분1", after: "인화성 가스 구분1, 자연발화성" }
+            - { entity: { type: 물질안전자료, key: SDS-06 }, attribute: 자료개정일, before: "2025-06-15", after: "2026-09-15" }
+            - { entity: { type: 물질안전자료, key: SDS-06 }, attribute: 자료판번호, before: "4", after: "6" }
   - id: X-A-0001
     kind: actions
     change: { step: 21, itemKey: [SDS-01] }

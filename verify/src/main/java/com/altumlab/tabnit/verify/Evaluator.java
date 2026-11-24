@@ -219,23 +219,85 @@ final class Evaluator {
         return QuestionFile.integer(question.body().get("depth"), "질문 " + question.id() + " 의 depth (깊이)");
     }
 
+    /**
+     * 변동: 바뀐 항목(키와 종류)을 견준다. 정답의 항목에 바뀐 값(changedValues)을 적었으면 속성마다의 이전 값과
+     * 새 값도 제품이 준 차례로 견준다 (D2 AD-372). 적지 않은 정답은 전과 같이 키와 종류만 본다.
+     */
     private Object[] changes(QuestionFile.Question question, Map<Integer, Product.Reply> steps) {
         List<Object> expected = new ArrayList<>();
+        int withValues = 0;
+        int items = 0;
         for (Object item : list(expect(question).get("changes"), question, "changes")) {
             Map<?, ?> change = map(item, question, "changes 의 항목");
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("itemKey", itemKey(change.get("itemKey"), question));
             row.put("kind", String.valueOf(change.get("kind")).toUpperCase(Locale.ROOT));
+            items++;
+            if (change.containsKey("changedValues")) {
+                withValues++;
+                row.put("changedValues", expectedValues(change.get("changedValues"), question));
+            }
             expected.add(row);
         }
+        if (withValues != 0 && withValues != items) {
+            throw new Failure("정답의 형식이 틀렸습니다: 바뀐 값(changedValues)을 일부 항목에만 적었습니다. 모든 항목에 적거나 "
+                    + "하나도 적지 않습니다 (모르는 것은 null, 없는 것은 빈 목록).");
+        }
+        boolean values = withValues > 0;
         List<Object> actual = new ArrayList<>();
         for (Map<?, ?> change : stepChanges(step(question.body().get("step"), question), steps)) {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("itemKey", change.get("itemKey"));
             row.put("kind", change.get("kind"));
+            if (values) {
+                // 모른다(null)는 항목이 있고 값이 비어 있는 것이다. 항목이 아예 없는 답은 모른다가 아니라 빠진 것이다.
+                if (!change.containsKey("changedValues")) {
+                    throw new Failure("제품의 답에 바뀐 값(changedValues)이 없습니다: 항목 " + change.get("itemKey"));
+                }
+                row.put("changedValues", actualValues(change.get("changedValues")));
+            }
             actual.add(row);
         }
         return new Object[] { expected, actual };
+    }
+
+    /** 정답에 적은 바뀐 값. null 은 모른다는 뜻이고 빈 목록은 바뀐 값이 없다는 뜻이다: 둘은 다르다. */
+    private List<Object> expectedValues(Object written, QuestionFile.Question question) {
+        if (written == null) {
+            return null;
+        }
+        List<Object> values = new ArrayList<>();
+        for (Object item : list(written, question, "changedValues")) {
+            Map<?, ?> value = map(item, question, "changedValues 의 항목");
+            if (value.get("attribute") == null) {
+                throw new Failure("정답의 형식이 틀렸습니다: changedValues 의 항목에 속성의 이름(attribute)이 없습니다.");
+            }
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("entity", Ids.entity(this.packId, value.get("entity")));
+            row.put("attribute", String.valueOf(value.get("attribute")));
+            row.put("before", value.get("before") == null ? null : String.valueOf(value.get("before")));
+            row.put("after", value.get("after") == null ? null : String.valueOf(value.get("after")));
+            values.add(row);
+        }
+        return values;
+    }
+
+    /** 제품이 준 바뀐 값을 정답과 같은 모양으로 옮긴다. 이름표는 견주지 않는다. */
+    private static List<Object> actualValues(Object given) {
+        if (!(given instanceof List<?> items)) {
+            return null;
+        }
+        List<Object> values = new ArrayList<>();
+        for (Object item : items) {
+            Map<?, ?> value = (Map<?, ?>) item;
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("entity", value.get("entityId"));
+            row.put("attribute", value.get("attributeName"));
+            row.put("before", value.get("before"));
+            row.put("after", value.get("after"));
+            values.add(row);
+        }
+        return values;
     }
 
     private Object[] impact(QuestionFile.Question question, Map<Integer, Product.Reply> steps) {

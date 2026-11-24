@@ -861,6 +861,144 @@ class VerifyRunnerTest {
         assertThat(Report.shortfalls(enough.subList(0, 9))).noneMatch(problem -> problem.contains("relation-map"));
     }
 
+    // ── 변동의 바뀐 값 (C-10, D2 AD-372) ─────────────────────────────
+
+    private static final String VALUES_QUESTION = """
+            questions:
+              - id: Q-01
+                kind: changes
+                title: 변동과 바뀐 값
+                step: 3
+                expect:
+                  changes:
+                    - itemKey: [k-1]
+                      kind: changed
+                      changedValues:
+                        - { entity: { type: TypeA, key: k-1 }, attribute: limit, before: "0.8", after: "0.7" }
+                        - { entity: { type: TypeA, key: k-1 }, attribute: note, before: null, after: "새로 적음" }
+                    - itemKey: [k-2]
+                      kind: removed
+                      changedValues:
+                        - { entity: { type: TypeA, key: k-2 }, attribute: limit, before: "1", after: null }
+                    - itemKey: [k-3]
+                      kind: changed
+                      changedValues: []
+            """;
+
+    /** 3단계의 답: 바뀐 값이 든 변동 셋. */
+    private static Map<Integer, Product.Reply> stepsWithValues(Object valuesOfThird) {
+        Map<String, Object> first = new LinkedHashMap<>(Map.of("changeEventId", "c-1", "itemKey", "k-1", "kind", "CHANGED"));
+        first.put("changedValues", List.of(value("p|TypeA|k-1", "limit", "0.8", "0.7"), value("p|TypeA|k-1", "note", null, "새로 적음")));
+        Map<String, Object> second = new LinkedHashMap<>(Map.of("changeEventId", "c-2", "itemKey", "k-2", "kind", "REMOVED"));
+        second.put("changedValues", List.of(value("p|TypeA|k-2", "limit", "1", null)));
+        Map<String, Object> third = new LinkedHashMap<>(Map.of("changeEventId", "c-3", "itemKey", "k-3", "kind", "CHANGED"));
+        third.put("changedValues", valuesOfThird);
+        Map<Integer, Product.Reply> steps = new LinkedHashMap<>();
+        steps.put(3, new Product.Reply(200, Map.of("outcome", "ACCEPTED", "changes", List.of(first, second, third))));
+        return steps;
+    }
+
+    private static Map<String, Object> value(String entityId, String attributeName, String before, String after) {
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("entityId", entityId);
+        value.put("attributeName", attributeName);
+        value.put("attributeLabel", "이름표는 견주지 않는다");
+        value.put("before", before);
+        value.put("after", after);
+        return value;
+    }
+
+    private Evaluator.Result askValues(String questions, Object valuesOfThird) {
+        try {
+            QuestionFile file = QuestionFile.read(write("S-values.yaml", SCENARIO
+                    + "    - { step: 3, inputSource: src-a, file: data/a-v3.csv, effectiveDate: 2026-06-01 }\n" + questions));
+            return new Evaluator(PACK, new FakeProduct()).evaluate(file, stepsWithValues(valuesOfThird)).get(0);
+        }
+        catch (IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+    }
+
+    @Test
+    void 변동의_정답에_바뀐_값을_적으면_속성마다_이전_값과_새_값을_제품이_준_차례로_견준다() {
+        Evaluator.Result result = askValues(VALUES_QUESTION, List.of());
+
+        assertThat(result.passed()).as(result.reason() + "\n기대: " + result.expected() + "\n실제: " + result.actual()).isTrue();
+        // 값이 다르다, 없던 값이 있다고 적었다, 속성의 이름이 다르다: 실패다.
+        assertThat(askValues(VALUES_QUESTION.replace("after: \"0.7\"", "after: \"0.70\""), List.of()).passed()).isFalse();
+        assertThat(askValues(VALUES_QUESTION.replace("before: null, after: \"새로 적음\"", "before: \"\", after: \"새로 적음\""), List.of())
+            .passed()).isFalse();
+        assertThat(askValues(VALUES_QUESTION.replace("attribute: limit, before: \"0.8\"", "attribute: zz, before: \"0.8\""), List.of())
+            .passed()).isFalse();
+        // 항목은 같아도 차례가 다르면 실패다: 정답의 두 줄을 바꿔 적는다.
+        String first = "            - { entity: { type: TypeA, key: k-1 }, attribute: limit, before: \"0.8\", after: \"0.7\" }\n";
+        String second = "            - { entity: { type: TypeA, key: k-1 }, attribute: note, before: null, after: \"새로 적음\" }\n";
+        assertThat(VALUES_QUESTION).contains(first + second);
+        assertThat(askValues(VALUES_QUESTION.replace(first + second, second + first), List.of()).passed()).isFalse();
+        // 제품이 바뀐 값이 하나 더 있다고 답하면 실패다.
+        assertThat(askValues(VALUES_QUESTION, List.of(value("p|TypeA|k-3", "limit", "1", "2"))).passed()).isFalse();
+    }
+
+    @Test
+    void 바뀐_값을_모른다는_답은_빈_목록과_다르고_정답에_null_로_적어야_맞는다() {
+        // 제품이 모른다(null)고 답했는데 정답은 바뀐 값이 없다(빈 목록)고 적었다.
+        assertThat(askValues(VALUES_QUESTION, null).passed()).isFalse();
+        // 정답도 모른다고 적으면 맞다.
+        String unknown = VALUES_QUESTION.replace("          changedValues: []", "          changedValues: null");
+        assertThat(unknown).isNotEqualTo(VALUES_QUESTION);
+        assertThat(askValues(unknown, null).passed()).isTrue();
+        assertThat(askValues(unknown, List.of()).passed()).isFalse();
+    }
+
+    @Test
+    void 제품의_답에_바뀐_값의_항목이_아예_없으면_모른다는_답으로_보지_않고_실패로_알린다() throws IOException {
+        // 정답은 셋째 변동의 바뀐 값을 모른다(null)고 적었다. 제품은 그 항목을 아예 주지 않았다.
+        String unknown = VALUES_QUESTION.replace("          changedValues: []", "          changedValues: null");
+        QuestionFile file = QuestionFile.read(write("S-values-missing.yaml", SCENARIO
+                + "    - { step: 3, inputSource: src-a, file: data/a-v3.csv, effectiveDate: 2026-06-01 }\n" + unknown));
+        Map<Integer, Product.Reply> steps = stepsWithValues(null);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> changes = (List<Map<String, Object>>) ((Map<String, Object>) steps.get(3).body()).get("changes");
+        changes.get(2).remove("changedValues");
+
+        Evaluator.Result result = new Evaluator(PACK, new FakeProduct()).evaluate(file, steps).get(0);
+
+        assertThat(result.passed()).isFalse();
+        assertThat(result.reason()).contains("changedValues").contains("k-3");
+    }
+
+    @Test
+    void 바뀐_값을_적지_않은_정답은_바뀐_값을_견주지_않고_일부에만_적은_정답은_형식이_틀린_것이다() {
+        // 하나도 적지 않았다: 전과 같이 항목의 키와 종류만 견준다. 제품이 무엇을 답하든 통과한다.
+        String none = """
+                questions:
+                  - id: Q-01
+                    kind: changes
+                    title: 변동
+                    step: 3
+                    expect:
+                      changes:
+                        - { itemKey: [k-1], kind: changed }
+                        - { itemKey: [k-2], kind: removed }
+                        - { itemKey: [k-3], kind: changed }
+                """;
+        assertThat(askValues(none, List.of(value("p|TypeA|k-3", "limit", "1", "2"))).passed()).isTrue();
+        // 일부에만 적었다: 어느 것을 견줄지 알 수 없다.
+        String some = none.replace("- { itemKey: [k-1], kind: changed }", "- { itemKey: [k-1], kind: changed, changedValues: [] }");
+        assertThat(askValues(some, List.of())).satisfies(result -> {
+            assertThat(result.passed()).isFalse();
+            assertThat(result.reason()).contains("changedValues");
+        });
+        // 개체가 빠진 바뀐 값도 형식이 틀린 것이다.
+        assertThat(askValues(VALUES_QUESTION.replace("{ entity: { type: TypeA, key: k-2 }, attribute: limit", "{ attribute: limit"),
+                List.of()).passed()).isFalse();
+        // 속성이 빠진 바뀐 값.
+        assertThat(askValues(VALUES_QUESTION.replace("attribute: note, ", ""), List.of())).satisfies(result -> {
+            assertThat(result.passed()).isFalse();
+            assertThat(result.reason()).contains("attribute");
+        });
+    }
+
     // ── 전수 대조 (A-08, D2 AD-368) ─────────────────────────────────
 
     private static final String CHECKS = """

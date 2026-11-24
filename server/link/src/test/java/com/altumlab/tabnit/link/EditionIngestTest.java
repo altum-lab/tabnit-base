@@ -93,7 +93,7 @@ class EditionIngestTest {
                 new ItemOutput(ItemOutput.Kind.ENTITY, "i-basic|Other|O-1"),
                 new ItemOutput(ItemOutput.Kind.RELATION, "i-basic|Base|B-1|Other|O-1|links|src|1|2026-03-01"),
                 new ItemOutput(ItemOutput.Kind.ATTRIBUTE_VALUE, "i-basic|Base|B-1|title|2026-03-01"));
-        assertThat(records.notices("i-basic|src|1")).isEmpty();
+        assertThat(Notices.exceptReferenceOnly(records.notices("i-basic|src|1"))).isEmpty();
         // 투입 기록.
         assertThat(records.ingestRecords("i-basic", "src")).singleElement().satisfies(r -> {
             assertThat(r.outcome()).isEqualTo(IngestOutcome.ACCEPTED);
@@ -164,8 +164,10 @@ class EditionIngestTest {
 
         List<IngestNotice> notices = records.notices("i-notice|src|1");
         assertThat(notices).isEqualTo(result.mapping().notices());
+        // 참조로만 만들어진 개체의 알림도 같은 차례(행 번호, 종류, 코드)에 든다.
         assertThat(notices).extracting(IngestNotice::rowNo, IngestNotice::code)
-            .containsExactly(org.assertj.core.groups.Tuple.tuple(3, "BLANK_KEY"),
+            .containsExactly(org.assertj.core.groups.Tuple.tuple(2, "NO_ATTRIBUTE_VALUES"),
+                    org.assertj.core.groups.Tuple.tuple(3, "BLANK_KEY"),
                     org.assertj.core.groups.Tuple.tuple(4, "CELL_COUNT_MISMATCH"),
                     org.assertj.core.groups.Tuple.tuple(5, "DUPLICATE_ITEM_KEY"),
                     org.assertj.core.groups.Tuple.tuple(6, "DUPLICATE_ITEM_KEY"));
@@ -283,7 +285,7 @@ class EditionIngestTest {
         assertThat(items).extracting(IngestedItem::itemKey).containsExactly("B-3|O-3", left + "|" + right);
         assertThat(items.get(1).itemKey().codePointCount(0, items.get(1).itemKey().length())).isEqualTo(200);
         assertThat(items.get(1).outputs()).hasSize(4);
-        assertThat(records.notices("i-long|src|1"))
+        assertThat(Notices.exceptReferenceOnly(records.notices("i-long|src|1")))
             .containsExactly(new IngestNotice("SKIPPED_ROW", 3, "KEY_TOO_LONG", null, "201"));
     }
 
@@ -641,7 +643,13 @@ class EditionIngestTest {
         ingest.ingest(pack("i-twice-a", full("src")), "src", "f.csv", bytes(csv), EFFECTIVE, RECEIVED_AT);
         ingest.ingest(pack("i-twice-b", full("src")), "src", "f.csv", bytes(csv), EFFECTIVE, RECEIVED_AT);
 
-        assertThat(records.notices("i-twice-a|src|1")).isEqualTo(records.notices("i-twice-b|src|1"));
+        // 알림에 적힌 개체의 식별자에는 Pack 의 식별자가 들어 있다. 그것만 맞춰 견준다.
+        assertThat(records.notices("i-twice-a|src|1")).hasSize(4)
+            .isEqualTo(records.notices("i-twice-b|src|1")
+                .stream()
+                .map(n -> new IngestNotice(n.kind(), n.rowNo(), n.code(),
+                        n.subject() == null ? null : n.subject().replace("i-twice-b|", "i-twice-a|"), n.detail()))
+                .toList());
         assertThat(records.items("i-twice-a|src|1")).extracting(IngestedItem::itemKey, IngestedItem::rowNo)
             .isEqualTo(records.items("i-twice-b|src|1")
                 .stream()
@@ -694,7 +702,7 @@ class EditionIngestTest {
             assertThat(result.outcome()).as(step.getKey()).isEqualTo(IngestOutcome.ACCEPTED);
             assertThat(records.originalContent(result.editionId())).contains(content);
             assertThat(records.items(result.editionId())).hasSize(CsvTableReader.read(content).rows().size());
-            assertThat(records.notices(result.editionId())).isEmpty();
+            assertThat(Notices.exceptReferenceOnly(records.notices(result.editionId()))).isEmpty();
         }
         assertThat(records.inputSourcesWithEditions(packId)).containsExactlyElementsOf(
                 firstEditions.keySet().stream().sorted(LinkOrder.STRINGS).toList());

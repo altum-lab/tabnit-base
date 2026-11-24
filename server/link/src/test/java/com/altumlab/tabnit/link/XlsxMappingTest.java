@@ -254,6 +254,30 @@ class XlsxMappingTest {
     }
 
     @Test
+    void 표_위에_제목_행이_있는_엑셀도_적재된다() {
+        PackDefinition pack = pack("xl-title", mapping(MappingFileFormat.XLSX, "s", null, null, null, null));
+        byte[] xlsx = XlsxFiles.workbook(wb -> {
+            Sheet sheet = wb.createSheet("s");
+            sheet.createRow(0).createCell(0).setCellValue("지어낸 바탕 목록");
+            sheet.createRow(1).createCell(0).setCellValue("단위: 개");
+            Row names = sheet.createRow(3);
+            String[] columns = { "code", "title", "count", "ratio", "since", "active", "other", "from" };
+            for (int i = 0; i < columns.length; i++) {
+                names.createCell(i).setCellValue(columns[i]);
+            }
+            Row row = sheet.createRow(4);
+            row.createCell(0).setCellValue("B-1");
+            row.createCell(2).setCellValue(7);
+        });
+
+        MappingOutcome outcome = executor.execute(pack, "src", xlsx, 1, EFFECTIVE, RECORDED_AT);
+
+        assertThat(outcome.notices()).isEmpty();
+        assertThat(outcome.items()).singleElement().satisfies(item -> assertThat(item.rowNo()).isEqualTo(5));
+        assertThat(valuesOf("xl-title|Base|B-1", EFFECTIVE)).containsExactly(Map.entry("count", "7"));
+    }
+
+    @Test
     void 반드시_있어야_하는_열이_없는_엑셀은_CSV_와_같이_거부한다() {
         PackDefinition pack = pack("xl-missing", mapping(MappingFileFormat.XLSX, "s", null, null, null, null));
         byte[] xlsx = XlsxFiles.workbook(wb -> wb.createSheet("s").createRow(0).createCell(0).setCellValue("code"));

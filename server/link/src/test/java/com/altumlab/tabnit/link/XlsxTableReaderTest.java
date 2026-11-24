@@ -91,6 +91,82 @@ class XlsxTableReaderTest {
         assertThat(file.rows()).containsExactly(new TableRow(2, List.of("A-1", "")));
     }
 
+    // ── 표 위의 제목 행 ───────────────────────────────────────────
+
+    @Test
+    void 표_위에_제목과_메모의_행이_있으면_매핑이_쓰는_열_이름이_모두_든_첫_행을_열_이름으로_본다() {
+        byte[] content = XlsxFiles.workbook(wb -> {
+            Sheet sheet = wb.createSheet("s");
+            strings(sheet, 0, "지어낸 자료 목록");
+            sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 2));
+            // 가운데가 빈 메모의 행. 열 이름의 행이 아니므로 거부하지 않는다.
+            strings(sheet, 1, "작성", "", "code");
+            strings(sheet, 3, "name", "memo", "code");
+            strings(sheet, 4, "첫째", "x", "A-1");
+            strings(sheet, 5, "name", "memo", "code");
+        });
+
+        TableFile file = XlsxTableReader.read(content, "s", Set.of("code", "name"));
+
+        assertThat(file.columns()).containsExactly("name", "memo", "code");
+        // 열 이름의 행 위는 읽지 않는다. 아래에 같은 이름이 다시 나오면 그것은 자료의 행이다.
+        assertThat(file.rows()).containsExactly(new TableRow(5, List.of("첫째", "x", "A-1")),
+                new TableRow(6, List.of("name", "memo", "code")));
+        assertThat(file.skipped()).isEmpty();
+    }
+
+    @Test
+    void 찾은_열_이름의_행에_빈_이름이나_겹친_이름이_있으면_거부한다() {
+        byte[] duplicate = XlsxFiles.workbook(wb -> {
+            Sheet sheet = wb.createSheet("s");
+            strings(sheet, 0, "제목");
+            // 열 이름의 칸이 합쳐져 같은 이름이 겹친다.
+            strings(sheet, 1, "code", "name");
+            sheet.addMergedRegion(new CellRangeAddress(1, 1, 1, 2));
+        });
+        byte[] blank = XlsxFiles.workbook(wb -> {
+            Sheet sheet = wb.createSheet("s");
+            strings(sheet, 0, "제목");
+            strings(sheet, 1, "code", "", "name");
+        });
+
+        assertThat(catchThrowableOfType(TableFileRejectedException.class,
+                () -> XlsxTableReader.read(duplicate, "s", Set.of("code", "name")))
+            .code()).isEqualTo("DUPLICATE_COLUMN_NAME");
+        assertThat(catchThrowableOfType(TableFileRejectedException.class,
+                () -> XlsxTableReader.read(blank, "s", Set.of("code", "name")))
+            .code()).isEqualTo("BLANK_COLUMN_NAME");
+    }
+
+    @Test
+    void 그런_행을_위에서_백_행_안에_찾지_못하면_값이_있는_첫_행을_열_이름으로_본다() {
+        byte[] far = XlsxFiles.workbook(wb -> {
+            Sheet sheet = wb.createSheet("s");
+            strings(sheet, 0, "제목");
+            strings(sheet, 100, "code", "name");
+            strings(sheet, 101, "A-1", "x");
+        });
+        byte[] near = XlsxFiles.workbook(wb -> {
+            Sheet sheet = wb.createSheet("s");
+            strings(sheet, 0, "제목");
+            strings(sheet, 99, "code", "name");
+            strings(sheet, 100, "A-1", "x");
+        });
+        byte[] missing = XlsxFiles.workbook(wb -> {
+            Sheet sheet = wb.createSheet("s");
+            strings(sheet, 0, "code", "title");
+            strings(sheet, 1, "A-1", "x");
+        });
+
+        // 101번째 행의 열 이름은 찾지 않는다. 100번째 행까지는 찾는다.
+        assertThat(XlsxTableReader.read(far, "s", Set.of("code", "name")).columns()).containsExactly("제목");
+        assertThat(XlsxTableReader.read(near, "s", Set.of("code", "name")).columns()).containsExactly("code", "name");
+        // 열이 모자란 파일은 전과 같이 첫 행이 열 이름이다. 무엇이 없는지는 매핑 실행이 알린다.
+        TableFile file = XlsxTableReader.read(missing, "s", Set.of("code", "name"));
+        assertThat(file.columns()).containsExactly("code", "title");
+        assertThat(file.rows()).hasSize(1);
+    }
+
     // ── 수 ──────────────────────────────────────────────────────
 
     @Test

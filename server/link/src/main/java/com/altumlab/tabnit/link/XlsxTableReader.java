@@ -46,7 +46,8 @@ import org.xml.sax.helpers.DefaultHandler;
  *
  * <ul>
  * <li>매핑이 지정한 시트 하나만 읽는다. 숨긴 행과 열도 읽는다.
- * <li>아무것도 없는 행을 지나 처음 나오는 행이 열 이름이다. 행 번호는 시트의 행 번호다.
+ * <li>매핑이 쓰는 열 이름이 모두 든 첫 행이 열 이름이다 (위에서 백 행 안). 그 위의 제목이나 메모의 행은 읽지 않는다.
+ *     그런 행이 없으면 값이 있는 첫 행이 열 이름이다 (D2 AD-379). 행 번호는 시트의 행 번호다.
  * <li>글자가 든 칸은 적힌 그대로 읽는다 (앞뒤 빈칸은 뗀다).
  * <li>수, 날짜, 참·거짓이 든 칸은 칸의 서식과 무관하게 저장된 값을 표준 표기로 읽는다 (D2 AD-374).
  * <li>수식이 든 칸은 파일에 저장된 계산 결과를 읽는다. 다시 계산하지 않는다.
@@ -98,6 +99,9 @@ final class XlsxTableReader {
 
     private static final long MAX_SHARED_STRINGS_BYTES = 128L * 1024 * 1024;
 
+    /** 열 이름의 행을 찾는 범위. 시트의 위에서 이 행까지다. */
+    private static final int HEADER_SEARCH_ROWS = 100;
+
     /** 합쳐진 칸의 묶음의 수의 한도. */
     private static final int MAX_MERGED = 500_000;
 
@@ -133,6 +137,14 @@ final class XlsxTableReader {
      * @throws TableFileRejectedException 엑셀 파일이 아니거나, 너무 크거나, 그 시트가 없거나, 열 이름의 행이 없거나 틀렸을 때
      */
     static TableFile read(byte[] content, String sheetName) {
+        return read(content, sheetName, Set.of());
+    }
+
+    /**
+     * @param usedColumns 매핑이 쓰는 열. 이 이름이 모두 든 첫 행을 열 이름으로 본다. 비었으면 값이 있는 첫 행이다
+     */
+    static TableFile read(byte[] content, String sheetName, Set<String> usedColumns) {
+        Objects.requireNonNull(usedColumns, "매핑이 쓰는 열은 반드시 있어야 합니다");
         Objects.requireNonNull(content, "파일의 내용은 반드시 있어야 합니다");
         Objects.requireNonNull(sheetName, "읽을 시트의 이름은 반드시 있어야 합니다");
         Sheet sheet;
@@ -163,7 +175,7 @@ final class XlsxTableReader {
             rejected.initCause(e);
             throw rejected;
         }
-        return table(sheet);
+        return table(sheet, usedColumns);
     }
 
     private static TableFileRejectedException tooLarge() {
@@ -838,8 +850,18 @@ final class XlsxTableReader {
 
     // ── 읽은 시트를 표로 만든다 ──────────────────────────────────────
 
-    private static TableFile table(Sheet sheet) {
+    private static TableFile table(Sheet sheet, Set<String> usedColumns) {
         fillMerged(sheet);
+        // 표 위에 제목이나 메모의 행이 있는 시트: 매핑이 쓰는 열 이름이 모두 든 첫 행을 찾아 그 위를 버린다.
+        // 못 찾으면 그대로 둔다: 값이 있는 첫 행이 열 이름이 되고, 없는 열은 매핑 실행이 알린다.
+        if (!usedColumns.isEmpty()) {
+            for (Map.Entry<Integer, Cells> entry : sheet.rows.headMap(HEADER_SEARCH_ROWS, false).entrySet()) {
+                if (names(entry.getValue()).containsAll(usedColumns)) {
+                    sheet.rows.headMap(entry.getKey(), false).clear();
+                    break;
+                }
+            }
+        }
 
         List<String> columns = null;
         List<TableRow> rows = new ArrayList<>();
@@ -854,14 +876,8 @@ final class XlsxTableReader {
                 continue;
             }
             if (columns == null) {
-                // 값이 있는 첫 행이 열 이름이다. 읽지 못하는 칸은 이름이 될 수 없다.
-                int width = row.columns[row.count - 1] + 1;
-                String[] names = new String[width];
-                Arrays.fill(names, "");
-                for (int i = 0; i < row.count; i++) {
-                    names[row.columns[i]] = row.kinds[i] == TEXT || row.kinds[i] == TYPED ? row.values[i] : "";
-                }
-                columns = header(Arrays.asList(names));
+                // 값이 있는 첫 행이 열 이름이다.
+                columns = header(names(row));
                 continue;
             }
             String[] values = new String[columns.size()];
@@ -905,6 +921,19 @@ final class XlsxTableReader {
                     "시트 \"" + sheet.name + "\" 에 열 이름의 행이 없습니다. 첫 행에 열 이름을 적은 뒤 다시 넣으세요.");
         }
         return new TableFile(columns, rows, skipped);
+    }
+
+    /** 그 행을 열 이름으로 읽는다. 첫 열부터 값이 있는 마지막 열까지다. 읽지 못하는 칸은 이름이 될 수 없어 빈 이름이다. */
+    private static List<String> names(Cells row) {
+        if (row.count == 0) {
+            return List.of();
+        }
+        String[] names = new String[row.columns[row.count - 1] + 1];
+        Arrays.fill(names, "");
+        for (int i = 0; i < row.count; i++) {
+            names[row.columns[i]] = row.kinds[i] == TEXT || row.kinds[i] == TYPED ? row.values[i] : "";
+        }
+        return Arrays.asList(names);
     }
 
     /**

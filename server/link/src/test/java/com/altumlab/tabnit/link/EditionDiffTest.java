@@ -355,7 +355,7 @@ class EditionDiffTest {
         // 이어 둔 항목은 앞 판의 내용 해시와 만든 것을 그대로 옮겨 적는다. 처음 나온 키의 틀린 행은 항목이 되지 않는다.
         assertThat(outputsOf("d-carry|src|2")).isEqualTo(outputsOf("d-carry|src|1"));
         assertThat(hashesOf("d-carry|src|2")).isEqualTo(hashesOf("d-carry|src|1"));
-        assertThat(second.mapping().notices()).extracting(IngestNotice::rowNo, IngestNotice::code)
+        assertThat(Notices.exceptReferenceOnly(second.mapping().notices())).extracting(IngestNotice::rowNo, IngestNotice::code)
             .containsExactly(tuple(2, "DUPLICATE_ITEM_KEY"), tuple(3, "DUPLICATE_ITEM_KEY"), tuple(4, "INVALID_VALUE"),
                     tuple(6, "INVALID_VALUE"));
 
@@ -701,7 +701,14 @@ class EditionDiffTest {
 
             int editionNo = editions.merge(step[0], 1, Integer::sum);
             assertThat(result.outcome()).as(step[1]).isEqualTo(IngestOutcome.ACCEPTED);
-            assertThat(result.mapping().notices()).as(step[1]).isEmpty();
+            assertThat(Notices.exceptReferenceOnly(result.mapping().notices())).as(step[1]).isEmpty();
+            // 참조로만 만들어진 개체의 알림은 자료를 넣는 차례에 따라 나온다. 알린 개체에는 그 판의 적용일에 속성 값이
+            // 하나도 없어야 한다 (저장된 것으로 따로 확인한다).
+            for (IngestNotice notice : result.mapping().notices()) {
+                assertThat(new AttributeValueQuery(fresh).valuesAsOf(notice.subject(), LocalDate.parse(step[2])))
+                    .as(step[1] + " " + notice.subject())
+                    .isEmpty();
+            }
             List<ChangeEvent> events = records.changeEvents(result.editionId());
             if (editionNo == 1) {
                 assertThat(events).as(step[1]).isEmpty();
@@ -836,7 +843,7 @@ class EditionDiffTest {
 
         assertThat(first.outcome()).isEqualTo(IngestOutcome.ACCEPTED);
         assertThat(records.items("d-nbsp-key|src|1")).extracting(IngestedItem::itemKey).containsExactly("B-1");
-        assertThat(records.notices("d-nbsp-key|src|1")).extracting(IngestNotice::rowNo, IngestNotice::code)
+        assertThat(Notices.exceptReferenceOnly(records.notices("d-nbsp-key|src|1"))).extracting(IngestNotice::rowNo, IngestNotice::code)
             .containsExactly(tuple(3, "BLANK_KEY"));
     }
 
@@ -1145,6 +1152,146 @@ class EditionDiffTest {
     }
 
     /** CSV 의 칸 하나로 적는다: 따옴표로 싸고 안의 따옴표는 둘로 적는다. */
+    // ── C-09: 키 열이 여럿인 판 비교, 관계의 유효기간, 큰 판 ─────────────────
+
+    @Test
+    void 키_열이_둘인_입력_자료도_항목의_키로_맞춰_추가와_변경과_삭제를_내고_건너뛴_행은_이어_둔다() {
+        MappedEntityRef other = new MappedEntityRef("Other", "other");
+        MappingDefinition twoKeys = new MappingDefinition("src", MappingFileFormat.CSV, null, null, List.of(),
+                List.of("code", "other"), BASE_BY_CODE,
+                List.of(new MappedEntity("Base", "code",
+                        List.of(new MappedAttribute("title", "title", null, null, null, null, null, null),
+                                new MappedAttribute("count", "count", null, null, null, null, null, null)))),
+                List.of(new MappedRelation("links", BASE_BY_CODE, other, null, null)));
+        PackDefinition pack = pack("d-two-keys", twoKeys);
+        put(pack, 1, D1, HEADER + "B-1,첫째,1,O-1\nB-1,첫째,1,O-2\nB-2,둘째,2,O-1\nB-4,넷째,4,O-1\n");
+
+        // B-1 의 O-2 행이 없어지고, B-2 의 제목이 바뀌고, B-3 이 생기고, B-4 는 수가 틀려 건너뛴다.
+        IngestResult second = put(pack, 2, D2,
+                HEADER + "B-3,셋째,3,O-1\nB-1,첫째,1,O-1\nB-2,둘째 고침,2,O-1\nB-4,넷째 고침,넷,O-1\n");
+
+        assertThat(records.changeEvents("d-two-keys|src|2")).extracting(ChangeEvent::itemKey, ChangeEvent::kind)
+            .containsExactly(tuple(LinkOrder.join(List.of("B-1", "O-2")), ChangeKind.REMOVED),
+                    tuple(LinkOrder.join(List.of("B-2", "O-1")), ChangeKind.CHANGED),
+                    tuple(LinkOrder.join(List.of("B-3", "O-1")), ChangeKind.ADDED));
+        // 없어진 행의 관계는 끝난다. 그 행이 적던 제목은 남은 행(B-1, O-1)이 여전히 적으므로 끝나지 않는다.
+        assertThat(relations.relationsAsOf("d-two-keys|Base|B-1", D2)).extracting(Relation::targetEntityId)
+            .containsExactly("d-two-keys|Other|O-1");
+        assertThat(relations.relationsAsOf("d-two-keys|Base|B-1", D2.minusDays(1))).hasSize(2);
+        assertThat(titleAt("d-two-keys|Base|B-1", D2)).isEqualTo("첫째");
+        assertThat(titleAt("d-two-keys|Base|B-2", D2)).isEqualTo("둘째 고침");
+        // 건너뛴 행의 항목은 앞 판의 것을 이어 둔다.
+        assertThat(titleAt("d-two-keys|Base|B-4", D2)).isEqualTo("넷째");
+        assertThat(Notices.exceptReferenceOnly(second.mapping().notices())).extracting(IngestNotice::rowNo, IngestNotice::code)
+            .containsExactly(tuple(5, "INVALID_VALUE"));
+        assertThat(records.items("d-two-keys|src|2")).extracting(IngestedItem::itemKey)
+            .containsExactly(LinkOrder.join(List.of("B-1", "O-1")), LinkOrder.join(List.of("B-2", "O-1")),
+                    LinkOrder.join(List.of("B-3", "O-1")), LinkOrder.join(List.of("B-4", "O-1")));
+    }
+
+    @Test
+    void 관계의_유효기간을_열에서_읽은_판도_바뀐_것이_없으면_변동이_없고_종료일이_남은_관계의_행은_그날_전에는_뺄_수_없다() {
+        PackDefinition pack = pack("d-rel-period", datedRelation());
+        String header = "line,code,other,from,to\n";
+        // 1 번 행의 관계는 적용일부터 12월 1일까지, 2 번 행의 관계는 7월 1일부터다.
+        put(pack, 1, D1, header + "1,B-1,O-1,,2026-12-01\n2,B-2,O-1,2026-07-01,\n");
+        assertThat(relations.relationsAsOf("d-rel-period|Base|B-1", D1)).hasSize(1);
+        assertThat(relations.relationsAsOf("d-rel-period|Base|B-1", LocalDate.parse("2026-12-01"))).isEmpty();
+        assertThat(relations.relationsAsOf("d-rel-period|Base|B-2", LocalDate.parse("2026-06-30"))).isEmpty();
+        assertThat(relations.relationsAsOf("d-rel-period|Base|B-2", LocalDate.parse("2026-07-01"))).hasSize(1);
+
+        // 같은 내용에 행을 하나 더한 판: 앞의 두 행에는 변동이 없다.
+        put(pack, 2, D2, header + "1,B-1,O-1,,2026-12-01\n2,B-2,O-1,2026-07-01,\n3,B-3,O-1,,\n");
+        assertThat(records.changeEvents("d-rel-period|src|2")).extracting(ChangeEvent::itemKey, ChangeEvent::kind)
+            .containsExactly(tuple("3", ChangeKind.ADDED));
+        assertThat(relations.relationsAsOf("d-rel-period|Base|B-1", D2)).singleElement()
+            .satisfies(r -> assertThat(r.period()).isEqualTo(new ValidityPeriod(D1, LocalDate.parse("2026-12-01"))));
+
+        // 1 번 행이 없어진다. 그 관계에는 아직 오지 않은 종료일(12월 1일)이 적혀 있다: 한 번 넣은 종료일은 당겨 끝낼 수
+        // 없으므로 판 전체를 거부한다 (D2 AD-162, AD-198).
+        String without = header + "2,B-2,O-1,2026-07-01,\n3,B-3,O-1,,\n";
+        IngestResult early = put(pack, 3, D3, without);
+        assertThat(early.outcome()).isEqualTo(IngestOutcome.REJECTED);
+        assertThat(early.reasonCode()).isEqualTo("CANNOT_END");
+        assertThat(relations.relationsAsOf("d-rel-period|Base|B-1", D3)).hasSize(1);
+
+        // 그 종료일이 된 뒤의 적용일로는 받는다. 항목은 삭제가 되고, 관계는 적혀 있던 종료일 그대로다.
+        LocalDate ended = LocalDate.parse("2026-12-01");
+        assertThat(put(pack, 4, ended, without).outcome()).isEqualTo(IngestOutcome.ACCEPTED);
+        assertThat(records.changeEvents("d-rel-period|src|3")).extracting(ChangeEvent::itemKey, ChangeEvent::kind)
+            .containsExactly(tuple("1", ChangeKind.REMOVED));
+        assertThat(relations.relationsAsOf("d-rel-period|Base|B-1", ended.minusDays(1))).singleElement()
+            .satisfies(r -> assertThat(r.period()).isEqualTo(new ValidityPeriod(D1, ended)));
+        assertThat(relations.relationsAsOf("d-rel-period|Base|B-1", ended)).isEmpty();
+        assertThat(relations.relationsAsOf("d-rel-period|Base|B-2", ended)).hasSize(1);
+    }
+
+    @Test
+    void 두_행이_같은_관계를_겹치는_다른_기간으로_적으면_넣지_않고_알리고_겹치지_않으면_둘_다_넣는다() {
+        PackDefinition pack = pack("d-rel-conflict", datedRelation());
+        String header = "line,code,other,from,to\n";
+
+        IngestResult result = put(pack, 1, D1,
+                header + "1,B-1,O-1,2026-03-01,2026-09-01\n2,B-1,O-1,2026-06-01,\n"
+                        + "3,B-2,O-1,2026-03-01,2026-06-01\n4,B-2,O-1,2026-06-01,\n"
+                        + "5,B-3,O-1,2026-03-01,\n6,B-3,O-1,2026-03-01,\n");
+
+        // B-1: 두 기간이 겹친다. 어느 것도 넣지 않고 두 행에 알린다.
+        assertThat(result.mapping().notices()).filteredOn(n -> "RELATION_CONFLICT".equals(n.kind()))
+            .extracting(IngestNotice::rowNo, IngestNotice::code)
+            .containsExactly(tuple(2, "CONFLICTING_PERIODS"), tuple(3, "CONFLICTING_PERIODS"));
+        assertThat(relations.relationsAsOf("d-rel-conflict|Base|B-1", LocalDate.parse("2026-07-01"))).isEmpty();
+        // B-2: 맞닿은 두 기간은 겹치지 않는다 (종료일은 제외다). 둘 다 넣는다.
+        assertThat(relations.relationsAsOf("d-rel-conflict|Base|B-2", LocalDate.parse("2026-05-31"))).hasSize(1);
+        assertThat(relations.relationsAsOf("d-rel-conflict|Base|B-2", LocalDate.parse("2026-06-01"))).singleElement()
+            .satisfies(r -> assertThat(r.period()).isEqualTo(new ValidityPeriod(LocalDate.parse("2026-06-01"), null)));
+        // B-3: 두 행이 같은 기간으로 적었다. 관계는 하나다.
+        assertThat(relations.relationsAsOf("d-rel-conflict|Base|B-3", D1)).hasSize(1);
+        assertThat(result.mapping().items()).hasSize(6);
+    }
+
+    @Test
+    void 행이_수천인_판도_바뀐_행만_변동이_되고_차례는_항목의_키_순이다() {
+        PackDefinition pack = pack("d-large", full());
+        int count = 3_000;
+        StringBuilder first = new StringBuilder(HEADER);
+        StringBuilder second = new StringBuilder(HEADER);
+        for (int i = 0; i < count; i++) {
+            String key = String.format("B-%05d", i);
+            first.append(key).append(",제목 ").append(i).append(',').append(i).append(",O-").append(i % 7).append('\n');
+            if (i >= count - 100) {
+                // 마지막 백 행은 둘째 판에 없다.
+                continue;
+            }
+            // 열 행에 하나는 제목이 바뀐다.
+            String title = i % 10 == 0 ? "고친 제목 " + i : "제목 " + i;
+            second.append(key).append(',').append(title).append(',').append(i).append(",O-").append(i % 7).append('\n');
+        }
+        for (int i = 0; i < 50; i++) {
+            second.append(String.format("C-%05d", i)).append(",새 제목,").append(i).append(",O-1\n");
+        }
+        put(pack, 1, D1, first.toString());
+
+        IngestResult result = put(pack, 2, D2, second.toString());
+
+        List<ChangeEvent> events = records.changeEvents("d-large|src|2");
+        assertThat(events).filteredOn(e -> e.kind() == ChangeKind.CHANGED).hasSize(290);
+        assertThat(events).filteredOn(e -> e.kind() == ChangeKind.REMOVED).hasSize(100);
+        assertThat(events).filteredOn(e -> e.kind() == ChangeKind.ADDED).hasSize(50);
+        assertThat(events).extracting(ChangeEvent::itemKey).isSortedAccordingTo(LinkOrder.STRINGS);
+        assertThat(result.mapping().items()).hasSize(count - 100 + 50);
+        assertThat(titleAt("d-large|Base|B-00010", D2)).isEqualTo("고친 제목 10");
+        assertThat(titleAt("d-large|Base|B-00011", D2)).isEqualTo("제목 11");
+        assertThat(values.valuesAsOf("d-large|Base|B-02999", D2)).isEmpty();
+        assertThat(values.valuesAsOf("d-large|Base|B-02999", D2.minusDays(1))).hasSize(2);
+    }
+
+    /** 관계의 유효기간을 열에서 읽는 매핑. 행 하나가 관계 하나다. 열: line, code, other, from, to. */
+    private static MappingDefinition datedRelation() {
+        return new MappingDefinition("src", MappingFileFormat.CSV, null, null, List.of(), List.of("line"), BASE_BY_CODE,
+                List.of(), List.of(new MappedRelation("links", BASE_BY_CODE, new MappedEntityRef("Other", "other"), "from", "to")));
+    }
+
     private static String quoted(String value) {
         return "\"" + value.replace("\"", "\"\"") + "\"";
     }

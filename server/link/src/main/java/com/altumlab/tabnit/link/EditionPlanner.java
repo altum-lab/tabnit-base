@@ -150,6 +150,12 @@ final class EditionPlanner {
 
         final TreeMap<String, EntityRef> entities = new TreeMap<>(LinkOrder.STRINGS);
 
+        /** 이 행이 스스로 적는 개체: 매핑이 속성의 열을 둔 개체다. 관계의 끝으로만 가리킨 개체는 들지 않는다. */
+        final TreeSet<String> own = new TreeSet<>(LinkOrder.STRINGS);
+
+        /** 이 행이 관계의 끝으로 가리킨 개체: 이 행이 적은 관계의 출발과 도착이다. 끝이 비어 적지 않은 관계의 것은 들지 않는다. */
+        final TreeSet<String> ends = new TreeSet<>(LinkOrder.STRINGS);
+
         final List<Statement> statements = new ArrayList<>();
 
         /** 이 행이 적은 것의 줄. 항목의 내용 해시에 쓴다. */
@@ -228,6 +234,8 @@ final class EditionPlanner {
                     + ". 적용일을 그 날짜 뒤로 잡아 다시 넣으세요.");
         }
 
+        noticeReferenceOnly(rows.values());
+
         // 항목: 받아들인 행과, 앞 판의 것을 이어 둔 항목. 항목의 키 순이다.
         TreeMap<String, PlannedItem> items = new TreeMap<>(LinkOrder.STRINGS);
         for (RowPlan row : rows.values()) {
@@ -250,6 +258,74 @@ final class EditionPlanner {
         plan.outcome = new MappingOutcome(plan.items.stream().map(PlannedItem::item).toList(), List.copyOf(notices),
                 changes(items));
         return plan;
+    }
+
+    // ── 참조로만 만들어진 개체 ──────────────────────────────────────
+
+    /**
+     * 참조로만 만들어진 개체를 알린다 (D6 7절, D2 AD-138, AD-378).
+     *
+     * <p>받아들인 행이 관계의 끝으로만 가리킨 개체 가운데, 이 판을 넣은 뒤 적용일부터 유효한 속성 값이 하나도 없는 것이다.
+     * 오타로 생긴 개체이거나, 그 개체의 자료가 아직 들어오지 않은 것이다. 가리키는 동안 판마다 알린다. 투입은 막지 않는다.
+     * 그 유형(과 상위 유형)에 속성이 정의되어 있지 않으면 알리지 않는다: 값이 있을 수 없는 개체다.
+     * 이 입력 자료가 스스로 적는 개체(매핑이 속성의 열을 둔 개체)는 칸이 비어 있어도 알리지 않는다.
+     */
+    private void noticeReferenceOnly(Collection<RowPlan> rows) {
+        TreeSet<String> typesWithAttributes = typesWithAttributes();
+        TreeSet<String> own = new TreeSet<>(LinkOrder.STRINGS);
+        rows.forEach(row -> own.addAll(row.own));
+        // 개체에서 그것을 가리킨 가장 앞의 행.
+        TreeMap<String, Integer> firstRow = new TreeMap<>(LinkOrder.STRINGS);
+        for (RowPlan row : rows) {
+            for (EntityRef entity : row.entities.values()) {
+                // 관계의 끝으로 가리킨 것만 본다. 다른 끝이 비어 관계를 적지 않은 행의 주 개체는 가리킨 것이 아니다.
+                if (row.ends.contains(entity.id()) && typesWithAttributes.contains(entity.entityType())
+                        && !own.contains(entity.id())) {
+                    firstRow.merge(entity.id(), row.rowNo, Math::min);
+                }
+            }
+        }
+        if (firstRow.isEmpty()) {
+            return;
+        }
+        TreeSet<String> withValues = new TreeSet<>(LinkOrder.STRINGS);
+        for (AttributeValue value : storedValues.inEffectFrom(firstRow.keySet(), effectiveDate)) {
+            // 이 판이 끝내는 값은 적용일부터 유효하지 않다.
+            if (!plan.attributeValuesToEnd.contains(value.id())) {
+                withValues.add(value.entityId());
+            }
+        }
+        firstRow.forEach((entityId, rowNo) -> {
+            if (!withValues.contains(entityId)) {
+                notices.add(new IngestNotice("REFERENCE_ONLY_ENTITY", rowNo, "NO_ATTRIBUTE_VALUES", entityId, null));
+            }
+        });
+    }
+
+    /** 속성이 정의된 유형과 그 하위 유형. */
+    private TreeSet<String> typesWithAttributes() {
+        TreeSet<String> defined = new TreeSet<>(LinkOrder.STRINGS);
+        pack.attributes().forEach(attribute -> defined.add(attribute.entityType()));
+        TreeMap<String, List<String>> parents = new TreeMap<>(LinkOrder.STRINGS);
+        pack.entityTypes().forEach(type -> parents.put(type.name(), type.parents()));
+        TreeSet<String> result = new TreeSet<>(LinkOrder.STRINGS);
+        for (String type : parents.keySet()) {
+            // 상위 유형을 따라 올라간다. 본 유형은 다시 보지 않는다.
+            TreeSet<String> seen = new TreeSet<>(LinkOrder.STRINGS);
+            List<String> queue = new ArrayList<>(List.of(type));
+            while (!queue.isEmpty()) {
+                String current = queue.remove(queue.size() - 1);
+                if (!seen.add(current)) {
+                    continue;
+                }
+                if (defined.contains(current)) {
+                    result.add(type);
+                    break;
+                }
+                queue.addAll(parents.getOrDefault(current, List.of()));
+            }
+        }
+        return result;
     }
 
     // ── 판 비교 ─────────────────────────────────────────────────
@@ -753,6 +829,9 @@ final class EditionPlanner {
             }
             EntityRef entity = new EntityRef(pack.packId(), mapped.entityType(), key);
             plan.entities.put(entity.id(), entity);
+            if (!mapped.attributes().isEmpty()) {
+                plan.own.add(entity.id());
+            }
             for (MappedAttribute attribute : mapped.attributes()) {
                 String raw = value(row, attribute.column());
                 if (raw.isEmpty()) {
@@ -804,6 +883,8 @@ final class EditionPlanner {
             // 관계의 끝에 적힌 개체는 없으면 만든다 (D2 AD-59).
             plan.entities.put(source.id(), source);
             plan.entities.put(target.id(), target);
+            plan.ends.add(source.id());
+            plan.ends.add(target.id());
             List<String> about = List.of(source.entityType(), source.entityKey(), target.entityType(),
                     target.entityKey(), mapped.relationType());
             String fact = LinkOrder.join(concat("R", about, stated));

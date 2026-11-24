@@ -1,5 +1,6 @@
 package com.altumlab.tabnit.api;
 
+import com.altumlab.tabnit.link.EditionRecords;
 import com.altumlab.tabnit.pack.PackChangeRejectedException;
 import com.altumlab.tabnit.pack.PackInvalidException;
 import com.altumlab.tabnit.pack.PackLoadResult;
@@ -36,6 +37,9 @@ class PackLoading {
 
 	private final PackLoader loader;
 
+	/** 판의 기록. 판이 들어온 입력 자료를 묻는 데 쓴다 (D2 AD-159). */
+	private final EditionRecords editions;
+
 	private final Clock clock;
 
 	/** 설치 설정 tabnit.packs-dir. 정하지 않았으면 빈 글자다. */
@@ -49,6 +53,7 @@ class PackLoading {
 
 	PackLoading(DataSource dataSource, Clock clock, String packsDirectory, EditionProcessing processing) {
 		this.loader = new PackLoader(dataSource);
+		this.editions = new EditionRecords(dataSource);
 		this.clock = clock;
 		this.packsDirectory = packsDirectory == null ? "" : packsDirectory;
 		this.processing = java.util.Objects.requireNonNull(processing, "판 처리는 반드시 있어야 합니다");
@@ -78,7 +83,8 @@ class PackLoading {
 				this.oneAtATime.lock();
 				try {
 					// 적재한 때는 차례를 잡은 뒤에 읽는다.
-					return this.loader.load(folder, this.clock.instant());
+					// 판이 들어온 입력 자료의 매핑만 막는다. 그 Pack 의 판 처리가 끝난 뒤에 묻는다 (D2 AD-142, AD-159).
+					return this.loader.load(folder, this.clock.instant(), this.editions.inputSourcesWithEditions(packId));
 				}
 				finally {
 					this.oneAtATime.unlock();

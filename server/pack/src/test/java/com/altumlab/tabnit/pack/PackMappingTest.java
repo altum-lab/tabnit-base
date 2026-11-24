@@ -502,6 +502,7 @@ class PackMappingTest {
 
     @Test
     void 이미_있는_매핑을_바꾸거나_지운_Pack은_거부하고_저장된_것은_그대로다() throws IOException {
+        // 판이 있는 입력 자료를 알려 주지 않고 적재하면, 어느 것에 판이 있는지 모르므로 모두 거부한다.
         loader.load(pack("m-change", "one.ttl", MINIMAL), LOADED_AT);
         PackDefinition before = definitions.find("m-change").orElseThrow();
 
@@ -513,6 +514,59 @@ class PackMappingTest {
             .isInstanceOf(PackChangeRejectedException.class)
             .hasMessageContaining("src");
         assertThat(definitions.find("m-change").orElseThrow()).isEqualTo(before);
+    }
+
+    @Test
+    void 판이_들어오지_않은_입력_자료의_매핑은_바꾸거나_지울_수_있다() throws IOException {
+        loader.load(pack("m-free", "one.ttl", MINIMAL), LOADED_AT);
+        String changed = MINIMAL.replace("( \"코드\" )", "( \"코드\" \"둘째\" )");
+
+        // 판이 있는 입력 자료가 없다고 알려 준다.
+        PackLoadResult updated = loader.load(pack("m-free", "one.ttl", changed), LOADED_AT.plusSeconds(10), List.of());
+
+        assertThat(updated.outcome()).isEqualTo(PackLoadResult.Outcome.UPDATED);
+        assertThat(definitions.find("m-free").orElseThrow().mappings()).singleElement()
+            .satisfies(m -> assertThat(m.itemKeyColumns()).containsExactly("코드", "둘째"));
+
+        // 다른 입력 자료에만 판이 있어도 된다. 지울 수도 있다.
+        PackLoadResult removed = loader.load(pack("m-free", null, null), LOADED_AT.plusSeconds(20), List.of("other"));
+
+        assertThat(removed.outcome()).isEqualTo(PackLoadResult.Outcome.UPDATED);
+        assertThat(definitions.find("m-free").orElseThrow().mappings()).isEmpty();
+    }
+
+    @Test
+    void 판이_들어온_입력_자료의_매핑은_바꾸거나_지울_수_없고_다른_매핑은_고칠_수_있다() throws IOException {
+        String second = MINIMAL.replace("ex:m ", "ex:m2 ").replace("\"src\"", "\"src-2\"");
+        Path first = pack("m-locked", "one.ttl", MINIMAL);
+        mapping(first, "two.ttl", second);
+        loader.load(first, LOADED_AT);
+        PackDefinition before = definitions.find("m-locked").orElseThrow();
+        String changed = MINIMAL.replace("( \"코드\" )", "( \"코드\" \"둘째\" )");
+
+        // src 에는 판이 있다. src 의 매핑을 바꾸거나 지우면 거부하고, 무엇을 하면 되는지 알린다.
+        Path changedLocked = pack("m-locked", "one.ttl", changed);
+        mapping(changedLocked, "two.ttl", second);
+        assertThatThrownBy(() -> loader.load(changedLocked, LOADED_AT.plusSeconds(10), List.of("src")))
+            .isInstanceOf(PackChangeRejectedException.class)
+            .hasMessageContaining("src")
+            .hasMessageContaining("판")
+            .hasMessageContaining("새 식별자");
+        assertThatThrownBy(() -> loader.load(pack("m-locked", "two.ttl", second), LOADED_AT.plusSeconds(20), List.of("src")))
+            .isInstanceOf(PackChangeRejectedException.class)
+            .hasMessageContaining("src");
+        assertThat(definitions.find("m-locked").orElseThrow()).isEqualTo(before);
+
+        // 판이 없는 src-2 의 매핑만 바꾼 것은 받는다. src 의 매핑은 그대로다.
+        Path changedFree = pack("m-locked", "one.ttl", MINIMAL);
+        mapping(changedFree, "two.ttl", second.replace("( \"코드\" )", "( \"코드\" \"둘째\" )"));
+        PackLoadResult updated = loader.load(changedFree, LOADED_AT.plusSeconds(30), List.of("src"));
+
+        assertThat(updated.outcome()).isEqualTo(PackLoadResult.Outcome.UPDATED);
+        List<MappingDefinition> mappings = definitions.find("m-locked").orElseThrow().mappings();
+        assertThat(mappings).extracting(MappingDefinition::inputSourceId).containsExactly("src", "src-2");
+        assertThat(mappings.get(0)).isEqualTo(before.mappings().get(0));
+        assertThat(mappings.get(1).itemKeyColumns()).containsExactly("코드", "둘째");
     }
 
     // ── 문제의 차례 ──────────────────────────────────────────────

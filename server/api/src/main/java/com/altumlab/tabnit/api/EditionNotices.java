@@ -47,6 +47,10 @@ final class EditionNotices {
 			case "CELL_ERROR" -> row + "을 건너뛰었습니다." + column + "의 칸이 오류 값입니다" + value
 					+ ". 그 칸의 수식이나 값을 고치고" + FIX_ROW;
 			case "INVALID_CHARACTER" -> row + "을 건너뛰었습니다. 쓸 수 없는 글자가 들어 있습니다. 그 글자를 빼고" + FIX_ROW;
+			// 참조로만 만들어진 개체: 넣었다. 확인해 달라는 알림이다 (D2 AD-138, AD-378).
+			case "NO_ATTRIBUTE_VALUES" -> row + "이 가리키는 개체" + target(subject) + " 에 속성 값이 하나도 없습니다."
+					+ " 식별자를 잘못 적은 것이 아닌지 확인하세요. 그 개체의 자료를 아직 올리지 않았으면 올리세요:"
+					+ " 올린 뒤의 판에서는 이 알림이 나오지 않습니다.";
 			// 넣지 않은 값: 행의 나머지는 넣었다.
 			case "CONFLICTING_VALUES" -> row + "의" + target(subject) + " 값을 넣지 않았습니다. 이 판의 다른 행이 같은 것을 다른 값이나"
 					+ " 겹치는 다른 기간으로 적었습니다" + value + ". 어느 것이 맞는지 정해 고친 판을 다시 올리세요.";

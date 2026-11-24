@@ -12,6 +12,14 @@ import org.junit.jupiter.api.Test;
 class EditionNoticesTest {
 
 	@Test
+	void 참조로만_만들어진_개체는_어느_행이_가리킨_어느_개체인지와_할_일을_적는다() {
+		assertThat(message("REFERENCE_ONLY_ENTITY", 4, "NO_ATTRIBUTE_VALUES", "p|Other|O-9", null)).startsWith("4번째 행")
+			.contains("p|Other|O-9")
+			.contains("확인하세요")
+			.doesNotContain("NO_ATTRIBUTE_VALUES");
+	}
+
+	@Test
 	void 건너뛴_행은_몇_번째_행의_어느_열이_왜_걸렸는지와_할_일을_적는다() {
 		assertThat(message("SKIPPED_ROW", 3, "BLANK_KEY", "code", null)).startsWith("3번째 행")
 			.contains("code")

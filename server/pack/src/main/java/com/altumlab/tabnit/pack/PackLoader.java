@@ -3,6 +3,7 @@ package com.altumlab.tabnit.pack;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -47,6 +48,17 @@ public class PackLoader {
      * @throws PackStorageException 저장소에 쓰지 못했을 때
      */
     public PackLoadResult load(Path packDirectory, Instant loadedAt) {
+        return load(packDirectory, loadedAt, null);
+    }
+
+    /**
+     * Pack 폴더 하나를 적재한다. 판이 들어온 입력 자료를 알려 주면, 그 밖의 입력 자료의 매핑은 바꾸거나 지울 수 있다
+     * (D2 AD-142, AD-159).
+     *
+     * @param inputSourcesWithEditions 이 Pack 에서 판이 하나라도 들어온 입력 자료의 식별자. 순서를 잡는 쪽(api)이 link 에
+     *        물어 넘긴다. null 이면 어느 것에 판이 있는지 모르는 것이라, 매핑을 바꾸거나 지우는 것을 모두 거부한다
+     */
+    public PackLoadResult load(Path packDirectory, Instant loadedAt, Collection<String> inputSourcesWithEditions) {
         Objects.requireNonNull(packDirectory, "Pack 폴더는 반드시 있어야 합니다");
         Objects.requireNonNull(loadedAt, "적재한 때는 반드시 있어야 합니다");
         PackReader.Result read = PackReader.read(packDirectory, loadedAt);
@@ -55,7 +67,7 @@ public class PackLoader {
         }
         PackDefinition pack = read.definition();
         try {
-            return transaction.execute(status -> store(pack, read.warnings()));
+            return transaction.execute(status -> store(pack, read.warnings(), inputSourcesWithEditions));
         }
         catch (DataAccessException | TransactionException e) {
             throw new PackStorageException("Pack 을 저장하지 못했습니다. Pack: " + pack.packId()
@@ -63,7 +75,8 @@ public class PackLoader {
         }
     }
 
-    private PackLoadResult store(PackDefinition pack, List<PackWarning> warnings) {
+    private PackLoadResult store(PackDefinition pack, List<PackWarning> warnings,
+            Collection<String> inputSourcesWithEditions) {
         // 같은 Pack 을 동시에 적재하면 한쪽이 기다린다. 트랜잭션이 끝나면 풀린다.
         jdbc.query("select pg_advisory_xact_lock(hashtext(?))", rs -> {
         }, "tabnit-pack:" + pack.packId());
@@ -75,7 +88,7 @@ public class PackLoader {
         if (existing.get().sameContentAs(pack)) {
             return new PackLoadResult(pack.packId(), PackLoadResult.Outcome.UNCHANGED, warnings);
         }
-        List<String> reasons = rejectedChanges(existing.get(), pack);
+        List<String> reasons = rejectedChanges(existing.get(), pack, inputSourcesWithEditions);
         if (!reasons.isEmpty()) {
             throw new PackChangeRejectedException(pack.packId(), reasons);
         }
@@ -92,7 +105,8 @@ public class PackLoader {
      * 지우는 것은 자료가 쓰지 않으면 받아야 하지만 (D2 AD-130), 자료가 쓰는지 답하는 core 의 공개 API 가
      * 아직 없어 지금은 모두 거부한다.
      */
-    private static List<String> rejectedChanges(PackDefinition before, PackDefinition after) {
+    private static List<String> rejectedChanges(PackDefinition before, PackDefinition after,
+            Collection<String> inputSourcesWithEditions) {
         List<String> reasons = new ArrayList<>();
         Map<String, EntityTypeDefinition> types = new TreeMap<>(PackOrder.STRINGS);
         after.entityTypes().forEach(t -> types.put(t.name(), t));
@@ -127,18 +141,22 @@ public class PackLoader {
                 reasons.add("속성 " + old.name() + " 의 형식이나 개체 유형이 바뀌었습니다. 이 변경은 받지 않습니다. 새 이름의 속성을 더하세요.");
             }
         }
-        // 매핑을 더하는 것은 받는다. 판이 하나도 들어오지 않은 입력 자료의 매핑은 바꾸거나 지울 수 있어야 하지만
-        // (D2 AD-142), 판이 있는지 답하는 link 의 공개 API 가 아직 없어 지금은 바꾸거나 지우는 것을 모두 거부한다.
+        // 매핑을 더하는 것은 받는다. 판이 하나도 들어오지 않은 입력 자료의 매핑은 바꾸거나 지울 수 있다. 판이 하나라도 들어온
+        // 입력 자료의 매핑은 바꾸거나 지울 수 없다: 이미 계산한 변동과 조치의 근거가 흔들린다 (D2 AD-142).
+        // 어느 것에 판이 있는지 받지 못했으면 모두 판이 있는 것으로 본다.
         Map<String, MappingDefinition> mappings = new TreeMap<>(PackOrder.STRINGS);
         after.mappings().forEach(m -> mappings.put(m.inputSourceId(), m));
         for (MappingDefinition old : before.mappings()) {
             MappingDefinition now = mappings.get(old.inputSourceId());
-            if (now == null) {
-                reasons.add("입력 자료 " + old.inputSourceId() + " 의 매핑이 없어졌습니다. 매핑을 지우는 것은 아직 받지 않습니다.");
+            if (now != null && now.equals(old)) {
+                continue;
             }
-            else if (!now.equals(old)) {
-                reasons.add("입력 자료 " + old.inputSourceId() + " 의 매핑이 바뀌었습니다. 이미 적재한 매핑을 바꾸는 것은 아직 받지 않습니다. 새 식별자의 입력 자료를 더하세요.");
+            if (inputSourcesWithEditions != null && !inputSourcesWithEditions.contains(old.inputSourceId())) {
+                continue;
             }
+            String why = inputSourcesWithEditions == null ? "판이 들어왔는지 확인하지 못해" : "이미 판이 들어온 입력 자료라";
+            reasons.add("입력 자료 " + old.inputSourceId() + " 의 매핑이 " + (now == null ? "없어졌습니다" : "바뀌었습니다") + ". " + why
+                    + " 매핑을 바꾸거나 지울 수 없습니다. 매핑을 되돌리고, 바꾸려는 내용은 새 식별자의 입력 자료로 더하세요.");
         }
         return reasons;
     }

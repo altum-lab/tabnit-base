@@ -297,14 +297,22 @@ class RolesApiTests {
 		var renamed = this.definitions.find("role-changed").orElseThrow();
 		assertThat(renamed.label()).startsWith("고친 시험용 Pack");
 
-		// 이미 적재한 매핑을 바꾸면 받지 않는다 (입력 자료의 열 이름을 고쳤다).
-		PackCopies.copyInto(PACKS, "role-changed", text -> text.replace("\"점검주기일\"", "\"점검주기\""));
+		// 적재한 속성을 지우면 받지 않는다. 매핑을 바꾸는 것은 판이 들어오기 전에는 받으므로 (D2 AD-142,
+		// PackMappingReloadTests 가 본다) 여기서는 언제나 거부되는 변경을 쓴다: 쓰는 곳이 없는 속성을 더했다가 지운다.
+		String marker = "ex:지침제목 a owl:DatatypeProperty ;";
+		assertThat(java.nio.file.Files.readString(PackCopies.SOURCE.resolve("ontology.ttl"))).contains(marker);
+		PackCopies.copyInto(PACKS, "role-changed",
+				text -> text.contains(marker) ? text + "\nex:지어낸속성 a owl:DatatypeProperty ;\n    rdfs:label \"지어낸 속성\" ;\n"
+						+ "    rdfs:domain ex:운영지침 ;\n    rdfs:range  xsd:string .\n" : text);
+		loadAsAdmin("\"role-changed\"").andExpect(status().isOk()).andExpect(jsonPath("$.outcome").value("UPDATED"));
+		before = this.definitions.find("role-changed").orElseThrow();
+		PackCopies.copyInto(PACKS, "role-changed", text -> text);
 		loadAsAdmin("\"role-changed\"").andExpect(status().isConflict())
 			.andExpect(content().contentTypeCompatibleWith("application/problem+json"))
 			.andExpect(jsonPath("$.code").value("PACK_CHANGE_REJECTED"))
 			.andExpect(jsonPath("$.reasons", hasSize(greaterThanOrEqualTo(1))))
 			.andExpect(jsonPath("$.reasons[0]").isString());
-		assertThat(before.entityTypes()).isEqualTo(this.definitions.find("role-changed").orElseThrow().entityTypes());
+		assertThat(this.definitions.find("role-changed").orElseThrow().attributes()).isEqualTo(before.attributes());
 	}
 
 	@Test

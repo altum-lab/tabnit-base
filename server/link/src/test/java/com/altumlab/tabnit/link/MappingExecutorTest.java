@@ -93,7 +93,7 @@ class MappingExecutorTest {
         // 적용일 전날에는 아무것도 유효하지 않다.
         assertThat(relations.relationsAsOf(base, EFFECTIVE.minusDays(1))).isEmpty();
         assertThat(values.valuesAsOf(base, EFFECTIVE.minusDays(1))).isEmpty();
-        assertThat(outcome.notices()).isEmpty();
+        assertThat(Notices.exceptReferenceOnly(outcome.notices())).isEmpty();
     }
 
     @Test
@@ -147,7 +147,11 @@ class MappingExecutorTest {
         assertThat(outcome.items().get(0).outputs())
             .containsExactly(new ItemOutput(ItemOutput.Kind.ENTITY, "x-primary|Base|B-1"));
         assertThat(values.valuesAsOf("x-primary|Base|B-1", EFFECTIVE)).isEmpty();
-        assertThat(outcome.notices()).isEmpty();
+        // 다른 끝이 빈 행(2 번째 줄)의 주 개체는 아무도 가리키지 않았다: 알리지 않는다. 3 번째 줄은 속성 없는 두 개체를
+        // 관계로 이었다 (D2 AD-378).
+        assertThat(outcome.notices()).containsExactly(
+                new IngestNotice("REFERENCE_ONLY_ENTITY", 3, "NO_ATTRIBUTE_VALUES", "x-primary|Base|B-2", null),
+                new IngestNotice("REFERENCE_ONLY_ENTITY", 3, "NO_ATTRIBUTE_VALUES", "x-primary|Other|O-1", null));
     }
 
     @Test
@@ -229,7 +233,7 @@ class MappingExecutorTest {
 
         MappingOutcome outcome = run(pack, "src", 1, "code,title,peer\n" + left + ",이름," + right + "\n");
 
-        assertThat(outcome.notices()).isEmpty();
+        assertThat(Notices.exceptReferenceOnly(outcome.notices())).isEmpty();
         assertThat(relations.relationsAsOf("x-longest|Base|" + left, EFFECTIVE)).singleElement()
             .satisfies(r -> assertThat(r.targetEntityId()).isEqualTo("x-longest|Base|" + right));
         assertThat(valuesOf("x-longest|Base|" + left)).containsExactly(Map.entry("title", "이름"));
@@ -255,7 +259,7 @@ class MappingExecutorTest {
 
         assertThat(outcome.items()).extracting(IngestedItem::itemKey).containsExactly("1", "5");
         assertThat(relations.relationsAsOf("x-long|Base|" + at, EFFECTIVE)).hasSize(1);
-        assertThat(outcome.notices()).containsExactly(skipped(3, "KEY_TOO_LONG", "code", "201"),
+        assertThat(Notices.exceptReferenceOnly(outcome.notices())).containsExactly(skipped(3, "KEY_TOO_LONG", "code", "201"),
                 skipped(4, "KEY_TOO_LONG", "other", "201"), skipped(5, "KEY_TOO_LONG", "line", "201"));
     }
 
@@ -364,7 +368,7 @@ class MappingExecutorTest {
         assertThat(relations.relationsAsOf("x-blank|Base|B-1", EFFECTIVE)).isEmpty();
         assertThat(relations.relationsAsOf("x-blank|Base|B-2", EFFECTIVE)).hasSize(1);
         assertThat(outcome.items()).hasSize(2);
-        assertThat(outcome.notices()).isEmpty();
+        assertThat(Notices.exceptReferenceOnly(outcome.notices())).isEmpty();
     }
 
     @Test
@@ -436,7 +440,7 @@ class MappingExecutorTest {
         MappingOutcome outcome = run(pack, "src", 1, "code,title,other\nB-1,첫째\nB-2,둘째,O-1\n");
 
         assertThat(outcome.items()).extracting(IngestedItem::itemKey).containsExactly("B-2");
-        assertThat(outcome.notices()).containsExactly(skipped(2, "CELL_COUNT_MISMATCH", null, "2"));
+        assertThat(Notices.exceptReferenceOnly(outcome.notices())).containsExactly(skipped(2, "CELL_COUNT_MISMATCH", null, "2"));
     }
 
     @Test
@@ -462,7 +466,7 @@ class MappingExecutorTest {
         MappingOutcome backward = run(two, "src", 1, "code,title,other\nB-1,다시,O-2\nB-2,둘째,O-1\nB-1,첫째,O-1\n");
 
         assertThat(forward.items()).extracting(IngestedItem::itemKey).containsExactly("B-2");
-        assertThat(forward.notices()).containsExactly(skipped(2, "DUPLICATE_ITEM_KEY", null, "B-1"),
+        assertThat(Notices.exceptReferenceOnly(forward.notices())).containsExactly(skipped(2, "DUPLICATE_ITEM_KEY", null, "B-1"),
                 skipped(4, "DUPLICATE_ITEM_KEY", null, "B-1"));
         assertThat(backward.items()).extracting(IngestedItem::itemKey).containsExactly("B-2");
         assertThat(valuesOf("x-dup-2|Base|B-2")).isEqualTo(valuesOf("x-dup-1|Base|B-2"));
@@ -576,7 +580,7 @@ class MappingExecutorTest {
         MappingOutcome outcome = run(pack, "src", 1, "code,peer\nB-1,B-2\nB-3,B-3\n");
 
         assertThat(outcome.items()).extracting(IngestedItem::itemKey).containsExactly("B-1");
-        assertThat(outcome.notices()).containsExactly(skipped(3, "SELF_RELATION", "peer", "B-3"));
+        assertThat(Notices.exceptReferenceOnly(outcome.notices())).containsExactly(skipped(3, "SELF_RELATION", "peer", "B-3"));
     }
 
     // ── 다시 넣기, 전부 되거나 전부 안 되거나 ──────────────────────────
@@ -602,7 +606,7 @@ class MappingExecutorTest {
 
         MappingOutcome again = run(pack, "src", 1, "code,title,other\nB-1,고친 이름,O-1\n");
 
-        assertThat(again.notices()).extracting(IngestNotice::code).containsExactly("OVERLAPS_STORED_VALUE");
+        assertThat(Notices.exceptReferenceOnly(again.notices())).extracting(IngestNotice::code).containsExactly("OVERLAPS_STORED_VALUE");
         assertThat(valuesOf("x-rerun|Base|B-1")).containsExactly(Map.entry("title", "첫째"));
     }
 
@@ -671,7 +675,7 @@ class MappingExecutorTest {
                     RECORDED_AT);
 
             // 예시 자료에는 건너뛴 행도 부딪힌 값도 없어야 한다. 행마다 항목이 하나이고 주 개체를 만든다.
-            assertThat(outcome.notices()).as(step.getKey()).isEmpty();
+            assertThat(Notices.exceptReferenceOnly(outcome.notices())).as(step.getKey()).isEmpty();
             assertThat(outcome.items()).as(step.getKey()).hasSize(CsvTableReader.read(content).rows().size());
             assertThat(outcome.items()).allSatisfy(item -> assertThat(item.outputs())
                 .anySatisfy(o -> assertThat(o.kind()).isEqualTo(ItemOutput.Kind.ENTITY)));

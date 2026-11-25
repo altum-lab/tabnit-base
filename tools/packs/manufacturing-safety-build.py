@@ -188,7 +188,9 @@ edition("safety-sheet", "safety-sheet-v3.csv", DD, SDS_COLS,
                  {"SDS-04": "0.1"}, {"SDS-01": True}))
 
 # 시나리오: 투입하는 차례
-ORDER = ["regulation", "requirement", "substance", "safety-sheet", "process", "process-substance", "equipment", "storage",
+# 물질안전자료를 화학물질보다 먼저 넣는다: 화학물질의 행이 물질안전자료를 가리킨다. 거꾸로 넣으면 화학물질의 첫 판에
+# 참조로만 만들어진 개체의 알림이 물질마다 나온다 (D2 AD-378, AD-382). 첫 판들이라 차례는 정답에 닿지 않는다.
+ORDER = ["regulation", "requirement", "safety-sheet", "substance", "process", "process-substance", "equipment", "storage",
          "substance-storage", "emission-point", "process-emission", "worker", "incident", "incident-substance", "permit", "evidence",
          "requirement-substance", "requirement-storage", "requirement-emission", "requirement-equipment"]
 STEPS = [(s, 0) for s in ORDER] + [("safety-sheet", 1), ("worker", 1), ("process", 1), ("equipment", 1), ("substance", 1), ("process-substance", 1), ("safety-sheet", 2)]

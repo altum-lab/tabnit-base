@@ -175,9 +175,17 @@ function Graph2D({ map, onCenter }: GraphProps) {
           const size = 12 / scale;
           context.font = `${size}px sans-serif`;
           context.textAlign = "center";
-          context.textBaseline = "top";
+          // 가운데 개체의 이름은 점의 위에, 나머지는 점의 아래에 적는다. 가운데 개체의 옆에 붙은 이웃의 이름과
+          // 한 줄에 이어져 읽히지 않게 한다 (D-10 의 리허설에서 겹쳐 보였다).
+          const above = node.depth === 0;
+          context.textBaseline = above ? "bottom" : "top";
+          const y = (node.y ?? 0) + (above ? -7 : 7);
+          // 선이나 다른 이름과 겹쳐도 읽히게 글자의 둘레를 바탕색으로 두른다.
+          context.lineWidth = 3 / scale;
+          context.strokeStyle = "#ffffff";
+          context.strokeText(node.label, node.x ?? 0, y);
           context.fillStyle = "#1f1f1f";
-          context.fillText(node.label, node.x ?? 0, (node.y ?? 0) + 7);
+          context.fillText(node.label, node.x ?? 0, y);
         }}
         linkLabel={(link) => link.relationType}
         linkCurvature={(link) => link.curvature}

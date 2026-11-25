@@ -94,6 +94,12 @@ class E2eSeedData {
 						java.nio.file.Files.readAllBytes(actionsPack.resolve("data/" + edition[1])),
 						java.time.LocalDate.parse(edition[2]));
 			}
+			// 시연 리허설(D-10, web/tests/rehearsal.spec.ts)이 화면으로 판을 올릴 두 예시 Pack. 정의만 적재한다:
+			// 판은 그 시험이 시나리오의 차례대로 화면에서 올린다.
+			for (String example : java.util.List.of("manufacturing-safety", "retirement-pension")) {
+				new com.altumlab.tabnit.pack.PackLoader(dataSource).load(java.nio.file.Path.of("../../packs", example),
+						RECORDED_AT);
+			}
 			// 처리되지 않은 변동의 시험이 읽을 Pack: 규칙 하나의 기한을 날짜로 담을 수 없게 고친 사본이다.
 			// 그 규칙에 걸리는 변동이 실패로 남는다. 고치지 않으므로 다시 처리해도 다시 실패한다: 시험을 되풀이할 수 있다.
 			PackCopies.requireUnstorableDueDate();

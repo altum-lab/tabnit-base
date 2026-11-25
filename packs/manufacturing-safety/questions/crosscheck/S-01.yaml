@@ -648,7 +648,7 @@ checks:
           changedValues:
             - { entity: { type: 물질안전자료, key: SDS-06 }, attribute: 유해성구분, before: "인화성 가스 구분1", after: "인화성 가스 구분1, 자연발화성" }
             - { entity: { type: 물질안전자료, key: SDS-06 }, attribute: 자료개정일, before: "2025-06-15", after: "2026-09-15" }
-            - { entity: { type: 물질안전자료, key: SDS-06 }, attribute: 자료판번호, before: "4", after: "6" }
+            - { entity: { type: 물질안전자료, key: SDS-06 }, attribute: 자료판번호, before: "4", after: "5" }
   - id: X-A-0001
     kind: actions
     change: { step: 21, itemKey: [SDS-01] }

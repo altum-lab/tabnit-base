@@ -239,7 +239,8 @@ public class AttributeValueQuery {
                 + ". 값을 확인하고, 문제가 없으면 저장소의 상태를 확인한 뒤 다시 시도하세요.", e);
     }
 
-    private static AttributeValue toValue(ResultSet rs, int rowNum) throws SQLException {
+    /** 같은 꾸러미의 다른 조회도 이 행 읽기를 쓴다 ({@link PackDataQuery}). */
+    static AttributeValue toValue(ResultSet rs, int rowNum) throws SQLException {
         return new AttributeValue(rs.getString("id"), rs.getString("pack_id"), rs.getString("entity_id"),
                 rs.getString("attribute_name"), rs.getString("value"),
                 new ValidityPeriod(rs.getObject("valid_from", LocalDate.class),

@@ -92,7 +92,8 @@ public class EntityQuery {
         }
     }
 
-    private static EntityRef toEntity(ResultSet rs, int rowNum) throws SQLException {
+    /** 같은 꾸러미의 다른 조회도 이 행 읽기를 쓴다 ({@link PackDataQuery}). */
+    static EntityRef toEntity(ResultSet rs, int rowNum) throws SQLException {
         return new EntityRef(rs.getString("pack_id"), rs.getString("entity_type"), rs.getString("entity_key"));
     }
 }

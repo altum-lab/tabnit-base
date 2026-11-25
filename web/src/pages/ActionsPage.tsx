@@ -543,7 +543,7 @@ function History({ history }: { history: ActionDecision[] }) {
   }
   return (
     <table>
-      <caption>이력</caption>
+      <caption className="same-as-heading">이력</caption>
       <thead>
         <tr>
           <th scope="col">차례</th>

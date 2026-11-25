@@ -150,7 +150,7 @@ export function PastEditions({ packId, refreshKey, renderResult }: Props) {
             onMove={setOffset}
           />
           <table>
-            <caption>지난 판</caption>
+            <caption className="same-as-heading">지난 판</caption>
             <thead>
               <tr>
                 <th scope="col">받은 때</th>

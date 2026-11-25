@@ -127,7 +127,7 @@ export function UnprocessedChanges({ packId, refreshKey }: { packId: string; ref
       {list.kind === "loaded" && list.changes.length > 0 && (
         <>
           <table>
-            <caption>처리되지 않은 변동</caption>
+            <caption className="same-as-heading">처리되지 않은 변동</caption>
             <thead>
               <tr>
                 <th scope="col">판</th>

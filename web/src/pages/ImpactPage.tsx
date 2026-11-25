@@ -162,7 +162,7 @@ function Scope({ scope, onMove }: { scope: ChangeImpactScope; onMove: (offset: n
           {scope.targets.length === 0 ? (
             <p role="status">이 자리에는 영향 대상이 없습니다. 이전으로 돌아가세요.</p>
           ) : (
-            <table>
+            <table className="impact-targets">
               <caption>영향 대상</caption>
               <thead>
                 <tr>

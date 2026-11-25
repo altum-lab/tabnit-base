@@ -184,7 +184,7 @@ edition("process-substance", "process-substance-v2.csv", DD, ["공정번호", "�
         [(p[0], m) for p in PRCS for m in p[4] if (p[0], m) != ("다-세정-01", "MAT-01")])
 revised.update({"SDS-01": DD, "SDS-06": "2026-09-15"})
 edition("safety-sheet", "safety-sheet-v3.csv", DD, SDS_COLS,
-        sds_rows({"SDS-01": 8, "SDS-04": 7, "SDS-06": 6}, {"SDS-01": "급성독성 구분1", "SDS-06": "인화성 가스 구분1, 자연발화성"},
+        sds_rows({"SDS-01": 8, "SDS-04": 7, "SDS-06": 5}, {"SDS-01": "급성독성 구분1", "SDS-06": "인화성 가스 구분1, 자연발화성"},
                  {"SDS-04": "0.1"}, {"SDS-01": True}))
 
 # 시나리오: 투입하는 차례

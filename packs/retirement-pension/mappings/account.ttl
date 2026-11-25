@@ -1,9 +1,11 @@
 # 매핑. 형식은 D6 7절이다.
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix tabnit: <urn:tabnit:vocab:> .
 @prefix ex:     <urn:tabnit:pack:retirement-pension:> .
 
 ex:매핑-account a tabnit:Mapping ;
     tabnit:inputSourceId "account" ;
+    rdfs:label "연금계좌 목록" ;
     tabnit:fileFormat tabnit:Csv ;
     tabnit:requiredColumns ( "계좌번호" "계좌구분" "적립금" "위험자산비중" "소유가입자" "가입제도" "지정방법" ) ;
     tabnit:itemKeyColumns ( "계좌번호" ) ;

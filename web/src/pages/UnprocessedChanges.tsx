@@ -141,7 +141,7 @@ export function UnprocessedChanges({ packId, refreshKey }: { packId: string; ref
               {list.changes.map((change) => (
                 <tr key={change.changeEventId} data-change-event-id={change.changeEventId}>
                   <td>
-                    {change.inputSourceId} {change.editionNo}판, 적용일 {change.effectiveDate}
+                    {change.inputSourceLabel} {change.editionNo}판, 적용일 {change.effectiveDate}
                   </td>
                   <td>{change.itemKey}</td>
                   <td>{KIND_LABEL[change.kind] ?? change.kind}</td>

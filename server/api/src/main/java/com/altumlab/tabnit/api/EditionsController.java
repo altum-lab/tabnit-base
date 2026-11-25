@@ -1,5 +1,6 @@
 package com.altumlab.tabnit.api;
 
+import com.altumlab.tabnit.pack.PackDefinition;
 import com.altumlab.tabnit.link.ChangeEvent;
 import com.altumlab.tabnit.link.ChangeEventStatus;
 import com.altumlab.tabnit.link.ChangeFailureDetail;
@@ -67,7 +68,7 @@ class EditionsController {
 	}
 
 	/** 규격의 EditionListItem. 수는 link 가 저장된 것을 센 값이다. */
-	record ListItem(String editionId, String inputSourceId, int editionNo, LocalDate effectiveDate, Instant receivedAt,
+	record ListItem(String editionId, String inputSourceId, String inputSourceLabel, int editionNo, LocalDate effectiveDate, Instant receivedAt,
 			String fileName, int itemCount, int changeCount, int noticeCount) {
 	}
 
@@ -79,14 +80,17 @@ class EditionsController {
 		require(packId, "MISSING_PACK_ID", "packId", "Pack 의 식별자가 없습니다. packId 에 Pack 의 식별자를 넣어 다시 보내세요.");
 		PageRequest page = PageRequest.of(offset, limit);
 		// NUL 이 든 식별자의 Pack 은 있을 수 없다. 저장소에 묻지 않고 없는 것으로 답한다.
-		if (packId.indexOf('\u0000') >= 0 || this.packs.find(packId).isEmpty()) {
+		Optional<PackDefinition> pack = packId.indexOf('\u0000') >= 0 ? Optional.empty() : this.packs.find(packId);
+		if (pack.isEmpty()) {
 			throw new ApiProblemException(HttpStatus.NOT_FOUND, "PACK_NOT_FOUND", "packId",
 					"Pack " + packId + " 이 적재되어 있지 않습니다. Pack 의 식별자를 확인하세요.");
 		}
+		InputSourceLabels labels = new InputSourceLabels(this.packs, packId, pack);
 		EditionPage found = this.editions.packEditions(packId, page.offset(), page.limit());
 		List<ListItem> items = found.editions()
 			.stream()
-			.map(entry -> new ListItem(entry.edition().id(), entry.edition().inputSourceId(), entry.edition().editionNo(),
+			.map(entry -> new ListItem(entry.edition().id(), entry.edition().inputSourceId(),
+					labels.label(packId, entry.edition().inputSourceId()), entry.edition().editionNo(),
 					entry.edition().effectiveDate(), entry.edition().receivedAt(), entry.edition().fileName(),
 					entry.itemCount(), entry.changeCount(), entry.noticeCount()))
 			.toList();

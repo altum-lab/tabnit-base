@@ -1,9 +1,11 @@
 # 매핑. 형식은 D6 7절이다.
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix tabnit: <urn:tabnit:vocab:> .
 @prefix ex:     <urn:tabnit:pack:retirement-pension:> .
 
 ex:매핑-requirement a tabnit:Mapping ;
     tabnit:inputSourceId "requirement" ;
+    rdfs:label "운영요건 목록" ;
     tabnit:fileFormat tabnit:Csv ;
     tabnit:requiredColumns ( "요건번호" "요건명칭" "요건구분" "위험자산한도" "최저등급점수" "최저적립비율" "근거규약" ) ;
     tabnit:itemKeyColumns ( "요건번호" ) ;

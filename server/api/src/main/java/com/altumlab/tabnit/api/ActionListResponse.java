@@ -12,7 +12,8 @@ import java.util.List;
 record ActionListResponse(String packId, String status, String changeEventId, int total, int offset, int limit,
 		List<Item> actions) {
 
-	record Basis(EntityViews.Item entity, String inputSourceId, int editionNo, LocalDate effectiveDate) {
+	record Basis(EntityViews.Item entity, String inputSourceId, String inputSourceLabel, int editionNo,
+			LocalDate effectiveDate) {
 	}
 
 	record Item(String id, String changeEventId, String ruleNo, String ruleLabel, String actionText, int priority,

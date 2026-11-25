@@ -66,7 +66,7 @@ class RelationsController {
 			ids.add(relation.targetEntityId());
 		}
 		return RelationsAsOfResponse.of(date, entityId, found.total(), page, found.relations(),
-				this.entityViews.items(ids, date));
+				this.entityViews.items(ids, date), this.entityViews.inputSourceLabels());
 	}
 
 	/**

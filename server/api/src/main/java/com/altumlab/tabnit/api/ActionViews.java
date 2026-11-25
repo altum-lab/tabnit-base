@@ -32,6 +32,7 @@ class ActionViews {
 		}
 		Map<LocalDate, Map<String, EntityViews.Item>> found = new TreeMap<>();
 		idsByDate.forEach((date, ids) -> found.put(date, this.entities.items(ids, date)));
+		InputSourceLabels labels = this.entities.inputSourceLabels();
 		List<ActionListResponse.Item> items = new ArrayList<>();
 		for (Action action : actions) {
 			Map<String, EntityViews.Item> at = found.get(action.effectiveDate());
@@ -45,7 +46,8 @@ class ActionViews {
 					// 유형, 이름표, 키를 모두 개체에서 읽은 것으로 준다. 조치에 저장된 대상의 유형과 같다:
 					// 유형은 개체의 식별자에 들어 있어 바뀌지 않는다.
 					target,
-					new ActionListResponse.Basis(basis, action.basisInputSourceId(), action.basisEditionNo(),
+					new ActionListResponse.Basis(basis, action.basisInputSourceId(),
+							labels.label(action.packId(), action.basisInputSourceId()), action.basisEditionNo(),
 							action.effectiveDate()),
 					action.createdAt()));
 		}

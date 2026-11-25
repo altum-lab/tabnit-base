@@ -70,6 +70,11 @@ class EntityViews {
 		return items;
 	}
 
+	/** 입력 자료의 이름표를 찾는 것. 답 하나를 만드는 동안 쓴다 (D2 AD-384). */
+	InputSourceLabels inputSourceLabels() {
+		return new InputSourceLabels(this.packs);
+	}
+
 	/** 찾은 것에서 하나를 꺼낸다. 없으면 저장소가 어긋난 것이다: 근거 없이 지어내지 않는다. */
 	static Item require(Map<String, Item> items, String entityId, String what) {
 		Item item = items.get(entityId);

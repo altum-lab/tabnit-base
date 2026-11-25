@@ -324,7 +324,7 @@ function Result({ result, onMove }: { result: RelationsAsOf; onMove: (offset: nu
                 <td>{relation.validFrom}</td>
                 <td>{relation.validTo ?? "종료일 없음"}</td>
                 <td>
-                  {relation.provenance.inputSourceId}, {relation.provenance.editionNo}판
+                  {relation.provenance.inputSourceLabel}, {relation.provenance.editionNo}판
                 </td>
               </tr>
             ))}

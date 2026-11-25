@@ -72,7 +72,8 @@ class RelationMapController {
 		for (RelationMapNode node : map.nodes()) {
 			ids.add(node.entityId());
 		}
-		return RelationMapResponse.of(date, entityId, levels, MAX_NODES, map, this.entityViews.items(ids, date));
+		return RelationMapResponse.of(date, entityId, levels, MAX_NODES, map, this.entityViews.items(ids, date),
+				this.entityViews.inputSourceLabels());
 	}
 
 	/**

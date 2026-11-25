@@ -1,11 +1,13 @@
 # 제조 안전 Pack. 반도체 제조 현장의 안전·보건·환경 업무를 본뜬 예시 Pack 이다 (D2 AD-49, AD-284 ~ AD-288).
 # 모든 이름과 값은 지어낸 것이다. 실제 회사, 현장, 법령, 문서와 관계가 없다.
 # 입력 자료 requirement-storage: 요건이 걸린 보관소.
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix tabnit: <urn:tabnit:vocab:> .
 @prefix ex:     <urn:tabnit:pack:manufacturing-safety:> .
 
 ex:매핑-requirement-storage a tabnit:Mapping ;
     tabnit:inputSourceId "requirement-storage" ;
+    rdfs:label "법정요건별 약품보관소" ;
     tabnit:fileFormat tabnit:Csv ;
     tabnit:requiredColumns ( "요건번호" "보관소번호" ) ;
     tabnit:itemKeyColumns ( "요건번호" "보관소번호" ) ;

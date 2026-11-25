@@ -43,7 +43,8 @@ class UnprocessedChangesController {
 	}
 
 	/** 규격의 UnprocessedChange. */
-	record Item(String changeEventId, String editionId, String inputSourceId, int editionNo, LocalDate effectiveDate,
+	record Item(String changeEventId, String editionId, String inputSourceId, String inputSourceLabel, int editionNo,
+			LocalDate effectiveDate,
 			String itemKey, String kind, String primaryEntityId, EntityViews.Item primaryEntity,
 			EditionSubmissionResponse.Processing processing) {
 	}
@@ -70,11 +71,13 @@ class UnprocessedChangesController {
 		}
 		Map<LocalDate, Map<String, EntityViews.Item>> entitiesByDate = new TreeMap<>();
 		idsByDate.forEach((date, ids) -> entitiesByDate.put(date, this.entityViews.items(ids, date)));
+		InputSourceLabels labels = this.entityViews.inputSourceLabels();
 		List<Item> items = new ArrayList<>();
 		for (EditionProcessing.UnprocessedChange change : unprocessed) {
 			ChangeEvent event = change.event();
 			Edition edition = change.edition();
-			items.add(new Item(event.id(), edition.id(), edition.inputSourceId(), edition.editionNo(),
+			items.add(new Item(event.id(), edition.id(), edition.inputSourceId(),
+					labels.label(edition.packId(), edition.inputSourceId()), edition.editionNo(),
 					edition.effectiveDate(), event.itemKey(), event.kind().name(), event.primaryEntityId(),
 					EntityViews.require(entitiesByDate.get(edition.effectiveDate()), event.primaryEntityId(), "주 개체"),
 					new EditionSubmissionResponse.Processing(event.status().name(), event.failedStage(),

@@ -25,11 +25,12 @@ record RelationsAsOfResponse(String asOf, String entityId, int total, int offset
 	 * @param page 답에 쓴 건너뛴 수와 한 번에 주는 수
 	 * @param relations 이 쪽의 관계
 	 * @param entities 이 쪽의 관계의 출발과 도착 개체. 식별자로 찾는다. 표시 이름은 조회 시점의 값이다
+	 * @param labels 출처의 입력 자료의 이름표를 찾는 것
 	 */
 	static RelationsAsOfResponse of(LocalDate asOf, String entityId, int total, PageRequest page,
-			List<Relation> relations, Map<String, EntityViews.Item> entities) {
+			List<Relation> relations, Map<String, EntityViews.Item> entities, InputSourceLabels labels) {
 		return new RelationsAsOfResponse(asOf.toString(), entityId, total, page.offset(), page.limit(),
-				relations.stream().map(relation -> RelationItem.of(relation, entities)).toList());
+				relations.stream().map(relation -> RelationItem.of(relation, entities, labels)).toList());
 	}
 
 	/**
@@ -40,21 +41,28 @@ record RelationsAsOfResponse(String asOf, String entityId, int total, int offset
 	record RelationItem(String id, String relationType, String sourceEntityId, String targetEntityId,
 			EntityViews.Item source, EntityViews.Item target, String validFrom, String validTo, ProvenanceItem provenance, String recordedAt) {
 
-		static RelationItem of(Relation relation, Map<String, EntityViews.Item> entities) {
+		static RelationItem of(Relation relation, Map<String, EntityViews.Item> entities, InputSourceLabels labels) {
 			LocalDate to = relation.period().to();
 			return new RelationItem(relation.id(), relation.relationType(), relation.sourceEntityId(),
 					relation.targetEntityId(),
 					EntityViews.require(entities, relation.sourceEntityId(), "관계 " + relation.id() + " 의 출발 개체"),
 					EntityViews.require(entities, relation.targetEntityId(), "관계 " + relation.id() + " 의 도착 개체"),
 					relation.period().from().toString(), to == null ? null : to.toString(),
-					new ProvenanceItem(relation.provenance().inputSourceId(), relation.provenance().editionNo()),
+					ProvenanceItem.of(relation, labels),
 					relation.recordedAt().toString());
 		}
 
 	}
 
 	/** 규격의 Provenance. */
-	record ProvenanceItem(String inputSourceId, int editionNo) {
+	record ProvenanceItem(String inputSourceId, String inputSourceLabel, int editionNo) {
+
+		/** 이름표는 그 관계의 Pack 의 매핑에서 읽는다. 없으면 식별자다 (D2 AD-384). */
+		static ProvenanceItem of(Relation relation, InputSourceLabels labels) {
+			return new ProvenanceItem(relation.provenance().inputSourceId(),
+					labels.label(relation.packId(), relation.provenance().inputSourceId()),
+					relation.provenance().editionNo());
+		}
 	}
 
 }

@@ -569,6 +569,109 @@ class PackMappingTest {
         assertThat(mappings.get(1).itemKeyColumns()).containsExactly("코드", "둘째");
     }
 
+    // ── B-15: 입력 자료의 이름표 ───────────────────────────────────
+
+    @Test
+    void 매핑의_이름표를_읽어_저장하고_적지_않았으면_없다() throws IOException {
+        Path dir = pack("m-label", "one.ttl", MINIMAL.replace("tabnit:inputSourceId \"src\" ;",
+                "tabnit:inputSourceId \"src\" ;\n    rdfs:label \"지어낸 자료 대장\" ;"));
+        mapping(dir, "two.ttl", MINIMAL.replace("ex:m ", "ex:m2 ").replace("\"src\"", "\"src-2\""));
+
+        loader.load(dir, LOADED_AT);
+
+        List<MappingDefinition> mappings = definitions.find("m-label").orElseThrow().mappings();
+        assertThat(mappings).extracting(MappingDefinition::inputSourceId, MappingDefinition::label)
+            .containsExactly(org.assertj.core.groups.Tuple.tuple("src", "지어낸 자료 대장"),
+                    org.assertj.core.groups.Tuple.tuple("src-2", null));
+    }
+
+    @Test
+    void 매핑의_이름표는_비어_있지_않은_글자_하나여야_한다() throws IOException {
+        for (String label : List.of("rdfs:label \"\" ;", "rdfs:label \"하나\" , \"둘\" ;", "rdfs:label 7 ;",
+                "rdfs:label \"   \" ;")) {
+            Path dir = pack("m-label-bad", "one.ttl",
+                    MINIMAL.replace("tabnit:inputSourceId \"src\" ;", "tabnit:inputSourceId \"src\" ;\n    " + label));
+
+            assertThat(problemsOf(dir)).as(label).singleElement().satisfies(problem -> {
+                assertThat(problem.file()).isEqualTo("mappings/one.ttl");
+                assertThat(problem.message()).contains("rdfs:label");
+            });
+        }
+    }
+
+    @Test
+    void 언어_표시가_붙은_이름표는_그_까닭을_알리며_거부한다() throws IOException {
+        Path dir = pack("m-label-lang", "one.ttl", MINIMAL.replace("tabnit:inputSourceId \"src\" ;",
+                "tabnit:inputSourceId \"src\" ;\n    rdfs:label \"지어낸 이름\"@ko ;"));
+
+        assertThat(problemsOf(dir)).singleElement()
+            .satisfies(problem -> assertThat(problem.message()).contains("rdfs:label").contains("언어 표시(@ko)"));
+    }
+
+    @Test
+    void 이름표만_고친_매핑은_판이_들어온_입력_자료여도_다시_적재된다() throws IOException {
+        loader.load(pack("m-relabel", "one.ttl", MINIMAL), LOADED_AT);
+        String labelled = MINIMAL.replace("tabnit:inputSourceId \"src\" ;",
+                "tabnit:inputSourceId \"src\" ;\n    rdfs:label \"새 이름표\" ;");
+
+        // src 에 판이 있다. 이름표를 더하는 것과 바꾸는 것과 지우는 것은 받는다: 화면에 보이는 글자다.
+        assertThat(loader.load(pack("m-relabel", "one.ttl", labelled), LOADED_AT.plusSeconds(10), List.of("src")).outcome())
+            .isEqualTo(PackLoadResult.Outcome.UPDATED);
+        assertThat(definitions.find("m-relabel").orElseThrow().mappings().get(0).label()).isEqualTo("새 이름표");
+        assertThat(loader
+            .load(pack("m-relabel", "one.ttl", labelled.replace("새 이름표", "또 고친 이름표")), LOADED_AT.plusSeconds(20),
+                    List.of("src"))
+            .outcome()).isEqualTo(PackLoadResult.Outcome.UPDATED);
+        assertThat(loader.load(pack("m-relabel", "one.ttl", MINIMAL), LOADED_AT.plusSeconds(30), List.of("src")).outcome())
+            .isEqualTo(PackLoadResult.Outcome.UPDATED);
+        assertThat(definitions.find("m-relabel").orElseThrow().mappings().get(0).label()).isNull();
+
+        // 이름표와 함께 다른 것을 고치면 여전히 거부한다.
+        assertThatThrownBy(() -> loader.load(
+                pack("m-relabel", "one.ttl", labelled.replace("( \"코드\" )", "( \"코드\" \"둘째\" )")),
+                LOADED_AT.plusSeconds(40), List.of("src"))).isInstanceOf(PackChangeRejectedException.class);
+    }
+
+    @Test
+    void 이름표만_다른_매핑은_읽는_법이_같고_다른_항목이_하나라도_다르면_다르다() {
+        MappedEntityRef base = new MappedEntityRef("Base", "code");
+        MappedEntity entity = new MappedEntity("Base", "code", List.of());
+        MappedRelation relation = new MappedRelation("links", base, new MappedEntityRef("Other", "other"), null, null);
+        MappingDefinition one = new MappingDefinition("src", MappingFileFormat.XLSX, "시트", "yyyy.M.d", List.of("code"),
+                List.of("code"), base, List.of(entity), List.of(relation), "이름표");
+
+        assertThat(one.readsLike(new MappingDefinition("src", MappingFileFormat.XLSX, "시트", "yyyy.M.d", List.of("code"),
+                List.of("code"), base, List.of(entity), List.of(relation), null))).isTrue();
+        assertThat(one.readsLike(new MappingDefinition("src", MappingFileFormat.XLSX, "시트", "yyyy.M.d", List.of("code"),
+                List.of("code"), base, List.of(entity), List.of(relation), "다른 이름표"))).isTrue();
+        // 이름표가 아닌 항목 아홉을 하나씩 바꾼다.
+        List<MappingDefinition> others = List.of(
+                new MappingDefinition("src-2", MappingFileFormat.XLSX, "시트", "yyyy.M.d", List.of("code"), List.of("code"), base,
+                        List.of(entity), List.of(relation), "이름표"),
+                new MappingDefinition("src", MappingFileFormat.CSV, "시트", "yyyy.M.d", List.of("code"), List.of("code"), base,
+                        List.of(entity), List.of(relation), "이름표"),
+                new MappingDefinition("src", MappingFileFormat.XLSX, "다른 시트", "yyyy.M.d", List.of("code"), List.of("code"),
+                        base, List.of(entity), List.of(relation), "이름표"),
+                new MappingDefinition("src", MappingFileFormat.XLSX, "시트", null, List.of("code"), List.of("code"), base,
+                        List.of(entity), List.of(relation), "이름표"),
+                new MappingDefinition("src", MappingFileFormat.XLSX, "시트", "yyyy.M.d", List.of(), List.of("code"), base,
+                        List.of(entity), List.of(relation), "이름표"),
+                new MappingDefinition("src", MappingFileFormat.XLSX, "시트", "yyyy.M.d", List.of("code"), List.of("code", "other"),
+                        base, List.of(entity), List.of(relation), "이름표"),
+                new MappingDefinition("src", MappingFileFormat.XLSX, "시트", "yyyy.M.d", List.of("code"), List.of("code"),
+                        new MappedEntityRef("Other", "other"), List.of(entity), List.of(relation), "이름표"),
+                new MappingDefinition("src", MappingFileFormat.XLSX, "시트", "yyyy.M.d", List.of("code"), List.of("code"), base,
+                        List.of(), List.of(relation), "이름표"),
+                new MappingDefinition("src", MappingFileFormat.XLSX, "시트", "yyyy.M.d", List.of("code"), List.of("code"), base,
+                        List.of(entity), List.of(), "이름표"));
+        assertThat(others).allSatisfy(other -> {
+            assertThat(one.readsLike(other)).isFalse();
+            assertThat(other.readsLike(one)).isFalse();
+        });
+        // 항목이 늘면 readsLike 도 고쳐야 한다. 이 시험이 그것을 알린다: 위의 목록에 그 항목을 바꾼 것을 더하고 수를 고친다.
+        assertThat(MappingDefinition.class.getRecordComponents()).hasSize(others.size() + 1);
+    }
+
     // ── 문제의 차례 ──────────────────────────────────────────────
 
     @Test

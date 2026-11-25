@@ -1,9 +1,11 @@
 # 입력 자료 "guideline": 운영지침의 목록. 행 하나가 운영지침 하나다.
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix tabnit: <urn:tabnit:vocab:> .
 @prefix ex:     <urn:tabnit:pack:test-mini:> .
 
 ex:매핑-guideline a tabnit:Mapping ;
     tabnit:inputSourceId "guideline" ;
+    rdfs:label "운영지침 목록" ;
     tabnit:fileFormat tabnit:Csv ;
     tabnit:requiredColumns ( "지침번호" "제목" "점검주기일" ) ;
     tabnit:itemKeyColumns ( "지침번호" ) ;

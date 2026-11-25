@@ -28,6 +28,7 @@ type Action = {
   basis: {
     entity: { entityId: string; entityTypeLabel: string; entityKey: string; displayName: string | null };
     inputSourceId: string;
+    inputSourceLabel: string;
     editionNo: number;
     effectiveDate: string;
   };
@@ -139,7 +140,9 @@ test("Pack 을 고르면 대기인 조치를 서버가 준 순서로 근거 조�
   await expect(line).toContainText(first.dueDate);
   await expect(line).toContainText("대기");
   await expect(line).toContainText(first.basis.entity.entityId);
-  await expect(line).toContainText(`${first.basis.inputSourceId} ${first.basis.editionNo}판`);
+  // 근거 조항의 판의 입력 자료는 이름표로 보인다 (B-15). 시험용 Pack 의 매핑에는 식별자와 다른 이름표가 적혀 있다.
+  expect(first.basis.inputSourceLabel).not.toBe(first.basis.inputSourceId);
+  await expect(line).toContainText(`${first.basis.inputSourceLabel} ${first.basis.editionNo}판`);
   await expect(line).toContainText(first.basis.effectiveDate);
 });
 

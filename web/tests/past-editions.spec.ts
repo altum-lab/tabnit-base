@@ -10,7 +10,7 @@ const PACK_ID = "e2e-actions";
 
 type Listed = {
   total: number;
-  editions: { editionId: string; inputSourceId: string; editionNo: number; effectiveDate: string; itemCount: number; changeCount: number; noticeCount: number }[];
+  editions: { editionId: string; inputSourceId: string; inputSourceLabel: string; editionNo: number; effectiveDate: string; itemCount: number; changeCount: number; noticeCount: number }[];
 };
 
 test("지난 판이 받은 것이 늦은 것부터 서버가 준 수와 함께 나오고, 고른 판의 바뀐 항목을 다시 본다", async ({ page, request }) => {
@@ -26,6 +26,8 @@ test("지난 판이 받은 것이 늦은 것부터 서버가 준 수와 함께 �
   for (const [index, edition] of listed.editions.entries()) {
     const row = rows.nth(index);
     await expect(row).toHaveAttribute("data-edition-id", edition.editionId);
+    // 입력 자료는 서버가 준 이름표로 보인다 (B-15). 식별자도 함께 있다.
+    await expect(row.getByTestId("input-source-label")).toHaveText(edition.inputSourceLabel);
     await expect(row).toContainText(edition.inputSourceId);
     await expect(row).toContainText(`${edition.editionNo}판`);
     await expect(row).toContainText(edition.effectiveDate);
@@ -43,7 +45,7 @@ test("지난 판이 받은 것이 늦은 것부터 서버가 준 수와 함께 �
     notices: unknown[];
   };
   // 단추의 이름에 어느 판의 것인지가 들어 있다.
-  await page.getByRole("button", { name: `${past!.inputSourceId} ${past!.editionNo}판의 결과 보기` }).click();
+  await page.getByRole("button", { name: `${past!.inputSourceLabel} ${past!.editionNo}판의 결과 보기` }).click();
 
   const result = page.getByRole("region", { name: "지난 판의 결과" });
   await expect(result.getByTestId("past-outcome")).toContainText(`${past!.editionNo}판`);
@@ -104,6 +106,7 @@ test("판이 한 쪽을 넘으면 나눠 받고, 서버가 준 전체 수와 자
   const edition = (index: number) => ({
     editionId: `p|s|${index}`,
     inputSourceId: "s",
+    inputSourceLabel: "지어낸 자료",
     editionNo: index,
     effectiveDate: "2026-01-01",
     receivedAt: "2026-01-01T00:00:00Z",

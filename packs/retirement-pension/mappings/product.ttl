@@ -1,9 +1,11 @@
 # 매핑. 형식은 D6 7절이다.
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix tabnit: <urn:tabnit:vocab:> .
 @prefix ex:     <urn:tabnit:pack:retirement-pension:> .
 
 ex:매핑-product a tabnit:Mapping ;
     tabnit:inputSourceId "product" ;
+    rdfs:label "운용상품 목록" ;
     tabnit:fileFormat tabnit:Csv ;
     tabnit:requiredColumns ( "상품번호" "상품명칭" "상품구분" "위험등급" "제공기관" ) ;
     tabnit:itemKeyColumns ( "상품번호" ) ;

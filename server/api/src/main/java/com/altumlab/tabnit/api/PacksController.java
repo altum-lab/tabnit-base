@@ -42,7 +42,7 @@ class PacksController {
 				PackListResponse.Edition latest = this.editions.latestEdition(packId, mapping.inputSourceId())
 					.map(edition -> new PackListResponse.Edition(edition.id(), edition.editionNo(), edition.effectiveDate()))
 					.orElse(null);
-				sources.add(new PackListResponse.InputSource(mapping.inputSourceId(), mapping.fileFormat().name(), latest));
+				sources.add(new PackListResponse.InputSource(mapping.inputSourceId(), mapping.shownLabel(), mapping.fileFormat().name(), latest));
 			}
 			found.add(new PackListResponse.Pack(pack.packId(), pack.label(), sources));
 		}

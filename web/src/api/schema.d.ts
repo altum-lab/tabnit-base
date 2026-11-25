@@ -21,6 +21,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/constraint-violations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pack 의 자료가 조회 시점에 Pack 의 제약을 어긴 곳을 돌려준다
+         * @description 물을 때 조회 시점에 유효한 자료에 제약(Pack 의 constraints.ttl, SHACL)을 걸어 답한다. 위반을 저장하지 않는다. Pack 의 개체는 모두 검사한다 (조회 시점에 유효한 값이나 관계가 하나도 없는 개체도). 위반은 보고만 한다: 조치로 이어지지 않는다. 담당자와 관리자가 부를 수 있다
+         */
+        get: operations["listConstraintViolations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/relation-map": {
         parameters: {
             query?: never;
@@ -652,6 +672,60 @@ export interface components {
             /** @description 그 관계의 도착 개체. 표시 이름은 판의 적용일의 값이다 */
             target: components["schemas"]["EntityRef"];
         };
+        ConstraintViolationList: {
+            packId: string;
+            /**
+             * Format: date
+             * @description 답에 쓴 조회 시점
+             */
+            asOf: string;
+            /** @description 검사했는가. 자료(개체, 관계, 속성 값의 수를 더한 것)가 maxRows 보다 크면 false 이고, 그때 total 은 0 이고 violations 는 비어 있다. 화면은 위반이 없다고 보이지 않고 검사하지 못했다고 알린다 */
+            checked: boolean;
+            /** @description 한 번에 검사하는 자료의 한도 */
+            maxRows: number;
+            /** @description 그 Pack 의 개체의 수 */
+            entityCount: number;
+            /** @description 조회 시점에 유효한 관계의 수 */
+            relationCount: number;
+            /** @description 조회 시점에 유효한 속성 값의 수 */
+            valueCount: number;
+            /** @description 위반의 전체 수. 나누기 전의 수다. 화면은 다시 세지 않는다 */
+            total: number;
+            /** @description 답에 쓴 건너뛴 수 */
+            offset: number;
+            /** @description 답에 쓴 한 번에 주는 수 */
+            limit: number;
+            violations: components["schemas"]["ConstraintViolation"][];
+        };
+        /** @description 제약의 위반 하나 */
+        ConstraintViolation: {
+            /**
+             * @description 심각도. 제약에 sh:severity 를 적지 않았으면 VIOLATION 이다. 그것을 적은 제약의 것이다 (바깥 제약에서 내려받지 않는다)
+             * @enum {string}
+             */
+            severity: "VIOLATION" | "WARNING" | "INFO";
+            /** @description 제약을 어긴 개체. 표시 이름은 조회 시점의 값이다. 제약의 대상이 개체가 아니면 (값을 대상으로 삼은 제약) null */
+            entity: components["schemas"]["EntityRef"] | null;
+            /**
+             * @description 어긴 곳이 속성인가, 관계인가, 경로의 식인가, 개체 자신인가 (NONE)
+             * @enum {string}
+             */
+            pathKind: "ATTRIBUTE" | "RELATION" | "EXPRESSION" | "NONE";
+            /** @description 속성이나 관계 유형의 이름. 경로의 식이면 그 식을 적은 글자. 개체 자신이면 null */
+            pathName: string | null;
+            /** @description 속성이나 관계 유형의 이름표. 경로의 식이거나 개체 자신이면 null */
+            pathLabel: string | null;
+            /** @description 어긴 값. 저장된 글자 그대로다. 값 하나에 걸린 제약이 아니거나 값이 개체이면 null */
+            value: string | null;
+            /** @description 어긴 값이 개체일 때 그 개체 (관계가 가리키는 개체). 아니면 null */
+            valueEntity: components["schemas"]["EntityRef"] | null;
+            /** @description 제약의 종류. SHACL 의 제약 구성요소의 이름에서 뒤의 ConstraintComponent 를 뗀 것이다 (MinCount, MaxCount, Datatype, Class, MinInclusive, Pattern, Or …) */
+            constraintKind: string;
+            /** @description 그 제약이 딸린, 이름 있는 제약의 이름 (Pack 의 제약 파일에 적은 이름). 없으면 null */
+            constraintName: string | null;
+            /** @description 알리는 문구. 제약에 sh:message 를 적었으면 그것이고, 아니면 제품이 제약의 종류마다 만든 한국어 문구다 */
+            message: string;
+        };
         EditionList: {
             packId: string;
             /** @description 그 Pack 의 판의 전체 수. 나누기 전의 수다. 화면은 다시 세지 않는다 */
@@ -931,6 +1005,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RelationsAsOf"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    listConstraintViolations: {
+        parameters: {
+            query: {
+                /** @description Pack 의 식별자 */
+                packId: string;
+                /** @description 조회 시점. 없으면 설치 설정의 시간대에서의 오늘. 0001-01-01 부터 9999-12-31 까지의 날짜만 받는다 */
+                asOf?: string;
+                /** @description 건너뛸 수. 없으면 0. 전체 수와 같거나 크면 빈 목록이다 */
+                offset?: components["parameters"]["Offset"];
+                /** @description 한 번에 받을 수. 없으면 50. 1 부터 200 까지 */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 위반을 나눠 돌려준다: offset 만큼 건너뛰고 limit 개까지 준다. total 은 위반의 전체 수다. 순서는 심각한 것부터 (위반, 경고, 알림), 그 안에서 개체의 id, 어긴 곳의 종류와 이름, 제약의 종류, 값, 제약의 이름, 문구의 글자 코드 순이다. 위반이 없으면 빈 목록이다. 자료가 한도(maxRows)보다 크면 검사하지 않는다: checked 가 false 이고 목록은 비어 있다 (위반이 없다는 뜻이 아니다) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConstraintViolationList"];
                 };
             };
             400: components["responses"]["Problem"];

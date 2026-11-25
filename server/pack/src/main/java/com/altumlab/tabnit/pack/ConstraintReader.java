@@ -18,6 +18,7 @@ import org.apache.jena.riot.Lang;
 import org.apache.jena.riot.RDFParser;
 import org.apache.jena.riot.RiotException;
 import org.apache.jena.shacl.ShaclException;
+import org.apache.jena.shacl.ShaclValidator;
 import org.apache.jena.shacl.Shapes;
 import org.apache.jena.sparql.graph.GraphFactory;
 
@@ -68,9 +69,13 @@ final class ConstraintReader {
             "js", "jsFunctionName", "jsLibrary", "jsLibraryURL", "JSConstraint", "JSConstraintComponent", "JSTarget",
             "JSTargetType", "JSValidator", "JSFunction", "JSRule", "JSLibrary", "JSExecutable", "target", "Target",
             "TargetType", "rule", "Rule", "TripleRule", "condition", "expression", "Function", "ConstraintComponent",
-            "validator", "nodeValidator", "propertyValidator", "parameter", "Parameter");
+            "validator", "nodeValidator", "propertyValidator", "parameter", "Parameter",
+            // 개체 하나를 주소로 가리키는 대상. 개체의 주소는 검사할 때마다 제품이 매기므로 제약 파일에 적을 수 없다.
+            // 받으면 자료에 없는 것을 대상으로 삼아 개체 없는 위반을 만든다 (D2 AD-395).
+            "targetNode");
 
-    private static final String UNREADABLE = "SHACL 로 읽을 수 없는 제약입니다. 흔한 까닭: 속성의 제약(sh:property)에 경로(sh:path)가"
+    private static final String UNREADABLE = "SHACL 로 읽을 수 없거나 자료에 걸 수 없는 제약입니다. 흔한 까닭: 개체 자신에 건 제약에 개수(sh:minCount,"
+            + " sh:maxCount)를 적었다 (개수는 sh:property 안에 적는다), 속성의 제약(sh:property)에 경로(sh:path)가"
             + " 없거나 둘 이상이다, 개수나 길이의 값이 정수가 아니다, 값이 하나여야 하는 항목에 여럿을 적었다, 목록( … )으로"
             + " 적어야 하는 곳에 값을 그냥 적었다. 이 제약의 적는 법을 확인해 고치세요.";
 
@@ -163,9 +168,12 @@ final class ConstraintReader {
      * SHACL 로 읽히는가. 읽는 라이브러리의 문구는 쓰지 않는다: 이름 없는 정의의 이름이 섞여 읽을 때마다 달라진다.
      * 값의 꼴이 틀리면 SHACL 의 예외가 아닌 것도 나오므로 모두 잡는다.
      */
-    private static boolean readable(Graph graph) {
+    private boolean readable(Graph graph) {
         try {
-            Shapes.parse(graph);
+            Shapes shapes = Shapes.parse(graph);
+            // 읽히더라도 걸 때 터지는 제약이 있다 (개체 자신에 건 개수의 제약 따위). 유형마다 개체 하나씩 둔
+            // 지어낸 자료에 한 번 걸어 본다: 적재는 통과하고 물을 때 오류가 되는 것을 여기서 막는다.
+            ShaclValidator.get().validate(shapes, sample());
             return true;
         }
         catch (ShaclException e) {
@@ -178,6 +186,19 @@ final class ConstraintReader {
             // 너무 깊게 겹쳤거나 제 자신을 가리키는 정의를 따라가다 넘친 것이다. 읽을 수 없는 제약으로 알린다.
             return false;
         }
+    }
+
+    /** 유형마다 개체 하나씩. 걸어 보는 데만 쓴다. */
+    private Graph sample() {
+        Graph sample = GraphFactory.createDefaultGraph();
+        Node type = org.apache.jena.graph.NodeFactory.createURI("http://www.w3.org/1999/02/22-rdf-syntax-ns#type");
+        int next = 0;
+        for (String entityType : new TreeSet<>(entityTypes)) {
+            sample.add(org.apache.jena.graph.Triple.create(
+                    org.apache.jena.graph.NodeFactory.createURI("urn:tabnit:sample:" + next++), type,
+                    org.apache.jena.graph.NodeFactory.createURI(prefix + entityType)));
+        }
+        return sample;
     }
 
     /** 어느 제약이 읽히지 않는지 찾아 알린다. 이름 있는 제약마다 그 제약에 딸린 것만 떼어 읽어 본다. */
@@ -312,9 +333,14 @@ final class ConstraintReader {
      * 여러 제약에 딸렸으면 이름의 글자 코드 순으로 처음 것이다.
      */
     private Map<Node, String> owners(Graph graph) {
+        return owners(graph, prefix);
+    }
+
+    /** 같은 꾸러미의 검사기도 쓴다 ({@link ConstraintChecker}): 위반이 어느 이름 있는 제약의 것인지 알린다. */
+    static Map<Node, String> owners(Graph graph, String prefix) {
         Map<Node, String> owners = new java.util.HashMap<>();
         named(graph).forEach((uri, subject) -> {
-            String item = itemOf(subject);
+            String item = uri.startsWith(prefix) && uri.length() > prefix.length() ? uri.substring(prefix.length()) : uri;
             ArrayList<Node> open = new ArrayList<>(List.of(subject));
             while (!open.isEmpty()) {
                 Node node = open.remove(open.size() - 1);

@@ -49,7 +49,7 @@ final class PackReader {
 
     static final String VOCAB = "urn:tabnit:vocab:";
 
-    private static final String PACK_ADDRESS = "urn:tabnit:pack:";
+    static final String PACK_ADDRESS = "urn:tabnit:pack:";
 
     /** 이름 없는 정의나 값을 문구에 적을 때 쓰는 글자. 주소(urn:…)와 겹치지 않는다. */
     static final String UNNAMED = "(이름 없음)";

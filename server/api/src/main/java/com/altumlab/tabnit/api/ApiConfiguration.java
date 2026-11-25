@@ -20,6 +20,7 @@ import com.altumlab.tabnit.rules.ActionDecisions;
 import com.altumlab.tabnit.rules.ActionRecords;
 import com.altumlab.tabnit.link.EditionRecords;
 import org.springframework.util.unit.DataSize;
+import com.altumlab.tabnit.core.PackDataQuery;
 import com.altumlab.tabnit.core.RelationMapQuery;
 import com.altumlab.tabnit.core.RelationQuery;
 import java.time.Clock;
@@ -175,6 +176,12 @@ class ApiConfiguration implements WebMvcConfigurer {
 	@Bean
 	RelationMapQuery relationMapQuery(DataSource dataSource) {
 		return new RelationMapQuery(dataSource);
+	}
+
+	/** Pack 의 자료를 조회 시점으로 통째로 읽는 조회 (D2 AD-391). 제약의 위반을 보는 API 가 쓴다. */
+	@Bean
+	PackDataQuery packDataQuery(DataSource dataSource) {
+		return new PackDataQuery(dataSource);
 	}
 
 	/** 판을 투입하고 그 변동을 조치까지 잇는다 (D2 AD-233). */

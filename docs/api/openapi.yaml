@@ -221,6 +221,42 @@ paths:
         '500':
           $ref: '#/components/responses/Problem'
   /api/v1/editions:
+    get:
+      operationId: listEditions
+      summary: Pack 에 받아들인 판의 목록을 최근에 받은 것부터 돌려준다
+      description: >-
+        지난 판을 다시 보는 데 쓴다. 받아들인 판만 나온다: 거부된 투입과 내용이 같아 판이 되지 않은 투입은 나오지 않는다.
+        담당자와 관리자가 부를 수 있다
+      parameters:
+        - name: packId
+          in: query
+          required: true
+          description: Pack 의 식별자
+          schema:
+            type: string
+            minLength: 1
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: >-
+            판을 나눠 돌려준다: offset 만큼 건너뛰고 limit 개까지 준다. total 은 그 Pack 의 판의 전체 수다.
+            순서는 받은 때가 늦은 것부터이고, 같으면 입력 자료의 id 의 글자 코드 순, 그 안에서 판 번호가 큰 것부터다.
+            판이 없으면 빈 목록이다
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EditionList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/Problem'
     post:
       operationId: submitEdition
       summary: 파일 하나를 입력 자료의 새 판으로 올리고, 바뀐 항목과 그 처리 결과를 돌려준다
@@ -281,6 +317,40 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/EditionRejectedProblem'
+        '500':
+          $ref: '#/components/responses/Problem'
+  /api/v1/edition:
+    get:
+      operationId: getEdition
+      summary: 지난 판 하나의 바뀐 항목과 그 처리 상태와 알림을, 올린 직후의 답과 같은 모양으로 돌려준다
+      description: >-
+        저장된 것을 읽어 돌려준다. 다시 계산하지 않는다. 담당자와 관리자가 부를 수 있다
+      parameters:
+        - name: editionId
+          in: query
+          required: true
+          description: 판의 id. 서버가 준 것을 그대로 보낸다
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        '200':
+          description: >-
+            판 올리기의 답과 같은 모양이다. outcome 은 ACCEPTED, retriedChanges 는 빈 목록, processingNotStarted 는
+            false 다. changes 의 처리 상태와 조치의 수는 지금 저장된 값이다 (올린 뒤에 다시 처리됐으면 그 결과다).
+            개체의 표시 이름은 그 판의 적용일의 값이다. 순서는 판 올리기의 답과 같다
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EditionSubmission'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
         '500':
           $ref: '#/components/responses/Problem'
   /api/v1/unprocessed-changes:
@@ -1152,6 +1222,64 @@ components:
         target:
           description: 그 관계의 도착 개체. 표시 이름은 판의 적용일의 값이다
           $ref: '#/components/schemas/EntityRef'
+    EditionList:
+      type: object
+      required: [packId, total, offset, limit, editions]
+      properties:
+        packId:
+          type: string
+        total:
+          type: integer
+          minimum: 0
+          description: 그 Pack 의 판의 전체 수. 나누기 전의 수다. 화면은 다시 세지 않는다
+        offset:
+          type: integer
+          minimum: 0
+          description: 답에 쓴 건너뛴 수
+        limit:
+          type: integer
+          minimum: 1
+          description: 답에 쓴 한 번에 주는 수
+        editions:
+          type: array
+          items:
+            $ref: '#/components/schemas/EditionListItem'
+    EditionListItem:
+      type: object
+      description: 받아들인 판 하나. 수는 저장된 것을 센 값이다
+      required: [editionId, inputSourceId, editionNo, effectiveDate, receivedAt, fileName, itemCount, changeCount, noticeCount]
+      properties:
+        editionId:
+          type: string
+          description: 판의 id
+        inputSourceId:
+          type: string
+        editionNo:
+          type: integer
+          description: 그 입력 자료 안에서의 판 번호. 1 부터
+        effectiveDate:
+          type: string
+          format: date
+          description: 판의 적용일
+        receivedAt:
+          type: string
+          format: date-time
+          description: 받은 때. 협정 세계시다
+        fileName:
+          type: [string, 'null']
+          description: 받은 파일의 이름. 없으면 null
+        itemCount:
+          type: integer
+          minimum: 0
+          description: 받아들인 항목의 수
+        changeCount:
+          type: integer
+          minimum: 0
+          description: 바뀐 항목(변동 이벤트)의 수. 첫 판이면 0 이다
+        noticeCount:
+          type: integer
+          minimum: 0
+          description: 투입의 알림의 수
     EditionSubmission:
       type: object
       required: [outcome, editionId, packId, inputSourceId, editionNo, effectiveDate, itemCount, changes, notices, retriedChanges, processingNotStarted]

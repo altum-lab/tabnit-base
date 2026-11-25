@@ -102,6 +102,8 @@ final class LargePack {
         Files.createDirectories(pack.resolve("rules"));
         write(pack.resolve("pack.ttl"), packFile(spec));
         write(pack.resolve("ontology.ttl"), ontology(spec));
+        // 제약 파일은 반드시 있어야 한다 (D2 AD-393). 큰 시험 자료에는 제약이 없다.
+        write(pack.resolve("constraints.ttl"), "# 제약이 없다.\n");
         write(pack.resolve("rules/rules.ttl"), rules(spec));
         List<Step> steps = new ArrayList<>();
         for (int layer = 0; layer < spec.layers(); layer++) {

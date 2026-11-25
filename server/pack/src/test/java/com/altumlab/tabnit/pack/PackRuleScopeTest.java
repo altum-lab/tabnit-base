@@ -372,6 +372,8 @@ class PackRuleScopeTest {
         Files.writeString(dir.resolve("pack.ttl"), PREFIXES + "<urn:tabnit:pack:" + packId + ":> a tabnit:Pack ; tabnit:packId \""
                 + packId + "\" ; rdfs:label \"이름표\" ; tabnit:defaultMaxDepth 1 .\n", StandardCharsets.UTF_8);
         Files.writeString(dir.resolve("ontology.ttl"), PREFIXES + ex + ONTOLOGY, StandardCharsets.UTF_8);
+        // 제약 파일은 반드시 있어야 한다 (D2 AD-393). 제약이 없는 Pack 은 빈 파일을 둔다.
+        Files.writeString(dir.resolve("constraints.ttl"), "", StandardCharsets.UTF_8);
         Files.writeString(dir.resolve("mappings/doc.ttl"), PREFIXES + ex + DOC_MAPPING, StandardCharsets.UTF_8);
         Files.writeString(dir.resolve("mappings/unit.ttl"), PREFIXES + ex + UNIT_MAPPING, StandardCharsets.UTF_8);
         rules(dir, ruleBody);

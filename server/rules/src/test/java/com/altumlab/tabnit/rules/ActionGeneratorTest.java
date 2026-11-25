@@ -799,6 +799,117 @@ class ActionGeneratorTest {
         assertThatThrownBy(() -> records.packActions(p, null, null, 0, 0)).isInstanceOf(IllegalArgumentException.class);
     }
 
+    // ── 변동마다의 조치의 수 (B-16, D2 AD-385) ──────────────────────
+
+    @Test
+    void 여러_변동의_조치의_수를_한_번에_읽으면_하나씩_센_것과_같고_물은_변동이_모두_들어_있다() {
+        String p = "a-counts";
+        EntityRef many = entity(p, "Base", "B-many");
+        EntityRef one = entity(p, "Base", "B-one");
+        EntityRef none = entity(p, "Base", "B-none");
+        for (int i = 0; i < 4; i++) {
+            link(many, entity(p, "Other", "O-many-" + i));
+        }
+        link(one, entity(p, "Other", "O-one"));
+        PackDefinition pack = pack(p, rule("0001", 1, IMPACT, "Other", 30), rule("0002", 2, IMPACT, "Other", 7));
+        generator.generate(pack, change("ev-c-many", many), EDITION, scope(many), 3, NOW);
+        generator.generate(pack, change("ev-c-one", one), EDITION, scope(one), 3, NOW);
+        // 규칙에 걸린 것이 없는 변동: 영향 범위는 저장되고 조치는 없다.
+        generator.generate(pack, change("ev-c-none", none), EDITION, scope(none), 3, NOW);
+        // 다른 Pack 의 조치는 세지 않는다.
+        String other = "a-counts-other";
+        EntityRef elsewhere = entity(other, "Base", "B-1");
+        link(elsewhere, entity(other, "Other", "O-1"));
+        generator.generate(pack(other, rule("0001", 1, IMPACT, "Other", 30)), change("ev-c-elsewhere", elsewhere), EDITION,
+                scope(elsewhere), 3, NOW);
+
+        // 묻는 차례를 섞고 같은 것을 두 번 넣는다. 저장된 적이 없는 변동도 묻는다.
+        List<String> asked = List.of("ev-c-one", "ev-c-없는-변동", "ev-c-many", "ev-c-none", "ev-c-one", "ev-c-elsewhere");
+        Map<String, Integer> counts = records.actionCounts(p, asked);
+
+        // 물은 변동이 모두, 식별자의 글자 코드 순으로 들어 있다. 조치가 없으면 0 이다.
+        assertThat(counts.keySet()).containsExactly("ev-c-elsewhere", "ev-c-many", "ev-c-none", "ev-c-one", "ev-c-없는-변동");
+        for (String id : counts.keySet()) {
+            assertThat(counts.get(id)).as(id).isEqualTo(records.packActions(p, null, id, 0, 1).total());
+        }
+        // 따로 센 값: 규칙 둘이 영향 대상 넷과 하나에 걸린다.
+        assertThat(counts.get("ev-c-many")).isEqualTo(8);
+        assertThat(counts.get("ev-c-one")).isEqualTo(2);
+        assertThat(counts.get("ev-c-none")).isZero();
+        assertThat(counts.get("ev-c-없는-변동")).isZero();
+        assertThat(counts.get("ev-c-elsewhere")).isZero();
+        // 그 변동의 Pack 에서 물으면 센다. 두 번 물어도 같다.
+        assertThat(records.actionCounts(other, List.of("ev-c-elsewhere")).get("ev-c-elsewhere")).isPositive();
+        assertThat(records.actionCounts(p, asked)).isEqualTo(counts);
+        // 상태를 가리지 않는다: 확정해도 수는 그대로다.
+        Action first = records.packActions(p, null, "ev-c-one").get(0);
+        new ActionDecisions(RulesTestDatabase.dataSource()).confirm(first.id(), "지어낸-사람", null, NOW);
+        assertThat(records.actionCounts(p, asked)).isEqualTo(counts);
+    }
+
+    @Test
+    void 조치가_있는_변동이_많아도_변동마다의_수가_맞고_순서는_글자_코드_순이다() {
+        String p = "a-counts-many";
+        PackDefinition pack = pack(p, rule("0001", 1, IMPACT, "Other", 30));
+        Map<String, Integer> expected = new java.util.TreeMap<>();
+        for (int i = 0; i < 120; i++) {
+            // 넣는 차례를 섞는다. 변동마다 영향 대상의 수가 다르다: 하나, 둘, 셋.
+            int n = (i * 7) % 120;
+            EntityRef start = entity(p, "Base", "B-" + n);
+            int targets = n % 3 + 1;
+            for (int t = 0; t < targets; t++) {
+                link(start, entity(p, "Other", "O-" + n + "-" + t));
+            }
+            generator.generate(pack, change("ev-cm-" + n, start), EDITION, scope(start), 3, NOW);
+            expected.put("ev-cm-" + n, targets);
+        }
+        assertThat(records.actionCounts(p, expected.keySet())).containsExactlyInAnyOrderEntriesOf(expected);
+        // 조치가 없는 변동 수만 개 사이에 섞어 물어도 같다.
+        List<String> mixed = new ArrayList<>();
+        for (int i = 0; i < 20_000; i++) {
+            mixed.add("ev-cm-없는-" + i);
+            if (i < 120) {
+                mixed.add("ev-cm-" + i);
+            }
+        }
+        Map<String, Integer> found = records.actionCounts(p, mixed);
+        assertThat(found).hasSize(20_120).containsAllEntriesOf(expected);
+        assertThat(found.values().stream().mapToInt(Integer::intValue).sum())
+            .isEqualTo(expected.values().stream().mapToInt(Integer::intValue).sum());
+
+        // 보충 문자(U+1F600)는 U+FF21 보다 뒤다. 문자열의 기본 순서로는 앞이다.
+        String supplementary = "ev-cm-\uD83D\uDE00";
+        String fullWidth = "ev-cm-\uFF21";
+        assertThat(records.actionCounts(p, List.of(supplementary, fullWidth, "ev-cm-5")).keySet())
+            .containsExactly("ev-cm-5", fullWidth, supplementary);
+    }
+
+    @Test
+    void 조치의_수를_물을_변동이_없으면_빈_결과이고_변동이_많아도_한_번에_답한다() {
+        String p = "a-counts-edge";
+        assertThat(records.actionCounts(p, List.of())).isEmpty();
+        assertThat(records.actionCounts("a-counts-없는-pack", List.of("ev-x"))).containsExactly(Map.entry("ev-x", 0));
+
+        List<String> many = new ArrayList<>();
+        for (int i = 0; i < 40_000; i++) {
+            many.add("ev-c-big-" + i);
+        }
+        Map<String, Integer> counts = records.actionCounts(p, many);
+        assertThat(counts).hasSize(40_000);
+        assertThat(counts.values()).containsOnly(0);
+
+        assertThatThrownBy(() -> records.actionCounts(null, List.of("ev-x"))).isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> records.actionCounts(p, null)).isInstanceOf(NullPointerException.class);
+        List<String> withNull = new ArrayList<>(List.of("ev-x"));
+        withNull.add(null);
+        assertThatThrownBy(() -> records.actionCounts(p, withNull)).isInstanceOf(NullPointerException.class)
+            .hasMessageContaining("2번째");
+        // 저장할 수 없는 식별자(NUL)는 다른 조회와 같이 거부한다.
+        assertThatThrownBy(() -> records.actionCounts(p, List.of("ev-x", "ev-y", "ev-\u0000")))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("3번째");
+    }
+
     @Test
     void 영향_대상을_나눠_받아_이으면_한_번에_받은_것과_같고_전체_수와_유형별_깊이별_수는_나누기_전의_것이다() {
         String p = "a-scope-page";

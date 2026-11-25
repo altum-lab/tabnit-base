@@ -143,6 +143,9 @@ class PastEditionsApiTests {
 		// 조치가 만들어진 판인지 확인한다: 그렇지 않으면 조치의 수를 견준 것이 뜻이 없다.
 		assertThat(json.readTree(submitted).get("changes").toString()).contains("\"actionCount\":").doesNotContain("\"status\":\"FAILED\"");
 		assertThat(json.readTree(submitted).findValues("actionCount").stream().mapToInt(JsonNode::asInt).sum()).isPositive();
+		// 변동마다 수가 다른 판이어야, 수를 다른 변동에 붙인 잘못이 위의 견줌에 걸린다 (B-16).
+		assertThat(json.readTree(submitted).findValues("actionCount").stream().map(JsonNode::asInt).distinct().count())
+			.isGreaterThan(1);
 	}
 
 	@Test

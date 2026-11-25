@@ -74,6 +74,9 @@ final class ConstraintReader {
             + " 없거나 둘 이상이다, 개수나 길이의 값이 정수가 아니다, 값이 하나여야 하는 항목에 여럿을 적었다, 목록( … )으로"
             + " 적어야 하는 곳에 값을 그냥 적었다. 이 제약의 적는 법을 확인해 고치세요.";
 
+    private static final String TOO_DEEP = "정의가 너무 깊게 겹쳐 있어 읽을 수 없습니다. 대괄호 [ … ] 안에 대괄호를 수천 겹으로 겹쳐 적지"
+            + " 마세요. 제약을 이름 있는 제약 여럿으로 나눠 적으세요.";
+
     private final String prefix;
 
     private final Set<String> entityTypes;
@@ -137,6 +140,11 @@ final class ConstraintReader {
             problem("", "Turtle 문법이 틀렸습니다: " + e.getMessage() + ". 그 줄을 고치세요.");
             return null;
         }
+        catch (StackOverflowError e) {
+            // 수천 겹으로 겹친 정의를 읽다가 넘친 것이다. 예기치 않은 오류로 끝내지 않고 문제로 알린다.
+            problem("", TOO_DEEP);
+            return null;
+        }
         int before = problems.size();
         checkRefused(graph);
         checkReferences(graph);
@@ -164,6 +172,10 @@ final class ConstraintReader {
             return false;
         }
         catch (RuntimeException e) {
+            return false;
+        }
+        catch (StackOverflowError e) {
+            // 너무 깊게 겹쳤거나 제 자신을 가리키는 정의를 따라가다 넘친 것이다. 읽을 수 없는 제약으로 알린다.
             return false;
         }
     }

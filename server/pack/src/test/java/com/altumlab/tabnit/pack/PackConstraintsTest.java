@@ -244,6 +244,38 @@ class PackConstraintsTest {
     }
 
     @Test
+    void 매우_깊게_겹치거나_제_자신을_가리키는_제약도_멈추지_않고_문제로_알리거나_받는다() throws IOException {
+        // 수천 겹의 sh:not. 읽는 쪽이 겹마다 제 자신을 부르면 스택이 넘친다.
+        StringBuilder deep = new StringBuilder("ex:Deep a sh:NodeShape ; sh:targetClass ex:Base ; ");
+        int depth = 20_000;
+        for (int i = 0; i < depth; i++) {
+            deep.append("sh:not [ ");
+        }
+        deep.append("sh:path ex:title ; sh:minCount 1 ");
+        deep.append("] ".repeat(depth)).append(".\n");
+        // 제 자신을 가리키는 이름 없는 정의: 경로와 목록.
+        List<String> bodies = List.of(deep.toString(),
+                "ex:Loop a sh:NodeShape ; sh:targetClass ex:Base ; sh:property [ sh:path _:p ; sh:minCount 1 ] .\n_:p sh:inversePath _:p .\n",
+                "ex:Loop a sh:NodeShape ; sh:targetClass ex:Base ; sh:property [ sh:path ex:count ; sh:in _:l ] .\n_:l <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> 1 ; <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:l .\n",
+                "ex:Loop a sh:NodeShape ; sh:targetClass ex:Base ; sh:node ex:Loop ; sh:not [ sh:node ex:Loop ] .\n");
+        for (String body : bodies) {
+            Path dir = pack("c-deep", body);
+            String shown = body.substring(0, Math.min(80, body.length()));
+
+            // 끝나야 한다. 받든 거부하든, 거부하면 제약 파일의 문제로 알린다 (예기치 않은 오류로 끝나지 않는다).
+            org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(java.time.Duration.ofSeconds(60), () -> {
+                try {
+                    loader.load(dir, LOADED_AT);
+                }
+                catch (PackInvalidException e) {
+                    assertThat(e.problems()).as(shown).isNotEmpty()
+                        .allSatisfy(problem -> assertThat(problem.file()).isEqualTo("constraints.ttl"));
+                }
+            }, shown);
+        }
+    }
+
+    @Test
     void BOM_이_있는_제약_파일은_그_까닭을_알리며_거부한다() throws IOException {
         Path dir = pack("c-bom", GOOD);
         Files.writeString(dir.resolve("constraints.ttl"),

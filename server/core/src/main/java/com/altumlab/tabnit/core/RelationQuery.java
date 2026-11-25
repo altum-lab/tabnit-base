@@ -129,7 +129,8 @@ public class RelationQuery {
         }
     }
 
-    private static Relation toRelation(ResultSet rs, int rowNum) throws SQLException {
+    /** 같은 꾸러미의 다른 조회도 이 행 읽기를 쓴다 ({@link PackDataQuery}). */
+    static Relation toRelation(ResultSet rs, int rowNum) throws SQLException {
         return new Relation(rs.getString("id"), rs.getString("pack_id"), rs.getString("source_entity_id"),
                 rs.getString("target_entity_id"), rs.getString("relation_type"),
                 new ValidityPeriod(rs.getObject("valid_from", LocalDate.class),

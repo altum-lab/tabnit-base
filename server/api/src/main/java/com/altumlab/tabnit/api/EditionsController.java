@@ -114,19 +114,15 @@ class EditionsController {
 				edition.effectiveDate());
 		// 처리에 실패한 변동의 까닭과, 변동마다의 조치의 수. 찾는 데만 쓴다.
 		Map<String, List<ChangeFailureDetail>> failures = new TreeMap<>();
-		Map<String, Integer> actionCounts = new TreeMap<>();
 		boolean anyFailed = events.stream().anyMatch(event -> event.status() == ChangeEventStatus.FAILED);
 		if (anyFailed) {
 			for (EditionProcessing.UnprocessedChange change : this.processing.unprocessed(edition.packId())) {
 				failures.put(change.event().id(), change.failures());
 			}
 		}
-		for (ChangeEvent event : events) {
-			if (event.status() == ChangeEventStatus.PROCESSED) {
-				// 수는 rules 가 센다. 한 건만 받아 전체 수를 읽는다.
-				actionCounts.put(event.id(), this.actions.packActions(edition.packId(), null, event.id(), 0, 1).total());
-			}
-		}
+		// 수는 rules 가 센다. 처리된 변동의 것을 한 번에 읽는다 (D2 AD-385).
+		Map<String, Integer> actionCounts = this.actions.actionCounts(edition.packId(),
+				events.stream().filter(event -> event.status() == ChangeEventStatus.PROCESSED).map(ChangeEvent::id).toList());
 		return EditionSubmissionResponse.stored(edition, this.editions.items(edition.id()).size(), events,
 				this.editions.notices(edition.id()), this.packs.find(edition.packId()), entities, failures, actionCounts);
 	}

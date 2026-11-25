@@ -1,12 +1,17 @@
 package com.altumlab.tabnit.rules;
 
 import com.altumlab.tabnit.pack.RuleSubject;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.SortedMap;
 import java.util.TreeMap;
 import javax.sql.DataSource;
 import org.springframework.dao.DataAccessException;
@@ -252,6 +257,57 @@ public class ActionRecords {
         catch (DataAccessException | TransactionException e) {
             throw new ActionStorageException("Pack " + packId + " 의 조치를 읽지 못했습니다. 저장소의 상태를 확인한 뒤 다시 시도하세요.", e);
         }
+    }
+
+    /**
+     * 여러 변동 이벤트의 조치의 수를 한 번에 센다 (D2 AD-385). 변동마다
+     * {@link #packActions(String, ActionStatus, String, int, int)} 의 전체 수를 따로 읽은 것과 같다: 그 Pack 의 조치만,
+     * 상태를 가리지 않고 센다.
+     *
+     * @param changeEventIds 물을 변동 이벤트의 식별자. 같은 것이 여럿 있어도 된다. 수에 한도가 없다
+     * @return 물은 변동마다의 수. 식별자의 글자 코드 순이다. 조치가 없는 변동 (저장된 적이 없는 변동, 다른 Pack 의 변동
+     *         포함)은 0 으로 들어 있다. 물은 것이 없으면 빈 결과
+     */
+    public SortedMap<String, Integer> actionCounts(String packId, Collection<String> changeEventIds) {
+        Objects.requireNonNull(packId, "Pack 의 식별자는 반드시 있어야 합니다");
+        Objects.requireNonNull(changeEventIds, "변동 이벤트의 식별자 목록은 반드시 있어야 합니다");
+        // 글자 코드 순이다 (D2 AD-38). 문자열의 기본 순서는 보충 문자에서 이것과 다르다.
+        SortedMap<String, Integer> counts = new TreeMap<>(RulesOrder.STRINGS);
+        // 해시로 묻고 식별자로 답한다. 찾는 데만 쓴다.
+        Map<String, String> idByHash = new TreeMap<>();
+        int position = 0;
+        for (String changeEventId : changeEventIds) {
+            // 여럿 가운데 어느 것이 틀렸는지 알린다.
+            position++;
+            Objects.requireNonNull(changeEventId, "변동 이벤트의 식별자 목록의 " + position + "번째 값이 없습니다");
+            ActionGenerator.requireStorable(changeEventId, "변동 이벤트의 식별자 목록의 " + position + "번째 값");
+            if (counts.put(changeEventId, 0) == null) {
+                idByHash.put(RulesHash.sha256Hex(changeEventId), changeEventId);
+            }
+        }
+        if (counts.isEmpty()) {
+            return counts;
+        }
+        String[] hashes = idByHash.keySet().toArray(String[]::new);
+        try {
+            // 해시를 배열 하나로 넘긴다. 인자의 수에 한도가 없다. 문장 하나라 한 시점의 것이다.
+            jdbc.query("""
+                    select a.change_event_hash, count(*) as action_count
+                      from action a
+                     where a.pack_id = ? and a.change_event_hash = any(?)
+                     group by a.change_event_hash
+                    """, (PreparedStatement statement) -> {
+                statement.setString(1, packId);
+                statement.setArray(2, statement.getConnection().createArrayOf("text", hashes));
+            }, (ResultSet rs) -> {
+                counts.put(idByHash.get(rs.getString("change_event_hash")), rs.getInt("action_count"));
+            });
+        }
+        catch (DataAccessException e) {
+            throw new ActionStorageException("Pack " + packId + " 의 변동 " + counts.size()
+                    + "개의 조치의 수를 읽지 못했습니다. 저장소의 상태를 확인한 뒤 다시 시도하세요.", e);
+        }
+        return counts;
     }
 
     private static void requirePage(int offset, int limit) {

@@ -1,5 +1,15 @@
 package com.altumlab.tabnit.api;
 
+import com.altumlab.tabnit.link.ChangeEvent;
+import com.altumlab.tabnit.link.ChangeEventStatus;
+import com.altumlab.tabnit.link.ChangeFailureDetail;
+import com.altumlab.tabnit.link.EditionPage;
+import com.altumlab.tabnit.rules.ActionRecords;
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import java.util.TreeMap;
+import org.springframework.web.bind.annotation.GetMapping;
 import java.util.Map;
 import com.altumlab.tabnit.link.Edition;
 import com.altumlab.tabnit.link.EditionRecords;
@@ -41,12 +51,80 @@ class EditionsController {
 
 	private final EntityViews entityViews;
 
+	private final ActionRecords actions;
+
 	EditionsController(EditionProcessing processing, EditionRecords editions, PackDefinitions packs,
-			EntityViews entityViews) {
+			EntityViews entityViews, ActionRecords actions) {
 		this.entityViews = entityViews;
+		this.actions = actions;
 		this.processing = processing;
 		this.editions = editions;
 		this.packs = packs;
+	}
+
+	/** 규격의 EditionList. 순서는 link 가 준 그대로다. */
+	record ListResponse(String packId, int total, int offset, int limit, List<ListItem> editions) {
+	}
+
+	/** 규격의 EditionListItem. 수는 link 가 저장된 것을 센 값이다. */
+	record ListItem(String editionId, String inputSourceId, int editionNo, LocalDate effectiveDate, Instant receivedAt,
+			String fileName, int itemCount, int changeCount, int noticeCount) {
+	}
+
+	/** 지난 판의 목록 (규격의 listEditions, D7 5절 "지난 판", D2 AD-383). 나누는 일과 순서는 link 가 정한다. */
+	@GetMapping("/api/v1/editions")
+	@Audited(action = "listEditions", params = "packId")
+	ListResponse list(@RequestParam(required = false) String packId, @RequestParam(required = false) String offset,
+			@RequestParam(required = false) String limit) {
+		require(packId, "MISSING_PACK_ID", "packId", "Pack 의 식별자가 없습니다. packId 에 Pack 의 식별자를 넣어 다시 보내세요.");
+		PageRequest page = PageRequest.of(offset, limit);
+		// NUL 이 든 식별자의 Pack 은 있을 수 없다. 저장소에 묻지 않고 없는 것으로 답한다.
+		if (packId.indexOf('\u0000') >= 0 || this.packs.find(packId).isEmpty()) {
+			throw new ApiProblemException(HttpStatus.NOT_FOUND, "PACK_NOT_FOUND", "packId",
+					"Pack " + packId + " 이 적재되어 있지 않습니다. Pack 의 식별자를 확인하세요.");
+		}
+		EditionPage found = this.editions.packEditions(packId, page.offset(), page.limit());
+		List<ListItem> items = found.editions()
+			.stream()
+			.map(entry -> new ListItem(entry.edition().id(), entry.edition().inputSourceId(), entry.edition().editionNo(),
+					entry.edition().effectiveDate(), entry.edition().receivedAt(), entry.edition().fileName(),
+					entry.itemCount(), entry.changeCount(), entry.noticeCount()))
+			.toList();
+		return new ListResponse(packId, found.total(), page.offset(), page.limit(), items);
+	}
+
+	/**
+	 * 지난 판 하나의 결과 (규격의 getEdition, D7 5절 "지난 판", D2 AD-383). 저장된 것을 읽어 올린 직후의 답과 같은
+	 * 모양으로 돌려준다. 다시 계산하지 않는다.
+	 */
+	@GetMapping("/api/v1/edition")
+	@Audited(action = "getEdition", params = "editionId")
+	EditionSubmissionResponse stored(@RequestParam(required = false) String editionId) {
+		require(editionId, "MISSING_EDITION_ID", "editionId", "판의 식별자가 없습니다. editionId 에 판의 식별자를 넣어 다시 보내세요.");
+		// NUL 이 든 식별자의 판은 있을 수 없다. 저장소에 묻지 않고 없는 것으로 답한다.
+		Edition edition = (editionId.indexOf('\u0000') >= 0 ? Optional.<Edition>empty() : this.editions.findEdition(editionId))
+			.orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND, "EDITION_NOT_FOUND", "editionId",
+					"그런 판이 없습니다. 판의 식별자를 확인하세요."));
+		List<ChangeEvent> events = this.editions.changeEvents(edition.id());
+		Map<String, EntityViews.Item> entities = this.entityViews.items(EditionSubmissionResponse.entityIdsOf(events),
+				edition.effectiveDate());
+		// 처리에 실패한 변동의 까닭과, 변동마다의 조치의 수. 찾는 데만 쓴다.
+		Map<String, List<ChangeFailureDetail>> failures = new TreeMap<>();
+		Map<String, Integer> actionCounts = new TreeMap<>();
+		boolean anyFailed = events.stream().anyMatch(event -> event.status() == ChangeEventStatus.FAILED);
+		if (anyFailed) {
+			for (EditionProcessing.UnprocessedChange change : this.processing.unprocessed(edition.packId())) {
+				failures.put(change.event().id(), change.failures());
+			}
+		}
+		for (ChangeEvent event : events) {
+			if (event.status() == ChangeEventStatus.PROCESSED) {
+				// 수는 rules 가 센다. 한 건만 받아 전체 수를 읽는다.
+				actionCounts.put(event.id(), this.actions.packActions(edition.packId(), null, event.id(), 0, 1).total());
+			}
+		}
+		return EditionSubmissionResponse.stored(edition, this.editions.items(edition.id()).size(), events,
+				this.editions.notices(edition.id()), this.packs.find(edition.packId()), entities, failures, actionCounts);
 	}
 
 	@PostMapping(path = "/api/v1/editions", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

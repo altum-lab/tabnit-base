@@ -47,6 +47,7 @@ export type PackList = components["schemas"]["PackList"];
 export type PackSummary = components["schemas"]["PackSummary"];
 export type InputSourceSummary = components["schemas"]["InputSourceSummary"];
 export type EditionSubmission = components["schemas"]["EditionSubmission"];
+export type EditionList = components["schemas"]["EditionList"];
 export type EditionChange = components["schemas"]["EditionChange"];
 export type ChangeProcessing = components["schemas"]["ChangeProcessing"];
 export type UnprocessedChange = components["schemas"]["UnprocessedChange"];

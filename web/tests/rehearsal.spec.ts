@@ -171,7 +171,23 @@ for (const pack of PACKS) {
     await expect(page.getByRole("heading", { name: "영향 범위", level: 1 })).toBeVisible();
     await expect(page.getByTestId("impact-total")).toHaveText(impactTotal);
 
-    // 6) 화면이 낸 오류가 없다.
+    // 6) 지난 판: 변동 감지 화면으로 돌아가, 앞서 올린 그 판의 바뀐 항목을 지난 판의 목록에서 다시 본다 (D-16).
+    await page.getByRole("navigation", { name: "화면" }).getByRole("link", { name: "변동 감지" }).click();
+    await page.getByLabel("Pack").selectOption(pack);
+    const pastRows = page.getByRole("table", { name: "지난 판" }).locator("tbody tr");
+    // 올린 판이 모두 있다 (한 쪽에 50 판까지다).
+    await expect(page.getByTestId("pager-position")).toContainText(`전체 ${steps.length}건`);
+    await pastRows
+      .filter({ hasText: shown.step.inputSource })
+      .filter({ hasText: shown.step.effectiveDate })
+      .first()
+      .getByRole("button", { name: "결과 보기" })
+      .click();
+    const pastResult = page.getByRole("region", { name: "지난 판의 결과" });
+    await expect(pastResult.locator(`tr[data-change-event-id="${shown.changeEventId.replace(/"/g, '\\"')}"]`)).toBeVisible();
+    await shot("past-edition");
+
+    // 7) 화면이 낸 오류가 없다.
     expect(pageErrors, "화면의 오류").toEqual([]);
   });
 }

@@ -106,11 +106,37 @@ record EditionSubmissionResponse(String outcome, String editionId, String packId
 	}
 
 	/**
-	 * @param edition 만든 판, 또는 내용이 같았던 앞 판
-	 * @param events 그 판의 저장된 변동 이벤트. 항목의 키의 글자 코드 순이다. 내용이 같았으면 넘기지 않는다
-	 * @param pack 그 Pack 의 정의. 속성의 이름표를 읽는다. 읽지 못했으면 비어 있다
-	 * @param entities 변동 이벤트에 나오는 개체. 주 개체, 변동 대상, 바뀐 값의 개체를 식별자로 찾는다
+	 * 저장된 판에서 만든다 (규격의 getEdition, D2 AD-383). 올린 직후의 답과 같은 모양이다. 다시 계산하지 않는다.
+	 *
+	 * @param itemCount 받아들인 항목의 수
+	 * @param events 그 판의 저장된 변동 이벤트. 항목의 키의 글자 코드 순이다
+	 * @param notices 그 판의 저장된 알림. 저장된 차례다
+	 * @param failures 처리에 실패한 변동의 평가에 실패한 규칙. 변동 이벤트의 식별자로 찾는다
+	 * @param actionCounts 변동마다 저장된 조치의 수. 변동 이벤트의 식별자로 찾는다
 	 */
+	static EditionSubmissionResponse stored(Edition edition, int itemCount, List<ChangeEvent> events,
+			List<IngestNotice> notices, Optional<PackDefinition> pack, Map<String, EntityViews.Item> entities,
+			Map<String, List<ChangeFailureDetail>> failures, Map<String, Integer> actionCounts) {
+		List<Change> changes = new ArrayList<>();
+		for (ChangeEvent event : events) {
+			changes.add(new Change(event.id(), event.itemKey(), event.kind().name(), event.primaryEntityId(),
+					EntityViews.require(entities, event.primaryEntityId(), "주 개체"), event.targetEntityIds(),
+					event.targetEntityIds().stream().map(id -> EntityViews.require(entities, id, "변동 대상")).toList(),
+					ChangedValue.of(event.changedValues(), pack, entities),
+					new Processing(event.status().name(), event.failedStage(), event.failureCode(),
+							event.status() == ChangeEventStatus.FAILED
+									? Failure.of(failures.getOrDefault(event.id(), List.of())) : List.of(),
+							actionCounts.getOrDefault(event.id(), 0))));
+		}
+		List<Notice> shown = notices.stream()
+			.map(notice -> new Notice(notice.kind(), notice.rowNo(), notice.code(), notice.subject(), notice.detail(),
+					EditionNotices.message(notice)))
+			.toList();
+		return new EditionSubmissionResponse(IngestOutcome.ACCEPTED.name(), edition.id(), edition.packId(),
+				edition.inputSourceId(), edition.editionNo(), edition.effectiveDate(), itemCount, changes, shown, List.of(),
+				false);
+	}
+
 	/** 변동 이벤트에 나오는 개체의 식별자: 주 개체, 변동 대상, 바뀐 값의 개체. 글자 순이다. */
 	static TreeSet<String> entityIdsOf(List<ChangeEvent> events) {
 		TreeSet<String> ids = new TreeSet<>();
@@ -124,6 +150,12 @@ record EditionSubmissionResponse(String outcome, String editionId, String packId
 		return ids;
 	}
 
+	/**
+	 * @param edition 만든 판, 또는 내용이 같았던 앞 판
+	 * @param events 그 판의 저장된 변동 이벤트. 항목의 키의 글자 코드 순이다. 내용이 같았으면 넘기지 않는다
+	 * @param pack 그 Pack 의 정의. 속성의 이름표를 읽는다. 읽지 못했으면 비어 있다
+	 * @param entities 변동 이벤트에 나오는 개체. 주 개체, 변동 대상, 바뀐 값의 개체를 식별자로 찾는다
+	 */
 	static EditionSubmissionResponse of(EditionProcessingResult result, Edition edition, List<ChangeEvent> events,
 			Optional<PackDefinition> pack, Map<String, EntityViews.Item> entities) {
 		boolean accepted = result.ingest().outcome() == IngestOutcome.ACCEPTED;

@@ -116,13 +116,37 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Pack 에 받아들인 판의 목록을 최근에 받은 것부터 돌려준다
+         * @description 지난 판을 다시 보는 데 쓴다. 받아들인 판만 나온다: 거부된 투입과 내용이 같아 판이 되지 않은 투입은 나오지 않는다. 담당자와 관리자가 부를 수 있다
+         */
+        get: operations["listEditions"];
         put?: never;
         /**
          * 파일 하나를 입력 자료의 새 판으로 올리고, 바뀐 항목과 그 처리 결과를 돌려준다
          * @description 받아들인 판은 앞 판과 비교해 바뀐 항목(변동)을 찾고, 이어서 변동마다 영향 범위를 계산해 조치를 만들어 저장한다. 응답이 오면 그 판의 조치가 만들어져 있다. 한 Pack 에서는 한 번에 하나만 처리한다. 뒤에 온 요청은 앞의 것이 끝날 때까지 기다린다. 담당자와 관리자가 부를 수 있다.
          */
         post: operations["submitEdition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/edition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 지난 판 하나의 바뀐 항목과 그 처리 상태와 알림을, 올린 직후의 답과 같은 모양으로 돌려준다
+         * @description 저장된 것을 읽어 돌려준다. 다시 계산하지 않는다. 담당자와 관리자가 부를 수 있다
+         */
+        get: operations["getEdition"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -622,6 +646,42 @@ export interface components {
             /** @description 그 관계의 도착 개체. 표시 이름은 판의 적용일의 값이다 */
             target: components["schemas"]["EntityRef"];
         };
+        EditionList: {
+            packId: string;
+            /** @description 그 Pack 의 판의 전체 수. 나누기 전의 수다. 화면은 다시 세지 않는다 */
+            total: number;
+            /** @description 답에 쓴 건너뛴 수 */
+            offset: number;
+            /** @description 답에 쓴 한 번에 주는 수 */
+            limit: number;
+            editions: components["schemas"]["EditionListItem"][];
+        };
+        /** @description 받아들인 판 하나. 수는 저장된 것을 센 값이다 */
+        EditionListItem: {
+            /** @description 판의 id */
+            editionId: string;
+            inputSourceId: string;
+            /** @description 그 입력 자료 안에서의 판 번호. 1 부터 */
+            editionNo: number;
+            /**
+             * Format: date
+             * @description 판의 적용일
+             */
+            effectiveDate: string;
+            /**
+             * Format: date-time
+             * @description 받은 때. 협정 세계시다
+             */
+            receivedAt: string;
+            /** @description 받은 파일의 이름. 없으면 null */
+            fileName: string | null;
+            /** @description 받아들인 항목의 수 */
+            itemCount: number;
+            /** @description 바뀐 항목(변동 이벤트)의 수. 첫 판이면 0 이다 */
+            changeCount: number;
+            /** @description 투입의 알림의 수 */
+            noticeCount: number;
+        };
         EditionSubmission: {
             /**
              * @description ACCEPTED 는 새 판을 만들었다. UNCHANGED 는 내용이 바로 앞 판과 같아 판을 만들지 않았다
@@ -1024,6 +1084,38 @@ export interface operations {
             500: components["responses"]["Problem"];
         };
     };
+    listEditions: {
+        parameters: {
+            query: {
+                /** @description Pack 의 식별자 */
+                packId: string;
+                /** @description 건너뛸 수. 없으면 0. 전체 수와 같거나 크면 빈 목록이다 */
+                offset?: components["parameters"]["Offset"];
+                /** @description 한 번에 받을 수. 없으면 50. 1 부터 200 까지 */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 판을 나눠 돌려준다: offset 만큼 건너뛰고 limit 개까지 준다. total 은 그 Pack 의 판의 전체 수다. 순서는 받은 때가 늦은 것부터이고, 같으면 입력 자료의 id 의 글자 코드 순, 그 안에서 판 번호가 큰 것부터다. 판이 없으면 빈 목록이다 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditionList"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
     submitEdition: {
         parameters: {
             query?: never;
@@ -1075,6 +1167,34 @@ export interface operations {
                     "application/problem+json": components["schemas"]["EditionRejectedProblem"];
                 };
             };
+            500: components["responses"]["Problem"];
+        };
+    };
+    getEdition: {
+        parameters: {
+            query: {
+                /** @description 판의 id. 서버가 준 것을 그대로 보낸다 */
+                editionId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 판 올리기의 답과 같은 모양이다. outcome 은 ACCEPTED, retriedChanges 는 빈 목록, processingNotStarted 는 false 다. changes 의 처리 상태와 조치의 수는 지금 저장된 값이다 (올린 뒤에 다시 처리됐으면 그 결과다). 개체의 표시 이름은 그 판의 적용일의 값이다. 순서는 판 올리기의 답과 같다 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditionSubmission"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
             500: components["responses"]["Problem"];
         };
     };

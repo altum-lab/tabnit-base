@@ -1,8 +1,9 @@
 import { EntityName } from "./EntityName";
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { api, type ChangeProcessing, type EditionChange, type EditionSubmission, type PackSummary } from "../api/client";
 import { CONNECTION_FAILED, messageOf } from "../api/problem";
+import { PastEditions } from "./PastEditions";
 import { UnprocessedChanges } from "./UnprocessedChanges";
 
 // 변동 감지 화면. 파일 하나를 입력 자료의 새 판으로 올리고, 바뀐 항목과 그 처리 결과를 본다.
@@ -28,7 +29,19 @@ const KIND_LABEL: Record<string, string> = { ADDED: "추가", CHANGED: "변경",
 
 export function ChangesPage() {
   const [packs, setPacks] = useState<Packs>({ kind: "loading" });
-  const [packId, setPackId] = useState("");
+  // 고른 Pack 은 주소에도 둔다: 지난 판을 고른 채로 다른 화면에 다녀와도 같은 Pack 이 골라져 있다 (D-16).
+  const [params, setParams] = useSearchParams();
+  const [packId, setPackId] = useState(params.get("packId") ?? "");
+  // 뒤로 가기로 주소의 Pack 이 바뀌면 고른 Pack 도 따라간다: 주소의 판과 고른 Pack 이 어긋나지 않게 한다.
+  const packInAddress = params.get("packId");
+  useEffect(() => {
+    if (packInAddress && packInAddress !== packId) {
+      setPackId(packInAddress);
+      setInputSourceId("");
+      setUpload({ kind: "idle" });
+    }
+    // 주소가 바뀔 때만 본다. 고르는 쪽은 주소를 함께 바꾼다.
+  }, [packInAddress]);
   const [inputSourceId, setInputSourceId] = useState("");
   const [effectiveDate, setEffectiveDate] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -134,6 +147,8 @@ export function ChangesPage() {
               value={packId}
               onChange={(e) => {
                 setPackId(e.target.value);
+                // 주소의 Pack 을 맞추고, 앞에 고른 Pack 의 지난 판은 주소에서 지운다.
+                setParams(e.target.value ? { packId: e.target.value } : {});
                 setInputSourceId("");
                 // 앞에 고른 것의 결과가 새로 고른 것의 결과처럼 보이지 않게 지운다.
                 setUpload({ kind: "idle" });
@@ -217,19 +232,36 @@ export function ChangesPage() {
 
       {upload.kind === "failed" && <p role="alert">{upload.message}</p>}
 
-      {upload.kind === "done" && <Result result={upload.result} />}
+      {upload.kind === "done" && <Result result={upload.result} label="올린 결과" />}
 
       {/* 고른 Pack 의 처리되지 않은 변동. 판을 올릴 때마다 다시 받는다. Pack 을 바꾸면 새로 그린다:
           앞에 고른 Pack 에서 아직 돌고 있던 다시 처리의 결과와 목록이 새로 고른 Pack 의 것처럼 보이지 않게 한다. */}
       {pack && <UnprocessedChanges key={pack.packId} packId={pack.packId} refreshKey={uploadCount} />}
+
+      {/* 고른 Pack 의 지난 판. 판을 올릴 때마다 다시 받는다. 고른 판의 결과는 올린 결과와 같은 방식으로 그린다. */}
+      {pack && (
+        <PastEditions
+          key={`past-${pack.packId}`}
+          packId={pack.packId}
+          refreshKey={uploadCount}
+          renderResult={(result) => <Result result={result} label="지난 판의 결과" />}
+        />
+      )}
     </section>
   );
 }
 
-function Result({ result }: { result: EditionSubmission }) {
+// 판 하나의 결과. 올린 직후의 답과 지난 판을 다시 읽은 답이 같은 모양이라 함께 쓴다 (D-16).
+function Result({ result, label }: { result: EditionSubmission; label: "올린 결과" | "지난 판의 결과" }) {
+  const past = label === "지난 판의 결과";
   return (
-    <section aria-label="올린 결과">
-      {result.outcome === "ACCEPTED" ? (
+    <section aria-label={label}>
+      {past ? (
+        <p role="status" data-testid="past-outcome">
+          지난 판입니다: {result.packId} 의 {result.inputSourceId} {result.editionNo}판, 적용일 {result.effectiveDate}, 받아들인 항목{" "}
+          {result.itemCount}개. 처리 상태와 조치의 수는 지금 저장된 값입니다.
+        </p>
+      ) : result.outcome === "ACCEPTED" ? (
         <p role="status" data-testid="outcome">
           새 판을 받아들였습니다: {result.packId} 의 {result.inputSourceId} {result.editionNo}판, 적용일 {result.effectiveDate}, 받아들인 항목{" "}
           {result.itemCount}개.

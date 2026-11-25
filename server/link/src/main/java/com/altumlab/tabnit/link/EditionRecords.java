@@ -1,5 +1,8 @@
 package com.altumlab.tabnit.link;
 
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -29,9 +32,15 @@ public class EditionRecords {
 
     private final JdbcTemplate jdbc;
 
+    /** 여러 번에 나눠 읽는 것을 한 시점의 것으로 읽는다. 따로 읽으면 그 사이에 판이 들어와 수와 목록이 어긋날 수 있다. */
+    private final TransactionTemplate snapshot;
+
     public EditionRecords(DataSource dataSource) {
         Objects.requireNonNull(dataSource, "데이터 원본은 반드시 있어야 합니다");
         this.jdbc = new JdbcTemplate(dataSource);
+        this.snapshot = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
+        this.snapshot.setReadOnly(true);
+        this.snapshot.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
     }
 
     /** 판 하나. 없으면 비어 있다. 원본의 내용은 담지 않는다. */
@@ -59,6 +68,47 @@ public class EditionRecords {
                  order by edition_no desc
                  limit 1
                 """, EDITION, packId, inputSourceId).stream().findFirst();
+    }
+
+    /**
+     * Pack 에 받아들인 판을 나눠 돌려준다 (D7 5절 "지난 판", D2 AD-383). 지난 판을 다시 보는 데 쓴다.
+     *
+     * <p>순서는 받은 때가 늦은 것부터이고, 같으면 입력 자료의 식별자의 글자 코드 순, 그 안에서 판 번호가 큰 것부터다.
+     * (Pack, 입력 자료, 판 번호)는 겹치지 않으므로 순서가 하나로 정해진다. 거부된 투입과 내용이 같았던 투입은 판이
+     * 아니라 나오지 않는다.
+     *
+     * @param offset 건너뛸 수. 0 이상
+     * @param limit 한 번에 줄 수. 1 이상
+     * @return 그 Pack 에 판이 없으면 (없는 Pack 포함) 빈 목록이고 전체 수는 0 이다. 전체 수와 목록은 한 시점의 것이다.
+     *         쪽을 넘기는 사이에 판이 들어오면 앞 쪽의 마지막 판이 다음 쪽에 다시 나올 수 있다 (건너뛰는 수로 나누는 방식이다)
+     */
+    public EditionPage packEditions(String packId, int offset, int limit) {
+        Objects.requireNonNull(packId, "Pack 의 식별자는 반드시 있어야 합니다");
+        if (offset < 0) {
+            throw new IllegalArgumentException("건너뛸 수는 0 이상이어야 합니다: " + offset);
+        }
+        if (limit < 1) {
+            throw new IllegalArgumentException("한 번에 줄 수는 1 이상이어야 합니다: " + limit);
+        }
+        // 전체 수와 목록을 한 시점의 것으로 읽는다.
+        return snapshot.execute(status -> readPackEditions(packId, offset, limit));
+    }
+
+    private EditionPage readPackEditions(String packId, int offset, int limit) {
+        Integer total = jdbc.queryForObject("select count(*) from edition where pack_id = ?", Integer.class, packId);
+        List<EditionListEntry> editions = jdbc.query("""
+                select e.id, e.pack_id, e.input_source_id, e.edition_no, e.effective_date, e.content_hash, e.file_name,
+                       e.received_at,
+                       (select count(*) from edition_item i where i.edition_id = e.id) as item_count,
+                       (select count(*) from change_event c where c.edition_id = e.id) as change_count,
+                       (select count(*) from edition_notice n where n.edition_id = e.id) as notice_count
+                  from edition e
+                 where e.pack_id = ?
+                 order by e.received_at desc, e.input_source_id, e.edition_no desc
+                offset ? limit ?
+                """, (rs, n) -> new EditionListEntry(EDITION.mapRow(rs, n), rs.getInt("item_count"),
+                rs.getInt("change_count"), rs.getInt("notice_count")), packId, offset, limit);
+        return new EditionPage(editions, total == null ? 0 : total);
     }
 
     /** 판의 원본: 받은 파일의 바이트 그대로 (D2 AD-150). 그런 판이 없으면 비어 있다. */

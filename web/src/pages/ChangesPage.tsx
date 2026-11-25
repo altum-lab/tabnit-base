@@ -1,3 +1,4 @@
+import { EntityName } from "./EntityName";
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { api, type ChangeProcessing, type EditionChange, type EditionSubmission, type PackSummary } from "../api/client";
@@ -271,11 +272,16 @@ function Result({ result }: { result: EditionSubmission }) {
                 <tr key={change.changeEventId} data-change-event-id={change.changeEventId} data-item-key={change.itemKey}>
                   <td>{change.itemKey}</td>
                   <td>{KIND_LABEL[change.kind] ?? change.kind}</td>
-                  <td>{change.primaryEntityId}</td>
-                  <td>
+                  {/* 개체는 서버가 준 표시 이름, 유형의 이름표, 키로 적는다 (D-15). 차례는 서버가 준 그대로다. */}
+                  <td data-testid="primary-entity">
+                    <EntityName entity={change.primaryEntity} />
+                  </td>
+                  <td data-testid="target-entities">
                     <ul>
-                      {change.targetEntityIds.map((entityId) => (
-                        <li key={entityId}>{entityId}</li>
+                      {change.targetEntities.map((entity) => (
+                        <li key={entity.entityId}>
+                          <EntityName entity={entity} />
+                        </li>
                       ))}
                     </ul>
                   </td>
@@ -382,11 +388,13 @@ function ChangedValues({ change }: { change: EditionChange }) {
         // 같은 속성이 두 번 올 수 있어 차례를 열쇠에 넣는다. 목록은 서버가 준 차례 그대로이고 바뀌지 않는다.
         <li key={`${value.entityId}|${value.attributeName}|${index}`} data-attribute-name={value.attributeName}>
           {value.attributeLabel}{" "}
-          {/* 개체가 여럿일 수 있어 어느 개체의 속성인지 함께 적는다. */}
-          <small>
-            <code>{value.entityId}</code>
+          {/* 개체가 여럿일 수 있어 어느 개체의 속성인지 함께 적는다. 표시 이름이 없으면 키다. */}
+          <small data-testid="value-entity" data-entity-id={value.entityId}>
+            ({value.entity.displayName ?? value.entity.entityKey})
           </small>
-          : <ChangedValue value={value.before} testId="value-before" /> → <ChangedValue value={value.after} testId="value-after" />
+          {/* 보이는 글자는 서버가 준 것이다: 참·거짓은 예, 아니오로 온다. 화면은 값을 바꿔 적지 않는다. */}
+          : <ChangedValue value={value.beforeDisplay} testId="value-before" /> →{" "}
+          <ChangedValue value={value.afterDisplay} testId="value-after" />
         </li>
       ))}
     </ul>

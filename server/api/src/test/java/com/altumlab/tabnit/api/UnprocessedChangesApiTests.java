@@ -101,6 +101,10 @@ class UnprocessedChangesApiTests {
 				.andExpect(jsonPath(at + ".editionNo").value(2))
 				.andExpect(jsonPath(at + ".effectiveDate").value("2026-03-01"))
 				.andExpect(jsonPath(at + ".itemKey").value(event.itemKey()))
+				// 주 개체는 식별자와 함께 유형, 키, 그 판의 적용일의 표시 이름으로도 온다 (D-15).
+				.andExpect(jsonPath(at + ".primaryEntity.entityId").value(event.primaryEntityId()))
+				.andExpect(jsonPath(at + ".primaryEntity.entityType").value("운영지침"))
+				.andExpect(jsonPath(at + ".primaryEntity.entityKey").value(event.itemKey()))
 				.andExpect(jsonPath(at + ".kind").value(event.kind().name()))
 				.andExpect(jsonPath(at + ".primaryEntityId").value(event.primaryEntityId()))
 				.andExpect(jsonPath(at + ".processing.status").value("FAILED"))

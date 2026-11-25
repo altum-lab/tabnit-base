@@ -1,3 +1,4 @@
+import { EntityName } from "./EntityName";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { api, type ChangeProcessing, type ChangeReprocessing, type UnprocessedChange } from "../api/client";
 import { CONNECTION_FAILED, messageOf } from "../api/problem";
@@ -144,7 +145,9 @@ export function UnprocessedChanges({ packId, refreshKey }: { packId: string; ref
                   </td>
                   <td>{change.itemKey}</td>
                   <td>{KIND_LABEL[change.kind] ?? change.kind}</td>
-                  <td>{change.primaryEntityId}</td>
+                  <td>
+                    <EntityName entity={change.primaryEntity} />
+                  </td>
                   <td>
                     <Reason processing={change.processing} />
                   </td>

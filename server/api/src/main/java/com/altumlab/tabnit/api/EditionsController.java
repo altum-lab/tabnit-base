@@ -1,5 +1,6 @@
 package com.altumlab.tabnit.api;
 
+import java.util.Map;
 import com.altumlab.tabnit.link.Edition;
 import com.altumlab.tabnit.link.EditionRecords;
 import com.altumlab.tabnit.link.IngestOutcome;
@@ -38,7 +39,11 @@ class EditionsController {
 
 	private final PackDefinitions packs;
 
-	EditionsController(EditionProcessing processing, EditionRecords editions, PackDefinitions packs) {
+	private final EntityViews entityViews;
+
+	EditionsController(EditionProcessing processing, EditionRecords editions, PackDefinitions packs,
+			EntityViews entityViews) {
+		this.entityViews = entityViews;
 		this.processing = processing;
 		this.editions = editions;
 		this.packs = packs;
@@ -90,7 +95,10 @@ class EditionsController {
 		Edition edition = this.editions.findEdition(ingest.editionId())
 			.orElseThrow(() -> new IllegalStateException("투입한 판 " + ingest.editionId() + " 을 읽지 못했습니다."));
 		// 바뀐 값에 붙일 속성의 이름표는 Pack 의 정의에서 읽는다 (D2 AD-367).
-		return EditionSubmissionResponse.of(result, edition, result.editionChanges(), this.packs.find(packId));
+		// 개체는 유형, 키, 표시 이름과 함께 준다. 표시 이름은 그 판의 적용일의 값이다 (D2 AD-349, AD-381).
+		Map<String, EntityViews.Item> entities = this.entityViews
+			.items(EditionSubmissionResponse.entityIdsOf(result.editionChanges()), edition.effectiveDate());
+		return EditionSubmissionResponse.of(result, edition, result.editionChanges(), this.packs.find(packId), entities);
 	}
 
 	private static void require(String value, String code, String field, String detail) {

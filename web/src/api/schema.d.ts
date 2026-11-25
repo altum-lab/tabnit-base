@@ -664,14 +664,20 @@ export interface components {
             kind: "ADDED" | "CHANGED" | "REMOVED";
             /** @description 그 행의 주 개체의 id. 조치의 근거가 된다 */
             primaryEntityId: string;
+            /** @description 그 행의 주 개체. primaryEntityId 와 같은 개체를 유형, 키, 표시 이름과 함께 준다. 표시 이름은 그 판의 적용일의 값이다 (그 판에서 없어진 개체는 값이 없을 수 있다) */
+            primaryEntity: components["schemas"]["EntityRef"];
             /** @description 변동 대상 개체의 id. 글자 코드 순이다 */
             targetEntityIds: string[];
+            /** @description 변동 대상 개체. targetEntityIds 와 같은 개체를 같은 차례로 준다. 표시 이름은 그 판의 적용일의 값이다 */
+            targetEntities: components["schemas"]["EntityRef"][];
             processing: components["schemas"]["ChangeProcessing"];
         };
-        /** @description 그 행에서 바뀐 속성 값 하나. 값은 저장한 글자 그대로다 */
+        /** @description 그 행에서 바뀐 속성 값 하나. before 와 after 는 저장한 글자 그대로다 */
         ChangedValue: {
             /** @description 어느 개체의 속성인가 */
             entityId: string;
+            /** @description 그 개체. entityId 와 같은 개체를 유형, 키, 표시 이름과 함께 준다. 표시 이름은 그 판의 적용일의 값이다 */
+            entity: components["schemas"]["EntityRef"];
             /** @description 속성의 이름 */
             attributeName: string;
             /** @description Pack 이 정한 속성의 이름표. 없으면 속성의 이름이다 */
@@ -680,6 +686,10 @@ export interface components {
             before: string | null;
             /** @description 새 판에서 그 행이 넣은 값. 없어졌으면 null (삭제된 행, 빈 칸이 된 속성) */
             after: string | null;
+            /** @description before 를 화면에 보일 글자. 참·거짓 속성이면 true 는 "예", false 는 "아니오" 다. 그 밖의 속성은 before 와 같다. before 가 null 이면 null */
+            beforeDisplay: string | null;
+            /** @description after 를 화면에 보일 글자. 규칙은 beforeDisplay 와 같다 */
+            afterDisplay: string | null;
         };
         /** @description 변동 하나를 영향 범위 계산과 조치 생성까지 처리한 결과 */
         ChangeProcessing: {
@@ -733,6 +743,8 @@ export interface components {
             /** @enum {string} */
             kind: "ADDED" | "CHANGED" | "REMOVED";
             primaryEntityId: string;
+            /** @description 그 행의 주 개체. 유형, 키, 표시 이름과 함께 준다. 표시 이름은 그 변동이 나온 판의 적용일의 값이다 */
+            primaryEntity: components["schemas"]["EntityRef"];
             processing: components["schemas"]["ChangeProcessing"];
         };
         ChangeReprocessingRequest: {

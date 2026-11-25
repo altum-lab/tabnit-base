@@ -1,5 +1,7 @@
 package com.altumlab.tabnit.api;
 
+import java.util.TreeMap;
+import java.util.TreeSet;
 import com.altumlab.tabnit.link.ChangeEvent;
 import com.altumlab.tabnit.link.Edition;
 import java.time.LocalDate;
@@ -29,8 +31,11 @@ class UnprocessedChangesController {
 
 	private final EditionProcessing processing;
 
-	UnprocessedChangesController(EditionProcessing processing) {
+	private final EntityViews entityViews;
+
+	UnprocessedChangesController(EditionProcessing processing, EntityViews entityViews) {
 		this.processing = processing;
+		this.entityViews = entityViews;
 	}
 
 	/** 규격의 UnprocessedChangeList. 순서는 처리 서비스가 준 그대로다. */
@@ -39,7 +44,8 @@ class UnprocessedChangesController {
 
 	/** 규격의 UnprocessedChange. */
 	record Item(String changeEventId, String editionId, String inputSourceId, int editionNo, LocalDate effectiveDate,
-			String itemKey, String kind, String primaryEntityId, EditionSubmissionResponse.Processing processing) {
+			String itemKey, String kind, String primaryEntityId, EntityViews.Item primaryEntity,
+			EditionSubmissionResponse.Processing processing) {
 	}
 
 	/** 규격의 ChangeReprocessing. 순서는 처리한 차례다. 수는 목록에서 센 것이다: 화면이 다시 세지 않게 함께 준다. */
@@ -54,12 +60,23 @@ class UnprocessedChangesController {
 			throw new ApiProblemException(HttpStatus.BAD_REQUEST, "MISSING_PACK_ID", "packId",
 					"Pack 의 식별자가 없습니다. packId 에 Pack 의 식별자를 넣어 다시 보내세요.");
 		}
+		List<EditionProcessing.UnprocessedChange> unprocessed = this.processing.unprocessed(packId);
+		// 주 개체는 유형, 키, 표시 이름과 함께 준다. 표시 이름은 그 변동이 나온 판의 적용일의 값이다 (D2 AD-381).
+		// 적용일마다 한 번씩 읽는다. 찾는 데만 쓴다.
+		Map<LocalDate, TreeSet<String>> idsByDate = new TreeMap<>();
+		for (EditionProcessing.UnprocessedChange change : unprocessed) {
+			idsByDate.computeIfAbsent(change.edition().effectiveDate(), date -> new TreeSet<>())
+				.add(change.event().primaryEntityId());
+		}
+		Map<LocalDate, Map<String, EntityViews.Item>> entitiesByDate = new TreeMap<>();
+		idsByDate.forEach((date, ids) -> entitiesByDate.put(date, this.entityViews.items(ids, date)));
 		List<Item> items = new ArrayList<>();
-		for (EditionProcessing.UnprocessedChange change : this.processing.unprocessed(packId)) {
+		for (EditionProcessing.UnprocessedChange change : unprocessed) {
 			ChangeEvent event = change.event();
 			Edition edition = change.edition();
 			items.add(new Item(event.id(), edition.id(), edition.inputSourceId(), edition.editionNo(),
 					edition.effectiveDate(), event.itemKey(), event.kind().name(), event.primaryEntityId(),
+					EntityViews.require(entitiesByDate.get(edition.effectiveDate()), event.primaryEntityId(), "주 개체"),
 					new EditionSubmissionResponse.Processing(event.status().name(), event.failedStage(),
 							event.failureCode(), EditionSubmissionResponse.Failure.of(change.failures()), 0)));
 		}

@@ -62,6 +62,7 @@ test("화면이 모르는 코드와 대기인 변동과 규칙이 아닌 실패�
     itemKey: key,
     kind: "CHANGED",
     primaryEntityId: `p|T|${key}`,
+    primaryEntity: { entityId: `p|T|${key}`, entityType: "T", entityTypeLabel: "지어낸 유형", entityKey: key, displayName: `이름 ${key}` },
     processing: body,
   });
   await page.route("**/api/v1/unprocessed-changes?*", (route) =>

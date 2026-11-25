@@ -1201,7 +1201,7 @@ components:
             다음에 받아들여진 판을 올릴 때 처리된다
     EditionChange:
       type: object
-      required: [changeEventId, itemKey, kind, primaryEntityId, targetEntityIds, changedValues, processing]
+      required: [changeEventId, itemKey, kind, primaryEntityId, primaryEntity, targetEntityIds, targetEntities, changedValues, processing]
       properties:
         changeEventId:
           type: string
@@ -1223,21 +1223,34 @@ components:
         primaryEntityId:
           type: string
           description: 그 행의 주 개체의 id. 조치의 근거가 된다
+        primaryEntity:
+          description: >-
+            그 행의 주 개체. primaryEntityId 와 같은 개체를 유형, 키, 표시 이름과 함께 준다. 표시 이름은 그 판의
+            적용일의 값이다 (그 판에서 없어진 개체는 값이 없을 수 있다)
+          $ref: '#/components/schemas/EntityRef'
         targetEntityIds:
           type: array
           description: 변동 대상 개체의 id. 글자 코드 순이다
           items:
             type: string
+        targetEntities:
+          type: array
+          description: 변동 대상 개체. targetEntityIds 와 같은 개체를 같은 차례로 준다. 표시 이름은 그 판의 적용일의 값이다
+          items:
+            $ref: '#/components/schemas/EntityRef'
         processing:
           $ref: '#/components/schemas/ChangeProcessing'
     ChangedValue:
       type: object
-      description: 그 행에서 바뀐 속성 값 하나. 값은 저장한 글자 그대로다
-      required: [entityId, attributeName, attributeLabel, before, after]
+      description: 그 행에서 바뀐 속성 값 하나. before 와 after 는 저장한 글자 그대로다
+      required: [entityId, entity, attributeName, attributeLabel, before, after, beforeDisplay, afterDisplay]
       properties:
         entityId:
           type: string
           description: 어느 개체의 속성인가
+        entity:
+          description: 그 개체. entityId 와 같은 개체를 유형, 키, 표시 이름과 함께 준다. 표시 이름은 그 판의 적용일의 값이다
+          $ref: '#/components/schemas/EntityRef'
         attributeName:
           type: string
           description: 속성의 이름
@@ -1250,6 +1263,14 @@ components:
         after:
           type: [string, 'null']
           description: 새 판에서 그 행이 넣은 값. 없어졌으면 null (삭제된 행, 빈 칸이 된 속성)
+        beforeDisplay:
+          type: [string, 'null']
+          description: >-
+            before 를 화면에 보일 글자. 참·거짓 속성이면 true 는 "예", false 는 "아니오" 다. 그 밖의 속성은 before 와
+            같다. before 가 null 이면 null
+        afterDisplay:
+          type: [string, 'null']
+          description: after 를 화면에 보일 글자. 규칙은 beforeDisplay 와 같다
     ChangeProcessing:
       type: object
       description: 변동 하나를 영향 범위 계산과 조치 생성까지 처리한 결과
@@ -1312,7 +1333,7 @@ components:
             $ref: '#/components/schemas/UnprocessedChange'
     UnprocessedChange:
       type: object
-      required: [changeEventId, editionId, inputSourceId, editionNo, effectiveDate, itemKey, kind, primaryEntityId, processing]
+      required: [changeEventId, editionId, inputSourceId, editionNo, effectiveDate, itemKey, kind, primaryEntityId, primaryEntity, processing]
       properties:
         changeEventId:
           type: string
@@ -1334,6 +1355,9 @@ components:
           enum: [ADDED, CHANGED, REMOVED]
         primaryEntityId:
           type: string
+        primaryEntity:
+          description: 그 행의 주 개체. 유형, 키, 표시 이름과 함께 준다. 표시 이름은 그 변동이 나온 판의 적용일의 값이다
+          $ref: '#/components/schemas/EntityRef'
         processing:
           $ref: '#/components/schemas/ChangeProcessing'
     ChangeReprocessingRequest:

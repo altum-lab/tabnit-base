@@ -238,7 +238,22 @@ test("바뀐 속성마다 이전 값과 새 값이 서버가 준 그대로 나�
   const answered = page.waitForResponse((response) => response.url().includes("/api/v1/editions") && response.request().method() === "POST");
   await upload(page, nextDay(first), "지침 바.csv", csv(`G-01,"${after}",14`, `G-03,새 기준 ${run},60`));
   const body = (await (await answered).json()) as {
-    changes: { itemKey: string; changedValues: { attributeName: string; attributeLabel: string; before: string | null; after: string | null }[] | null }[];
+    changes: {
+      itemKey: string;
+      primaryEntity: { entityId: string; entityKey: string; entityTypeLabel: string; displayName: string | null };
+      targetEntities: { entityId: string; entityKey: string; displayName: string | null }[];
+      changedValues:
+        | {
+            attributeName: string;
+            attributeLabel: string;
+            before: string | null;
+            after: string | null;
+            beforeDisplay: string | null;
+            afterDisplay: string | null;
+            entity: { entityKey: string; displayName: string | null };
+          }[]
+        | null;
+    }[];
   };
 
   for (const change of body.changes) {
@@ -251,10 +266,28 @@ test("바뀐 속성마다 이전 값과 새 값이 서버가 준 그대로 나�
       const item = items.nth(index);
       await expect(item).toHaveAttribute("data-attribute-name", value.attributeName);
       await expect(item).toContainText(value.attributeLabel);
-      await expect(item.getByTestId("value-before")).toHaveText(value.before ?? "(없음)");
-      await expect(item.getByTestId("value-after")).toHaveText(value.after ?? "(없음)");
+      // 보이는 글자는 서버가 준 것이다. 참·거짓이 아닌 속성은 저장한 글자와 같다.
+      expect(value.beforeDisplay).toBe(value.before);
+      await expect(item.getByTestId("value-before")).toHaveText(value.beforeDisplay ?? "(없음)");
+      await expect(item.getByTestId("value-after")).toHaveText(value.afterDisplay ?? "(없음)");
+      await expect(item.getByTestId("value-entity")).toHaveText(`(${value.entity.displayName ?? value.entity.entityKey})`);
+    }
+    // D-15: 개체는 식별자가 아니라 서버가 준 표시 이름과 유형의 이름표와 키로 보인다. 표시 이름이 없으면 키다.
+    const row = page.locator(`tr[data-item-key="${change.itemKey}"]`);
+    const primary = row.getByTestId("primary-entity");
+    await expect(primary.getByTestId("entity-name")).toHaveText(change.primaryEntity.displayName ?? change.primaryEntity.entityKey);
+    await expect(primary.getByTestId("entity-type")).toHaveText(`(${change.primaryEntity.entityTypeLabel} ${change.primaryEntity.entityKey})`);
+    const targets = row.getByTestId("target-entities").getByTestId("entity");
+    await expect(targets).toHaveCount(change.targetEntities.length);
+    for (const [index, target] of change.targetEntities.entries()) {
+      await expect(targets.nth(index)).toHaveAttribute("data-entity-id", target.entityId);
+      await expect(targets.nth(index).getByTestId("entity-name")).toHaveText(target.displayName ?? target.entityKey);
     }
   }
+  // 고친 행의 표시 이름은 새 판의 제목이고, 뺀 행은 그 판의 적용일에 제목이 없어 키로 보인다.
+  const names = new Map(body.changes.map((change) => [change.itemKey, change.primaryEntity.displayName]));
+  expect(names.get("G-01")).toBe(after);
+  expect(names.get("G-02")).toBeNull();
   // 서버가 준 것이 기대한 변동인지도 본다: 고친 행은 두 속성, 뺀 행은 새 값이 없고, 더한 행은 이전 값이 없다.
   const byKey = new Map(body.changes.map((change) => [change.itemKey, change.changedValues!]));
   expect(byKey.get("G-01")!.map((value) => [value.before, value.after])).toEqual(expect.arrayContaining([[before, after], ["30", "14"]]));
@@ -265,3 +298,30 @@ test("바뀐 속성마다 이전 값과 새 값이 서버가 준 그대로 나�
   expect(await title.evaluate((element) => getComputedStyle(element).whiteSpace)).toBe("pre-wrap");
 });
 
+
+// D-15: 참·거짓 속성의 바뀐 값은 저장한 글자(true, false)가 아니라 서버가 준 보일 글자(예, 아니오)로 나온다 (D2 AD-381).
+test("참·거짓 속성의 바뀐 값은 예와 아니오로 보인다", async ({ page }) => {
+  const run = Date.now();
+  const header = "사업코드,사업명,운영여부,연간목표인원,연계사업코드";
+  const program = (flag: string) => Buffer.from(`${header}\nP-${run},지어낸 사업 ${run},${flag},10,\n`, "utf-8");
+  await page.goto("/changes");
+  await page.getByLabel("Pack").selectOption(PACK_ID);
+  await page.getByLabel("입력 자료").selectOption("program");
+  await expect(page.getByTestId("latest-edition")).toBeVisible();
+  const first = await laterDate(page);
+  await upload(page, first, "사업 가.csv", program("아니오"));
+  await expect(page.getByTestId("outcome")).toContainText("새 판을 받아들였습니다");
+
+  const answered = page.waitForResponse((response) => response.url().includes("/api/v1/editions") && response.request().method() === "POST");
+  await upload(page, nextDay(first), "사업 나.csv", program("예"));
+  const body = (await (await answered).json()) as {
+    changes: { itemKey: string; changedValues: { attributeName: string; before: string | null; after: string | null }[] }[];
+  };
+
+  const flag = page.locator(`tr[data-item-key="P-${run}"]`).locator('li[data-attribute-name="운영여부"]');
+  await expect(flag.getByTestId("value-before")).toHaveText("아니오");
+  await expect(flag.getByTestId("value-after")).toHaveText("예");
+  // 저장한 글자는 그대로 온다. 화면은 그것을 바꿔 적지 않고 서버가 준 보일 글자를 쓴다.
+  const stored = body.changes.find((change) => change.itemKey === `P-${run}`)!.changedValues.find((value) => value.attributeName === "운영여부")!;
+  expect([stored.before, stored.after]).toEqual(["false", "true"]);
+});

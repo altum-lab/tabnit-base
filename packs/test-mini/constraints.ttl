@@ -1,4 +1,4 @@
-# 제약 (SHACL). 적재가 끝난 뒤 전체 자료에 걸어 위반을 보고한다 (D2 AD-92).
+# 제약 (SHACL). 물을 때 조회 시점의 자료에 걸어 위반을 보고한다 (D2 AD-92, AD-390).
 # 제약을 어긴 자료도 그대로 들어간다.
 @prefix sh:     <http://www.w3.org/ns/shacl#> .
 @prefix xsd:    <http://www.w3.org/2001/XMLSchema#> .

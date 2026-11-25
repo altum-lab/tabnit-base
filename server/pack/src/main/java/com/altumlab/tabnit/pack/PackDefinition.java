@@ -20,20 +20,31 @@ import java.util.Map;
  * @param attributes 속성. 이름의 글자 코드 순
  * @param mappings 매핑 정의. 입력 자료의 식별자 순
  * @param rules 규칙. 규칙 번호의 글자 코드 순
+ * @param constraints 제약 파일(constraints.ttl)의 글 그대로 (SHACL, D6 6절). 제약이 없으면 빈 글자다. 적재할 때 검증한 것이다
  * @param localizedLabels 언어별 이름표. 이름, 언어 순. 화면과 API 가 보여 주는 기본 이름표는 여기에 없고 각 정의의 label 에 있다
  */
 public record PackDefinition(String packId, String label, int defaultMaxDepth, Instant loadedAt,
         List<EntityTypeDefinition> entityTypes, List<RelationTypeDefinition> relationTypes,
         List<AttributeDefinition> attributes, List<LocalizedLabel> localizedLabels,
-        List<MappingDefinition> mappings, List<RuleDefinition> rules) {
+        List<MappingDefinition> mappings, List<RuleDefinition> rules, String constraints) {
 
     public PackDefinition {
+        constraints = Objects.requireNonNull(constraints, "제약의 글은 반드시 있어야 합니다. 제약이 없으면 빈 글자입니다");
         rules = List.copyOf(rules);
         entityTypes = List.copyOf(entityTypes);
         relationTypes = List.copyOf(relationTypes);
         attributes = List.copyOf(attributes);
         localizedLabels = List.copyOf(localizedLabels);
         mappings = List.copyOf(mappings);
+    }
+
+    /** 제약이 없는 Pack 의 정의. */
+    public PackDefinition(String packId, String label, int defaultMaxDepth, Instant loadedAt,
+            List<EntityTypeDefinition> entityTypes, List<RelationTypeDefinition> relationTypes,
+            List<AttributeDefinition> attributes, List<LocalizedLabel> localizedLabels,
+            List<MappingDefinition> mappings, List<RuleDefinition> rules) {
+        this(packId, label, defaultMaxDepth, loadedAt, entityTypes, relationTypes, attributes, localizedLabels, mappings,
+                rules, "");
     }
 
     /** 규칙이 없는 Pack 의 정의. */
@@ -88,6 +99,6 @@ public record PackDefinition(String packId, String label, int defaultMaxDepth, I
         return packId.equals(other.packId) && label.equals(other.label) && defaultMaxDepth == other.defaultMaxDepth
                 && entityTypes.equals(other.entityTypes) && relationTypes.equals(other.relationTypes)
                 && attributes.equals(other.attributes) && localizedLabels.equals(other.localizedLabels)
-                && mappings.equals(other.mappings) && rules.equals(other.rules);
+                && mappings.equals(other.mappings) && rules.equals(other.rules) && constraints.equals(other.constraints);
     }
 }

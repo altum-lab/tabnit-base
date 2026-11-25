@@ -55,10 +55,10 @@ final class PackTables {
         List<MappingDefinition> mappings = readMappings(packId);
         List<RuleDefinition> rules = readRules(packId);
         List<PackDefinition> found = jdbc.query(
-                "select pack_id, label, default_max_depth, loaded_at from pack_definition where pack_id = ?",
+                "select pack_id, label, default_max_depth, loaded_at, constraints from pack_definition where pack_id = ?",
                 (rs, n) -> new PackDefinition(rs.getString("pack_id"), rs.getString("label"),
                         rs.getInt("default_max_depth"), rs.getTimestamp("loaded_at").toInstant(), entityTypes,
-                        relationTypes, attributes, localizedLabels, mappings, rules),
+                        relationTypes, attributes, localizedLabels, mappings, rules, rs.getString("constraints")),
                 packId);
         return found.stream().findFirst();
     }
@@ -176,8 +176,9 @@ final class PackTables {
     }
 
     void insert(PackDefinition pack) {
-        jdbc.update("insert into pack_definition (pack_id, label, default_max_depth, loaded_at) values (?, ?, ?, ?)",
-                pack.packId(), pack.label(), pack.defaultMaxDepth(), Timestamp.from(pack.loadedAt()));
+        jdbc.update(
+                "insert into pack_definition (pack_id, label, default_max_depth, loaded_at, constraints) values (?, ?, ?, ?, ?)",
+                pack.packId(), pack.label(), pack.defaultMaxDepth(), Timestamp.from(pack.loadedAt()), pack.constraints());
         for (EntityTypeDefinition type : pack.entityTypes()) {
             jdbc.update("insert into pack_entity_type (pack_id, name, label, display_name_attribute) values (?, ?, ?, ?)",
                     pack.packId(), type.name(), type.label(), type.displayNameAttribute());

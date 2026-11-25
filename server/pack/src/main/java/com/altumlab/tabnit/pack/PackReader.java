@@ -27,8 +27,8 @@ import org.apache.jena.sparql.graph.GraphFactory;
  * <p>읽는 것은 D6 에 적힌 항목뿐이다. D6 에 없는 문장은 무시하지 않고 문제로 알린다 (D2 AD-88).
  * 문제는 찾는 대로 모아 한 번에 모두 알린다. RDF 를 읽는 라이브러리는 이 클래스 안에서만 쓴다 (D2 AD-15).
  *
- * <p>읽는 파일은 pack.ttl, ontology.ttl, mappings 폴더의 매핑 정의, rules 폴더의 규칙 정의다
- * (매핑은 {@link MappingReader}, 규칙은 {@link RuleReader}).
+ * <p>읽는 파일은 pack.ttl, ontology.ttl, constraints.ttl, mappings 폴더의 매핑 정의, rules 폴더의 규칙 정의다
+ * (제약은 {@link ConstraintReader}, 매핑은 {@link MappingReader}, 규칙은 {@link RuleReader}).
  */
 final class PackReader {
 
@@ -141,6 +141,15 @@ final class PackReader {
         List<RuleDefinition> rules = ontologyRead ? RuleReader.read(directory, prefix, entityTypes, attributes,
                 relationTypes, inputSourceIds(mappings), problems) : List.of();
 
+        // 제약도 온톨로지를 읽었을 때만 본다 (D6 6절). 가리키는 속성은 속성이거나 관계 유형이다.
+        String constraints = null;
+        if (ontologyRead) {
+            TreeSet<String> properties = new TreeSet<>(PackOrder.STRINGS);
+            properties.addAll(attributes.keySet());
+            properties.addAll(relationTypes.keySet());
+            constraints = ConstraintReader.read(directory, prefix, entityTypes.keySet(), properties, problems);
+        }
+
         if (!problems.isEmpty()) {
             // 같은 문제를 두 번 알리지 않고, 차례를 정해 둔다.
             TreeSet<PackProblem> ordered = new TreeSet<>(PackOrder.PROBLEMS);
@@ -149,7 +158,7 @@ final class PackReader {
         }
         return new Result(new PackDefinition(packId, label[0], maxDepth[0], loadedAt, List.copyOf(entityTypes.values()),
                 List.copyOf(relationTypes.values()), List.copyOf(attributes.values()),
-                localizedLabels.stream().sorted(PackOrder.LABELS).toList(), mappings, rules), List.of(),
+                localizedLabels.stream().sorted(PackOrder.LABELS).toList(), mappings, rules, constraints), List.of(),
                 RuleWarnings.find(mappings, rules));
     }
 

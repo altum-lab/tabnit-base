@@ -558,6 +558,8 @@ class PackRuleTest {
                 StandardCharsets.UTF_8);
         Files.writeString(dir.resolve("ontology.ttl"),
                 PREFIXES + "@prefix ex: <urn:tabnit:pack:" + packId + ":> .\n" + ONTOLOGY, StandardCharsets.UTF_8);
+        // 제약 파일은 반드시 있어야 한다 (D2 AD-393). 제약이 없는 Pack 은 빈 파일을 둔다.
+        Files.writeString(dir.resolve("constraints.ttl"), "", StandardCharsets.UTF_8);
         if (ruleFile != null) {
             rules(dir, ruleFile, ruleBody);
         }

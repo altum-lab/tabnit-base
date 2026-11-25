@@ -22,8 +22,8 @@ scenario:
     # 2026-01-01: 처음 자료가 들어온다. 모두 첫 판이라 변동은 없다.
     - { step: 1, inputSource: regulation, file: data/regulation-v1.csv, effectiveDate: 2026-01-01 }
     - { step: 2, inputSource: requirement, file: data/requirement-v1.csv, effectiveDate: 2026-01-01 }
-    - { step: 3, inputSource: substance, file: data/substance-v1.csv, effectiveDate: 2026-01-01 }
-    - { step: 4, inputSource: safety-sheet, file: data/safety-sheet-v1.csv, effectiveDate: 2026-01-01 }
+    - { step: 3, inputSource: safety-sheet, file: data/safety-sheet-v1.csv, effectiveDate: 2026-01-01 }
+    - { step: 4, inputSource: substance, file: data/substance-v1.csv, effectiveDate: 2026-01-01 }
     - { step: 5, inputSource: process, file: data/process-v1.csv, effectiveDate: 2026-01-01 }
     - { step: 6, inputSource: process-substance, file: data/process-substance-v1.csv, effectiveDate: 2026-01-01 }
     - { step: 7, inputSource: equipment, file: data/equipment-v1.csv, effectiveDate: 2026-01-01 }

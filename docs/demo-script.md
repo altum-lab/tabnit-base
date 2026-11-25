@@ -1,7 +1,7 @@
 # 시연 대본
 
 두 예시 Pack 의 시나리오를 화면으로 처음부터 끝까지 보여 주는 차례다 (D-10). 화면 시험 `web/tests/rehearsal.spec.ts` 가 이 차례 그대로 돈다.
-아래의 수는 그 시험이 2026-11-24 에 화면에서 읽은 값이다 (시험이 `web/test-results/rehearsal/` 에 남긴 기록에서 옮겼다). 값이 맞는지는 검증 질문과 전수 대조가 따로 본다 (`bash verify/run.sh`).
+아래의 수는 그 시험이 2026-11-25 에 화면에서 읽은 값이다 (시험이 `web/test-results/rehearsal/` 에 남긴 기록에서 옮겼다). 값이 맞는지는 검증 질문과 전수 대조가 따로 본다 (`bash verify/run.sh`).
 자료나 규칙을 바꾸면 수가 달라진다. 그때는 시험을 다시 돌려 이 문서를 고친다. 모든 이름과 값은 지어낸 것이다.
 
 ## 준비
@@ -31,8 +31,8 @@
 |---|---|---|---|---|---|---|---|---|---|
 | 1 | regulation | `data/regulation-v1.csv` | 2026-01-01 | 6 | 0 | 0 | 0 | 0 | 0 |
 | 2 | requirement | `data/requirement-v1.csv` | 2026-01-01 | 7 | 0 | 0 | 0 | 0 | 0 |
-| 3 | substance | `data/substance-v1.csv` | 2026-01-01 | 12 | 0 | 0 | 0 | 0 | 12 |
-| 4 | safety-sheet | `data/safety-sheet-v1.csv` | 2026-01-01 | 12 | 0 | 0 | 0 | 0 | 0 |
+| 3 | safety-sheet | `data/safety-sheet-v1.csv` | 2026-01-01 | 12 | 0 | 0 | 0 | 0 | 0 |
+| 4 | substance | `data/substance-v1.csv` | 2026-01-01 | 12 | 0 | 0 | 0 | 0 | 0 |
 | 5 | process | `data/process-v1.csv` | 2026-01-01 | 13 | 0 | 0 | 0 | 0 | 0 |
 | 6 | process-substance | `data/process-substance-v1.csv` | 2026-01-01 | 23 | 0 | 0 | 0 | 0 | 0 |
 | 7 | equipment | `data/equipment-v1.csv` | 2026-01-01 | 32 | 0 | 0 | 0 | 0 | 0 |
@@ -59,7 +59,7 @@
 
 - 앞의 20단계는 처음 자료다. 바뀐 항목이 없다.
 - 변동이 나오는 것은 21단계부터다. 조치가 가장 많이 나오는 단계는 21단계 (70건)다.
-- 3단계에는 "투입의 알림"이 12건 나온다. 참조로만 만들어진 개체의 알림이다: 이 파일이 가리키는 개체의 자료가 아직 들어오지 않았다. 다음 단계들에서 그 자료가 들어온다. 시연에서 설명하거나, 이 알림이 무엇인지 보여 주는 데 쓴다.
+- 어느 단계에도 "투입의 알림"이 나오지 않는다. 가리키는 개체의 자료가 먼저 들어가게 차례를 잡았다 (물질안전자료가 화학물질보다 먼저다, D2 AD-382).
 - 리허설에서 뒤의 화면으로 들어간 변동: 27단계(`data/safety-sheet-v3.csv`)의 변동 이벤트 `manufacturing-safety|safety-sheet|3|SDS-06`. 영향 대상 16개, 조치 12건. 조치 하나를 확정했다.
 
 ## 퇴직연금 Pack (`retirement-pension`)

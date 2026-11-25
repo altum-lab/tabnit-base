@@ -304,7 +304,7 @@ export function ActionsPage() {
                         <EntityName entity={action.basis.entity} />
                       </td>
                       <td>
-                        {action.basis.inputSourceId} {action.basis.editionNo}판
+                        {action.basis.inputSourceLabel} {action.basis.editionNo}판
                         <br />
                         <small>적용일 {action.basis.effectiveDate}</small>
                       </td>

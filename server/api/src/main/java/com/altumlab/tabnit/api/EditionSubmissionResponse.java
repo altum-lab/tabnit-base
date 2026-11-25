@@ -23,7 +23,8 @@ import java.util.TreeMap;
  *
  * <p>목록의 순서는 link 와 처리 서비스가 준 순서 그대로다. 여기서 바꾸지 않는다.
  */
-record EditionSubmissionResponse(String outcome, String editionId, String packId, String inputSourceId, int editionNo,
+record EditionSubmissionResponse(String outcome, String editionId, String packId, String inputSourceId,
+		String inputSourceLabel, int editionNo,
 		LocalDate effectiveDate, int itemCount, List<Change> changes, List<Notice> notices, List<Retried> retriedChanges,
 		boolean processingNotStarted) {
 
@@ -133,8 +134,16 @@ record EditionSubmissionResponse(String outcome, String editionId, String packId
 					EditionNotices.message(notice)))
 			.toList();
 		return new EditionSubmissionResponse(IngestOutcome.ACCEPTED.name(), edition.id(), edition.packId(),
-				edition.inputSourceId(), edition.editionNo(), edition.effectiveDate(), itemCount, changes, shown, List.of(),
+				edition.inputSourceId(), inputSourceLabel(edition, pack), edition.editionNo(), edition.effectiveDate(), itemCount, changes, shown, List.of(),
 				false);
+	}
+
+	/** 그 판의 입력 자료의 이름표. 매핑에 적지 않았거나 정의를 읽지 못했으면 식별자다 (D2 AD-384). */
+	private static String inputSourceLabel(Edition edition, Optional<PackDefinition> pack) {
+		return pack.flatMap(definition -> definition.mappings()
+			.stream()
+			.filter(mapping -> mapping.inputSourceId().equals(edition.inputSourceId()))
+			.findFirst()).map(mapping -> mapping.shownLabel()).orElse(edition.inputSourceId());
 	}
 
 	/** 변동 이벤트에 나오는 개체의 식별자: 주 개체, 변동 대상, 바뀐 값의 개체. 글자 순이다. */
@@ -197,7 +206,7 @@ record EditionSubmissionResponse(String outcome, String editionId, String packId
 			}
 		}
 		return new EditionSubmissionResponse(result.ingest().outcome().name(), edition.id(), edition.packId(),
-				edition.inputSourceId(), edition.editionNo(), edition.effectiveDate(),
+				edition.inputSourceId(), inputSourceLabel(edition, pack), edition.editionNo(), edition.effectiveDate(),
 				mapping == null ? 0 : mapping.items().size(), changes, notices, retried, result.processingNotStarted());
 	}
 }

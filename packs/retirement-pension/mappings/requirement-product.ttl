@@ -1,10 +1,12 @@
 # 매핑. 형식은 D6 7절이다.
 # 요건이 걸리는 대상의 유형이 넷이라 입력 자료를 유형마다 나눴다 (D6 "결정 필요" 15번).
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix tabnit: <urn:tabnit:vocab:> .
 @prefix ex:     <urn:tabnit:pack:retirement-pension:> .
 
 ex:매핑-requirement-product a tabnit:Mapping ;
     tabnit:inputSourceId "requirement-product" ;
+    rdfs:label "운영요건별 운용상품" ;
     tabnit:fileFormat tabnit:Csv ;
     tabnit:requiredColumns ( "요건번호" "상품번호" ) ;
     tabnit:itemKeyColumns ( "요건번호" "상품번호" ) ;

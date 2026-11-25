@@ -10,7 +10,14 @@ import { E2E_OTHER_USER, expect, login, test } from "./fixtures";
 const FAILED_PACK = "e2e-failed";
 const CLEAN_PACK = "e2e-actions";
 
-test("담당자는 처리되지 않은 변동과 실패한 까닭을 보지만 다시 처리 단추는 없다", async ({ page }) => {
+test("담당자는 처리되지 않은 변동과 실패한 까닭을 보지만 다시 처리 단추는 없다", async ({ page, request }) => {
+  // 입력 자료는 서버가 준 이름표로 보인다 (B-15). 기대하는 이름표는 같은 API 에서 읽는다.
+  const listed = (await (await request.get("/api/v1/unprocessed-changes", { params: { packId: FAILED_PACK } })).json()) as {
+    changes: { inputSourceId: string; inputSourceLabel: string }[];
+  };
+  const source = listed.changes[0];
+  expect(source?.inputSourceId).toBe("guideline");
+  expect(source?.inputSourceLabel).not.toBe("guideline");
   await page.goto("/changes");
   await page.getByLabel("Pack").selectOption(FAILED_PACK);
 
@@ -20,7 +27,7 @@ test("담당자는 처리되지 않은 변동과 실패한 까닭을 보지만 �
   expect(await rows.count()).toBeGreaterThan(0);
   // 어느 판의 어느 항목이 어느 단계에서 왜 실패했는지, 무엇을 하면 되는지가 한국어로 나온다.
   const first = rows.first();
-  await expect(first).toContainText("guideline 2판, 적용일 2026-03-01");
+  await expect(first).toContainText(`${source?.inputSourceLabel} 2판, 적용일 2026-03-01`);
   await expect(first).toContainText("실패 (규칙 실행)");
   await expect(first.locator("li[data-rule-no]").first()).toHaveAttribute("data-failure-code", "DUE_DATE_OUT_OF_RANGE");
   await expect(first).toContainText("규칙의 기한 일수를 고쳐 Pack 을 다시 적재하세요");
@@ -57,6 +64,7 @@ test("화면이 모르는 코드와 대기인 변동과 규칙이 아닌 실패�
     changeEventId: `p|s|2|${key}`,
     editionId: "p|s|2",
     inputSourceId: "s",
+    inputSourceLabel: "지어낸 자료",
     editionNo: 2,
     effectiveDate: "2026-05-01",
     itemKey: key,

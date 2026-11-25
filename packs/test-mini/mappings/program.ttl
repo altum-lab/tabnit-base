@@ -1,10 +1,12 @@
 # 입력 자료 "program": 의료사업의 목록. 행 하나가 의료사업 하나다.
 # "연계사업코드" 가 비어 있지 않으면 그 사업과의 연계 관계를 만든다.
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix tabnit: <urn:tabnit:vocab:> .
 @prefix ex:     <urn:tabnit:pack:test-mini:> .
 
 ex:매핑-program a tabnit:Mapping ;
     tabnit:inputSourceId "program" ;
+    rdfs:label "의료사업 목록" ;
     tabnit:fileFormat tabnit:Csv ;
     tabnit:requiredColumns ( "사업코드" "사업명" "운영여부" "연간목표인원" "연계사업코드" ) ;
     tabnit:itemKeyColumns ( "사업코드" ) ;

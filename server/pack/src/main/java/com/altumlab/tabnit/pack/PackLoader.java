@@ -148,7 +148,8 @@ public class PackLoader {
         after.mappings().forEach(m -> mappings.put(m.inputSourceId(), m));
         for (MappingDefinition old : before.mappings()) {
             MappingDefinition now = mappings.get(old.inputSourceId());
-            if (now != null && now.equals(old)) {
+            // 이름표만 다른 것은 바뀐 것이 아니다: 화면에 보이는 글자다 (D2 AD-384).
+            if (now != null && now.readsLike(old)) {
                 continue;
             }
             if (inputSourcesWithEditions != null && !inputSourcesWithEditions.contains(old.inputSourceId())) {

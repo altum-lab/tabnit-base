@@ -1,10 +1,12 @@
 # 입력 자료 "team": 전담팀 의 목록. 행 하나가 전담팀 하나다.
 # 두 기관 자료(partner-health, partner-private)가 팀을 코드로 가리키고, 팀의 이름은 이 자료만 넣는다 (D2 AD-137).
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix tabnit: <urn:tabnit:vocab:> .
 @prefix ex:     <urn:tabnit:pack:test-mini:> .
 
 ex:매핑-team a tabnit:Mapping ;
     tabnit:inputSourceId "team" ;
+    rdfs:label "전담팀 목록" ;
     tabnit:fileFormat tabnit:Csv ;
     tabnit:requiredColumns ( "팀코드" "팀명" ) ;
     tabnit:itemKeyColumns ( "팀코드" ) ;

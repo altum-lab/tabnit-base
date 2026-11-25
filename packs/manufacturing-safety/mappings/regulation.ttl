@@ -1,11 +1,13 @@
 # 제조 안전 Pack. 반도체 제조 현장의 안전·보건·환경 업무를 본뜬 예시 Pack 이다 (D2 AD-49, AD-284 ~ AD-288).
 # 모든 이름과 값은 지어낸 것이다. 실제 회사, 현장, 법령, 문서와 관계가 없다.
 # 입력 자료 regulation: 법규의 목록.
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix tabnit: <urn:tabnit:vocab:> .
 @prefix ex:     <urn:tabnit:pack:manufacturing-safety:> .
 
 ex:매핑-regulation a tabnit:Mapping ;
     tabnit:inputSourceId "regulation" ;
+    rdfs:label "안전법규 목록" ;
     tabnit:fileFormat tabnit:Csv ;
     tabnit:requiredColumns ( "법규번호" "법규명칭" "시행일자" ) ;
     tabnit:itemKeyColumns ( "법규번호" ) ;

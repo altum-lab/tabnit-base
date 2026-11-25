@@ -2,11 +2,13 @@
 # 모든 이름과 값은 지어낸 것이다. 실제 회사, 현장, 법령, 문서와 관계가 없다.
 # 입력 자료 incident-substance: 사고에 관련된 물질. 행은 관계만 담는다. 주 개체는 사고다.
 # 관계의 도착 유형이 설비와 물질 둘이라 입력 자료를 나눴다: 매핑은 관계의 양 끝의 유형을 하나씩 적는다.
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix tabnit: <urn:tabnit:vocab:> .
 @prefix ex:     <urn:tabnit:pack:manufacturing-safety:> .
 
 ex:매핑-incident-substance a tabnit:Mapping ;
     tabnit:inputSourceId "incident-substance" ;
+    rdfs:label "안전사고별 화학물질" ;
     tabnit:fileFormat tabnit:Csv ;
     tabnit:requiredColumns ( "사고번호" "물질번호" ) ;
     tabnit:itemKeyColumns ( "사고번호" "물질번호" ) ;

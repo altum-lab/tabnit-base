@@ -371,6 +371,8 @@ export interface components {
         /** @description 출처. 어느 입력 자료의 어느 판에서 왔는가 */
         Provenance: {
             inputSourceId: string;
+            /** @description 입력 자료의 이름표. Pack 의 매핑에 적은 화면에 보일 이름이다. 적지 않았으면 (또는 그 Pack 이 적재되어 있지 않으면) 입력 자료의 id 와 같다 */
+            inputSourceLabel: string;
             editionNo: number;
         };
         /** @description 로그인한 사람 */
@@ -436,6 +438,8 @@ export interface components {
         InputSourceSummary: {
             /** @description 입력 자료의 id */
             inputSourceId: string;
+            /** @description 입력 자료의 이름표. Pack 의 매핑에 적은 화면에 보일 이름이다. 적지 않았으면 (또는 그 Pack 이 적재되어 있지 않으면) 입력 자료의 id 와 같다 */
+            inputSourceLabel: string;
             /**
              * @description 받는 파일의 형식
              * @enum {string}
@@ -561,6 +565,8 @@ export interface components {
         ActionBasis: {
             entity: components["schemas"]["EntityRef"];
             inputSourceId: string;
+            /** @description 입력 자료의 이름표. Pack 의 매핑에 적은 화면에 보일 이름이다. 적지 않았으면 (또는 그 Pack 이 적재되어 있지 않으면) 입력 자료의 id 와 같다 */
+            inputSourceLabel: string;
             editionNo: number;
             /**
              * Format: date
@@ -661,6 +667,8 @@ export interface components {
             /** @description 판의 id */
             editionId: string;
             inputSourceId: string;
+            /** @description 입력 자료의 이름표. Pack 의 매핑에 적은 화면에 보일 이름이다. 적지 않았으면 (또는 그 Pack 이 적재되어 있지 않으면) 입력 자료의 id 와 같다 */
+            inputSourceLabel: string;
             /** @description 그 입력 자료 안에서의 판 번호. 1 부터 */
             editionNo: number;
             /**
@@ -692,6 +700,8 @@ export interface components {
             editionId: string;
             packId: string;
             inputSourceId: string;
+            /** @description 입력 자료의 이름표. Pack 의 매핑에 적은 화면에 보일 이름이다. 적지 않았으면 (또는 그 Pack 이 적재되어 있지 않으면) 입력 자료의 id 와 같다 */
+            inputSourceLabel: string;
             /** @description 그 입력 자료 안에서의 판 번호 */
             editionNo: number;
             /**
@@ -793,6 +803,8 @@ export interface components {
             /** @description 그 변동이 나온 판의 id */
             editionId: string;
             inputSourceId: string;
+            /** @description 입력 자료의 이름표. Pack 의 매핑에 적은 화면에 보일 이름이다. 적지 않았으면 (또는 그 Pack 이 적재되어 있지 않으면) 입력 자료의 id 와 같다 */
+            inputSourceLabel: string;
             editionNo: number;
             /**
              * Format: date

@@ -764,10 +764,15 @@ components:
     Provenance:
       type: object
       description: 출처. 어느 입력 자료의 어느 판에서 왔는가
-      required: [inputSourceId, editionNo]
+      required: [inputSourceId, inputSourceLabel, editionNo]
       properties:
         inputSourceId:
           type: string
+        inputSourceLabel:
+          type: string
+          description: >-
+            입력 자료의 이름표. Pack 의 매핑에 적은 화면에 보일 이름이다. 적지 않았으면 (또는 그 Pack 이
+            적재되어 있지 않으면) 입력 자료의 id 와 같다
         editionNo:
           type: integer
           minimum: 1
@@ -880,11 +885,16 @@ components:
             $ref: '#/components/schemas/InputSourceSummary'
     InputSourceSummary:
       type: object
-      required: [inputSourceId, fileFormat, latestEdition]
+      required: [inputSourceId, inputSourceLabel, fileFormat, latestEdition]
       properties:
         inputSourceId:
           type: string
           description: 입력 자료의 id
+        inputSourceLabel:
+          type: string
+          description: >-
+            입력 자료의 이름표. Pack 의 매핑에 적은 화면에 보일 이름이다. 적지 않았으면 (또는 그 Pack 이
+            적재되어 있지 않으면) 입력 자료의 id 와 같다
         fileFormat:
           type: string
           enum: [CSV, XLSX]
@@ -1078,12 +1088,17 @@ components:
     ActionBasis:
       type: object
       description: 조치의 근거. 변동이 생긴 행의 주 개체(근거 조항)와, 그 변동이 나온 입력 자료의 판
-      required: [entity, inputSourceId, editionNo, effectiveDate]
+      required: [entity, inputSourceId, inputSourceLabel, editionNo, effectiveDate]
       properties:
         entity:
           $ref: '#/components/schemas/EntityRef'
         inputSourceId:
           type: string
+        inputSourceLabel:
+          type: string
+          description: >-
+            입력 자료의 이름표. Pack 의 매핑에 적은 화면에 보일 이름이다. 적지 않았으면 (또는 그 Pack 이
+            적재되어 있지 않으면) 입력 자료의 id 와 같다
         editionNo:
           type: integer
           minimum: 1
@@ -1247,13 +1262,18 @@ components:
     EditionListItem:
       type: object
       description: 받아들인 판 하나. 수는 저장된 것을 센 값이다
-      required: [editionId, inputSourceId, editionNo, effectiveDate, receivedAt, fileName, itemCount, changeCount, noticeCount]
+      required: [editionId, inputSourceId, inputSourceLabel, editionNo, effectiveDate, receivedAt, fileName, itemCount, changeCount, noticeCount]
       properties:
         editionId:
           type: string
           description: 판의 id
         inputSourceId:
           type: string
+        inputSourceLabel:
+          type: string
+          description: >-
+            입력 자료의 이름표. Pack 의 매핑에 적은 화면에 보일 이름이다. 적지 않았으면 (또는 그 Pack 이
+            적재되어 있지 않으면) 입력 자료의 id 와 같다
         editionNo:
           type: integer
           description: 그 입력 자료 안에서의 판 번호. 1 부터
@@ -1282,7 +1302,7 @@ components:
           description: 투입의 알림의 수
     EditionSubmission:
       type: object
-      required: [outcome, editionId, packId, inputSourceId, editionNo, effectiveDate, itemCount, changes, notices, retriedChanges, processingNotStarted]
+      required: [outcome, editionId, packId, inputSourceId, inputSourceLabel, editionNo, effectiveDate, itemCount, changes, notices, retriedChanges, processingNotStarted]
       properties:
         outcome:
           type: string
@@ -1295,6 +1315,11 @@ components:
           type: string
         inputSourceId:
           type: string
+        inputSourceLabel:
+          type: string
+          description: >-
+            입력 자료의 이름표. Pack 의 매핑에 적은 화면에 보일 이름이다. 적지 않았으면 (또는 그 Pack 이
+            적재되어 있지 않으면) 입력 자료의 id 와 같다
         editionNo:
           type: integer
           minimum: 1
@@ -1461,7 +1486,7 @@ components:
             $ref: '#/components/schemas/UnprocessedChange'
     UnprocessedChange:
       type: object
-      required: [changeEventId, editionId, inputSourceId, editionNo, effectiveDate, itemKey, kind, primaryEntityId, primaryEntity, processing]
+      required: [changeEventId, editionId, inputSourceId, inputSourceLabel, editionNo, effectiveDate, itemKey, kind, primaryEntityId, primaryEntity, processing]
       properties:
         changeEventId:
           type: string
@@ -1470,6 +1495,11 @@ components:
           description: 그 변동이 나온 판의 id
         inputSourceId:
           type: string
+        inputSourceLabel:
+          type: string
+          description: >-
+            입력 자료의 이름표. Pack 의 매핑에 적은 화면에 보일 이름이다. 적지 않았으면 (또는 그 Pack 이
+            적재되어 있지 않으면) 입력 자료의 id 와 같다
         editionNo:
           type: integer
         effectiveDate:

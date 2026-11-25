@@ -144,7 +144,11 @@ test("고른 Pack 이나 입력 자료를 바꾸면 앞의 결과를 지운다",
   const run = Date.now();
   await choose(page);
   await upload(page, await laterDate(page), "지침.csv", csv(`G-01,바꾸기 전 ${run},30`));
-  await expect(page.getByTestId("outcome")).toContainText(`${PACK_ID} 의 ${INPUT_SOURCE}`);
+  // 어느 Pack 의 어느 입력 자료의 판인지가 나온다. 입력 자료는 고를 때 본 이름표로 보인다 (B-15).
+  const chosen = (await page.getByLabel("입력 자료").locator("option:checked").textContent()) ?? "";
+  const label = chosen.slice(0, chosen.lastIndexOf(" ("));
+  expect(label).not.toBe("");
+  await expect(page.getByTestId("outcome")).toContainText(`${PACK_ID} 의 ${label} `);
 
   // 다른 입력 자료를 고르면 앞의 결과가 새로 고른 것의 결과처럼 남지 않는다.
   await page.getByLabel("입력 자료").selectOption("program");

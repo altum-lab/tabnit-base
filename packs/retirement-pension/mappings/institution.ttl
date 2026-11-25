@@ -1,9 +1,11 @@
 # 매핑. 형식은 D6 7절이다.
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix tabnit: <urn:tabnit:vocab:> .
 @prefix ex:     <urn:tabnit:pack:retirement-pension:> .
 
 ex:매핑-institution a tabnit:Mapping ;
     tabnit:inputSourceId "institution" ;
+    rdfs:label "금융기관 목록" ;
     tabnit:fileFormat tabnit:Csv ;
     tabnit:requiredColumns ( "기관번호" "기관명칭" "기관구분" "신용등급" "등급점수" ) ;
     tabnit:itemKeyColumns ( "기관번호" ) ;

@@ -36,6 +36,8 @@ final class MappingReader {
 
     static final String FOLDER = "mappings";
 
+    private static final String RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
+
     private static final String RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
 
     private static final String V = PackReader.VOCAB;
@@ -322,12 +324,18 @@ final class MappingReader {
                         + ") 은(는) 이 행이 만드는 개체가 아닙니다. tabnit:entity 나 관계의 끝에 적힌 개체 가운데 하나를 적으세요.");
             }
         }
+        // 화면에 보일 이름표. 적지 않아도 된다 (D2 AD-384).
+        String label = text(top, RDFS_LABEL, "rdfs:label", item, "", false);
+        if (label != null && label.isBlank()) {
+            // 빈칸만 든 이름표는 화면에 빈 자리로 보인다.
+            problem(item, "rdfs:label 은(는) 빈칸만으로 적을 수 없습니다. 화면에 보일 이름을 적거나 이 줄을 빼세요.");
+        }
         top.rejectOthers(item);
         if (problems.size() > before) {
             return null;
         }
         return new MappingDefinition(source, format, sheet, defaultDatePattern, required, itemKey, primary, List.copyOf(entities.values()),
-                List.copyOf(relations));
+                List.copyOf(relations), label);
     }
 
     private MappedEntity entity(Node node, String item) {
@@ -529,6 +537,12 @@ final class MappingReader {
             return null;
         }
         Node node = nodes.get(0);
+        if (node.isLiteral() && !node.getLiteralLanguage().isEmpty()) {
+            // 까닭을 따로 알린다: 글자는 맞게 적었는데 언어 표시 때문에 받지 않는 것이다.
+            problem(item, at + shown + " 에는 언어 표시(@" + node.getLiteralLanguage()
+                    + ")를 붙이지 않습니다. 따옴표로 감싼 글자만 적으세요.");
+            return null;
+        }
         if (!isText(node)) {
             problem(item, at + shown + " 은(는) 비어 있지 않은 글자 값이어야 합니다 (지금 " + PackReader.show(node)
                     + "). 따옴표로 감싼 글자를 적으세요. NUL 글자는 쓸 수 없습니다.");

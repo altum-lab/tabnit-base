@@ -13,7 +13,7 @@ record PackListResponse(List<Pack> packs) {
 	record Pack(String packId, String label, List<InputSource> inputSources) {
 	}
 
-	record InputSource(String inputSourceId, String fileFormat, Edition latestEdition) {
+	record InputSource(String inputSourceId, String inputSourceLabel, String fileFormat, Edition latestEdition) {
 	}
 
 	record Edition(String editionId, int editionNo, LocalDate effectiveDate) {

@@ -29,11 +29,11 @@ record RelationMapResponse(String asOf, String centerEntityId, int depth, int re
 	 * @param entities 담긴 노드의 개체. 식별자로 찾는다. 표시 이름은 조회 시점의 값이다
 	 */
 	static RelationMapResponse of(LocalDate asOf, String centerEntityId, int depth, int maxNodes, RelationMap map,
-			Map<String, EntityViews.Item> entities) {
+			Map<String, EntityViews.Item> entities, InputSourceLabels labels) {
 		return new RelationMapResponse(asOf.toString(), centerEntityId, depth, map.reachedDepth(), maxNodes, map.totalNodes(),
 				map.truncated(),
 				map.nodes().stream().map(node -> NodeItem.of(node, entities)).toList(),
-				map.edges().stream().map(EdgeItem::of).toList());
+				map.edges().stream().map(relation -> EdgeItem.of(relation, labels)).toList());
 	}
 
 	/** 규격의 RelationMapNode. */
@@ -53,12 +53,11 @@ record RelationMapResponse(String asOf, String centerEntityId, int depth, int re
 	record EdgeItem(String id, String relationType, String sourceEntityId, String targetEntityId, String validFrom,
 			String validTo, RelationsAsOfResponse.ProvenanceItem provenance, String recordedAt) {
 
-		static EdgeItem of(Relation relation) {
+		static EdgeItem of(Relation relation, InputSourceLabels labels) {
 			LocalDate to = relation.period().to();
 			return new EdgeItem(relation.id(), relation.relationType(), relation.sourceEntityId(),
 					relation.targetEntityId(), relation.period().from().toString(), to == null ? null : to.toString(),
-					new RelationsAsOfResponse.ProvenanceItem(relation.provenance().inputSourceId(),
-							relation.provenance().editionNo()),
+					RelationsAsOfResponse.ProvenanceItem.of(relation, labels),
 					relation.recordedAt().toString());
 		}
 	}

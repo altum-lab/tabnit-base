@@ -170,7 +170,15 @@ export function PastEditions({ packId, refreshKey, renderResult }: Props) {
                   <td>
                     <time dateTime={edition.receivedAt}>{formatInstant(edition.receivedAt, timeZone)}</time>
                   </td>
-                  <td>{edition.inputSourceId}</td>
+                  {/* 이름표는 서버가 준 것이다 (없으면 식별자와 같다). 식별자는 작게 함께 적는다. */}
+                  <td>
+                    <span data-testid="input-source-label">{edition.inputSourceLabel}</span>{" "}
+                    {edition.inputSourceLabel !== edition.inputSourceId && (
+                      <small>
+                        <code>{edition.inputSourceId}</code>
+                      </small>
+                    )}
+                  </td>
                   <td>{edition.editionNo}판</td>
                   <td>
                     <time dateTime={edition.effectiveDate}>{edition.effectiveDate}</time>
@@ -182,11 +190,11 @@ export function PastEditions({ packId, refreshKey, renderResult }: Props) {
                   <td>
                     {edition.editionId === editionId ? (
                       // 단추의 이름에 어느 판의 것인지 넣는다: 화면을 읽어 주는 도구로 줄마다 같은 이름이 들리지 않게 한다.
-                      <button type="button" onClick={() => choose(null)} aria-label={`${edition.inputSourceId} ${edition.editionNo}판의 결과 닫기`}>
+                      <button type="button" onClick={() => choose(null)} aria-label={`${edition.inputSourceLabel} ${edition.editionNo}판의 결과 닫기`}>
                         결과 닫기
                       </button>
                     ) : (
-                      <button type="button" onClick={() => choose(edition.editionId)} aria-label={`${edition.inputSourceId} ${edition.editionNo}판의 결과 보기`}>
+                      <button type="button" onClick={() => choose(edition.editionId)} aria-label={`${edition.inputSourceLabel} ${edition.editionNo}판의 결과 보기`}>
                         결과 보기
                       </button>
                     )}

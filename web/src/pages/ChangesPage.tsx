@@ -180,7 +180,10 @@ export function ChangesPage() {
               <option value="">고르세요</option>
               {pack?.inputSources.map((candidate) => (
                 <option key={candidate.inputSourceId} value={candidate.inputSourceId}>
-                  {candidate.inputSourceId} ({candidate.fileFormat})
+                  {/* 이름표와 식별자를 함께 적는다. 이름표가 없으면 서버가 식별자를 이름표로 준다. */}
+                  {candidate.inputSourceLabel === candidate.inputSourceId
+                    ? `${candidate.inputSourceId} (${candidate.fileFormat})`
+                    : `${candidate.inputSourceLabel} (${candidate.inputSourceId}, ${candidate.fileFormat})`}
                 </option>
               ))}
             </select>
@@ -258,17 +261,17 @@ function Result({ result, label }: { result: EditionSubmission; label: "올린 �
     <section aria-label={label}>
       {past ? (
         <p role="status" data-testid="past-outcome">
-          지난 판입니다: {result.packId} 의 {result.inputSourceId} {result.editionNo}판, 적용일 {result.effectiveDate}, 받아들인 항목{" "}
+          지난 판입니다: {result.packId} 의 {result.inputSourceLabel} {result.editionNo}판, 적용일 {result.effectiveDate}, 받아들인 항목{" "}
           {result.itemCount}개. 처리 상태와 조치의 수는 지금 저장된 값입니다.
         </p>
       ) : result.outcome === "ACCEPTED" ? (
         <p role="status" data-testid="outcome">
-          새 판을 받아들였습니다: {result.packId} 의 {result.inputSourceId} {result.editionNo}판, 적용일 {result.effectiveDate}, 받아들인 항목{" "}
+          새 판을 받아들였습니다: {result.packId} 의 {result.inputSourceLabel} {result.editionNo}판, 적용일 {result.effectiveDate}, 받아들인 항목{" "}
           {result.itemCount}개.
         </p>
       ) : (
         <p role="status" data-testid="outcome">
-          내용이 바로 앞 판과 같아 새 판을 만들지 않았습니다. 지금의 판: {result.packId} 의 {result.inputSourceId}{" "}
+          내용이 바로 앞 판과 같아 새 판을 만들지 않았습니다. 지금의 판: {result.packId} 의 {result.inputSourceLabel}{" "}
           {result.editionNo}판, 적용일{" "}
           {result.effectiveDate}.
         </p>

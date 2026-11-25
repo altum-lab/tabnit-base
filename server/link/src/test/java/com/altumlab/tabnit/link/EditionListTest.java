@@ -87,6 +87,46 @@ class EditionListTest {
     }
 
     @Test
+    void 받은_때가_같은_판을_작게_나눠_받아도_순서가_같고_깊은_쪽의_판에도_제_수가_붙는다() {
+        // C-14: 그 쪽의 판을 먼저 고르고 고른 판에만 수를 센다. 고르는 순서와 세는 대상이 어긋나면 여기서 걸린다.
+        PackDefinition pack = pack("el-ties");
+        for (int i = 1; i <= 4; i++) {
+            // 판마다 행이 하나씩 는다. 모든 판의 받은 때가 같다. b 의 짝수 판에는 키가 빈 행이 있다 (알림 하나).
+            StringBuilder a = new StringBuilder("code,title\n");
+            StringBuilder b = new StringBuilder("code,title\n");
+            for (int row = 1; row <= i; row++) {
+                a.append("A-").append(row).append(",제목\n");
+                b.append("B-").append(row).append(",제목\n");
+            }
+            if (i % 2 == 0) {
+                b.append(",빈 키\n");
+            }
+            String date = LocalDate.parse("2026-03-01").plusDays(i).toString();
+            // 넣는 차례는 b 먼저다: 넣은 차례가 순서가 되면 걸린다.
+            put(pack, "b", date, AT, b.toString());
+            put(pack, "a", date, AT, a.toString());
+        }
+
+        List<EditionListEntry> all = records.packEditions("el-ties", 0, 50).editions();
+        // 받은 때가 같으면 입력 자료의 식별자 순, 그 안에서 판 번호가 큰 것부터. 수는 판마다 다르다.
+        assertThat(all)
+            .extracting(e -> e.edition().id(), EditionListEntry::itemCount, EditionListEntry::changeCount,
+                    EditionListEntry::noticeCount)
+            .containsExactly(tuple("el-ties|a|4", 4, 1, 0), tuple("el-ties|a|3", 3, 1, 0), tuple("el-ties|a|2", 2, 1, 0),
+                    tuple("el-ties|a|1", 1, 0, 0), tuple("el-ties|b|4", 4, 1, 1), tuple("el-ties|b|3", 3, 1, 0),
+                    tuple("el-ties|b|2", 2, 1, 1), tuple("el-ties|b|1", 1, 0, 0));
+        for (int size : new int[] { 1, 3 }) {
+            List<EditionListEntry> joined = new java.util.ArrayList<>();
+            for (int offset = 0; offset < 8; offset += size) {
+                EditionPage page = records.packEditions("el-ties", offset, size);
+                assertThat(page.total()).isEqualTo(8);
+                joined.addAll(page.editions());
+            }
+            assertThat(joined).as("한 번에 " + size + "개").isEqualTo(all);
+        }
+    }
+
+    @Test
     void 판이_없는_Pack_과_없는_Pack_은_빈_목록이고_다른_Pack_의_판은_섞이지_않는다() {
         put(pack("el-one"), "a", "2026-03-01", AT, "code,title\nA-1,하나\n");
         put(pack("el-two"), "a", "2026-03-01", AT, "code,title\nA-1,하나\n");

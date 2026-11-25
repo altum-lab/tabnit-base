@@ -96,16 +96,20 @@ public class EditionRecords {
 
     private EditionPage readPackEditions(String packId, int offset, int limit) {
         Integer total = jdbc.queryForObject("select count(*) from edition where pack_id = ?", Integer.class, packId);
+        // 그 쪽의 판을 먼저 고르고, 고른 판에만 수를 센다. 한 문장에서 세면 건너뛴 판에도 센다 (C-14 에서 쟀다).
         List<EditionListEntry> editions = jdbc.query("""
                 select e.id, e.pack_id, e.input_source_id, e.edition_no, e.effective_date, e.content_hash, e.file_name,
                        e.received_at,
                        (select count(*) from edition_item i where i.edition_id = e.id) as item_count,
                        (select count(*) from change_event c where c.edition_id = e.id) as change_count,
                        (select count(*) from edition_notice n where n.edition_id = e.id) as notice_count
-                  from edition e
-                 where e.pack_id = ?
+                  from (select p.id, p.pack_id, p.input_source_id, p.edition_no, p.effective_date, p.content_hash,
+                               p.file_name, p.received_at
+                          from edition p
+                         where p.pack_id = ?
+                         order by p.received_at desc, p.input_source_id, p.edition_no desc
+                        offset ? limit ?) e
                  order by e.received_at desc, e.input_source_id, e.edition_no desc
-                offset ? limit ?
                 """, (rs, n) -> new EditionListEntry(EDITION.mapRow(rs, n), rs.getInt("item_count"),
                 rs.getInt("change_count"), rs.getInt("notice_count")), packId, offset, limit);
         return new EditionPage(editions, total == null ? 0 : total);

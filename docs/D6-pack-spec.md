@@ -204,11 +204,18 @@ ex:TypeAShape a sh:NodeShape ;
 - **제약은 위반을 보고하는 데만 쓴다.** 제약을 어긴 자료도 그대로 들어간다. 제약은 행을 건너뛰게 하지 않는다. [AD-92] 언제, 어느 자료에 거는지는 아래에 있다. [AD-390]
 - 행을 건너뛰게 하는 것은 형식이 틀린 값, 온톨로지와 맞지 않는 관계, 비어 있는 키 열이다 (7절). 이것은 제약 파일이 아니라 온톨로지와 매핑에서 나온다.
 - **파일은 반드시 있어야 한다.** 없으면 Pack 을 거부한다. 제약이 없는 Pack 은 빈 파일(주석과 접두어만 있어도 된다)을 둔다. [AD-393]
-- 제약 파일이 가리키는 유형과 속성은 온톨로지에 있어야 한다. 없으면 Pack 을 읽지 않는다. [보드 PACK-01.1] 확인하는 곳: `sh:targetClass` 와 `sh:class` 는 개체 유형, `sh:path` (경로의 식이면 그 안의 주소 모두), `sh:targetSubjectsOf`, `sh:targetObjectsOf`, `sh:equals`, `sh:disjoint`, `sh:lessThan`, `sh:lessThanOrEquals` 는 속성이나 관계 유형이다. 관계 유형도 경로로 쓸 수 있다. **경로에는 이 Pack 의 속성과 관계 유형만 쓴다**: `rdf:type` 같은 다른 어휘의 주소는 거부된다 (유형은 `sh:targetClass` 와 `sh:class` 로 적는다). `sh:node`, `sh:property`, `sh:qualifiedValueShape`, `sh:not` 이 이름으로 가리키는 제약은 이 파일에 있어야 한다. `sh:targetNode`, `sh:hasValue`, `sh:in` 의 값과 `sh:datatype` 의 자료형은 확인하지 않는다. [AD-393]
-- **아래의 것이 아니면 SHACL 의 표현을 가려 받지 않는다** (모르는 표현이라고 거부하지 않는다). **받지 않는 것** [AD-389]: SPARQL 로 적는 제약과 대상 (`sh:sparql`, `sh:select`, `sh:ask`, `sh:target` 등), JavaScript 로 적는 것 (`sh:js` 등), SHACL 규칙 (`sh:rule`), 맞춤 제약 구성요소 (`sh:ConstraintComponent`, `sh:validator`, `sh:parameter`), 함수와 식 (`sh:Function`, `sh:expression`), 다른 문서를 들여오는 것 (`owl:imports`). 있으면 어느 제약의 무엇인지 알리며 Pack 을 거부한다.
+- 제약 파일이 가리키는 유형과 속성은 온톨로지에 있어야 한다. 없으면 Pack 을 읽지 않는다. [보드 PACK-01.1] 확인하는 곳: `sh:targetClass` 와 `sh:class` 는 개체 유형, `sh:path` (경로의 식이면 그 안의 주소 모두), `sh:targetSubjectsOf`, `sh:targetObjectsOf`, `sh:equals`, `sh:disjoint`, `sh:lessThan`, `sh:lessThanOrEquals` 는 속성이나 관계 유형이다. 관계 유형도 경로로 쓸 수 있다. **경로에는 이 Pack 의 속성과 관계 유형만 쓴다**: `rdf:type` 같은 다른 어휘의 주소는 거부된다 (유형은 `sh:targetClass` 와 `sh:class` 로 적는다). `sh:node`, `sh:property`, `sh:qualifiedValueShape`, `sh:not` 이 이름으로 가리키는 제약은 이 파일에 있어야 한다. `sh:hasValue`, `sh:in` 의 값과 `sh:datatype` 의 자료형은 확인하지 않는다 (자료형이 온톨로지의 형식과 다르면 값마다 위반으로 나온다). [AD-393]
+- **아래의 것이 아니면 SHACL 의 표현을 가려 받지 않는다** (모르는 표현이라고 거부하지 않는다). **받지 않는 것** [AD-389]: SPARQL 로 적는 제약과 대상 (`sh:sparql`, `sh:select`, `sh:ask`, `sh:target` 등), 개체 하나를 주소로 가리키는 대상 (`sh:targetNode`) [AD-395], JavaScript 로 적는 것 (`sh:js` 등), SHACL 규칙 (`sh:rule`), 맞춤 제약 구성요소 (`sh:ConstraintComponent`, `sh:validator`, `sh:parameter`), 함수와 식 (`sh:Function`, `sh:expression`), 다른 문서를 들여오는 것 (`owl:imports`). 있으면 어느 제약의 무엇인지 알리며 Pack 을 거부한다.
 - 적재할 때는 파일이 받을 수 있는 것인지만 본다 (Turtle 로 읽히는가, SHACL 로 읽히는가, 위의 둘). 자료에 걸지 않는다. 파일은 BOM 없는 UTF-8 이다 (BOM 이 있으면 그 까닭을 알리며 거부한다). SHACL 로 읽히지 않으면 어느 제약인지 이름으로 알린다.
-- **제약은 물을 때, 조회 시점의 자료에 건다.** 위반을 저장하지 않는다. 그 날짜에 유효한 개체, 관계, 속성 값만 본다. 위반은 변동이나 조치로 이어지지 않는다: 보고만 한다. [AD-390] 검사와 API 는 B-17, 화면은 D-18 에서 만든다 (그때까지 제약은 읽히고 저장되기만 한다).
+- **제약은 물을 때, 조회 시점의 자료에 건다.** 위반을 저장하지 않는다. 관계와 속성 값은 그 날짜에 유효한 것만 본다. 개체는 날짜를 가리지 않는다 (개체에는 유효기간이 없다. 아래 "개체는 모두 검사한다"). 위반은 변동이나 조치로 이어지지 않는다: 보고만 한다. [AD-390] 검사와 API 는 B-17 에서 만들었다. 화면은 D-18 에서 만든다.
 - 위반의 문구는 제품이 제약의 종류마다 한국어로 만든다. 제약에 `sh:message` 를 적었으면 그 문구를 먼저 보인다. [AD-392]
+- **자료를 제약에 거는 법** [AD-395]: 개체는 그 유형의 것이다 (`rdf:type` 이 온톨로지의 유형의 주소). 상위 유형도 함께 알리므로 상위 유형에 건 제약(`sh:targetClass`, `sh:class`)이 하위 유형의 개체에도 걸린다. 속성 값은 속성의 주소로 이은 값이고, 온톨로지가 정한 형식의 값이다 (글자 `xsd:string`, 정수 `xsd:integer`, 소수 `xsd:decimal`, 날짜 `xsd:date`, 참·거짓 `xsd:boolean`). 관계는 관계 유형의 주소로 출발 개체에서 도착 개체로 이은 것이다 (거꾸로 볼 때는 `sh:inversePath`). 같은 두 개체의 같은 유형의 관계가 출처만 달라 여럿이어도 하나로 센다.
+- **개체는 모두 검사한다**: 조회 시점에 유효한 값이나 관계가 하나도 없는 개체도. [AD-395]
+- **개체 하나를 주소로 가리키는 제약은 쓸 수 없다**: 개체의 주소는 검사할 때마다 제품이 안에서 매기는 것이라 제약 파일에 적을 수 없다. `sh:targetNode` 는 받지 않는다 (받으면 자료에 없는 것을 대상으로 삼아 개체 없는 위반이 나온다). `sh:hasValue` 와 `sh:in` 에 개체를 적는 것은 받기는 하지만 어느 개체에도 맞지 않는다. 값(글자, 수)을 적는 것은 된다.
+- **닫힌 제약(`sh:closed`)**: 개체의 유형(`rdf:type`)은 제품이 붙인 것이라 "정해지지 않은 속성"으로 알리지 않는다. 그 밖의 정해지지 않은 속성과 관계는 알린다.
+- **개수(`sh:minCount`, `sh:maxCount`)는 `sh:property` 안에 적는다.** 개체 자신에 건 제약에 적으면 적재할 때 거부한다 (읽히기는 하지만 자료에 걸 수 없다). 적재할 때 유형마다 개체 하나씩 둔 지어낸 자료에 제약을 한 번 걸어 보아, 걸 수 없는 제약을 미리 막는다.
+- **심각도**: `sh:severity` 를 `sh:Violation` (적지 않으면 이것), `sh:Warning`, `sh:Info` 로 적는다. 셋 모두 보고하고 심각도를 함께 알린다. 심각도는 그것을 적은 제약의 것이다: 바깥 제약에 적은 것은 안쪽 `sh:property` 의 제약에 내려가지 않는다 (SHACL 의 규칙). [AD-395]
+- 검사와 답의 모양은 D7 4절 "제약의 위반"에 있다.
 - 제약은 파일의 글 그대로 저장한다 (D5 4절 `pack_definition.constraints`). [AD-393]
 
 ## 7. mappings/ — 매핑

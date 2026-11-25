@@ -169,7 +169,7 @@
 | 조치를 확정하거나 보류한다 | 조치와 확정 | RULE-03 | 담당자, 관리자 [AD-270] | 7절과 규격 파일. 구현했다 (D-07 의 서버 쪽) |
 | 로그인, 로그아웃, 내 정보 | 모든 화면 | COM-01, COM-02 | 누구나 | 9절과 규격 파일. 구현했다 (E-02) |
 | Pack 을 적재한다 (서버의 Pack 폴더에서 이름으로 고른다) | (설정 화면은 당김 범위) | PACK-03 | 관리자 | 10절과 규격 파일. 구현했다 (E-06) |
-| 제약의 위반을 본다 [AD-92] [AD-390] | 변동 감지 화면 안의 목록 (D-18) | (보드에 기능이 없다. 카드 B-17) | 담당자, 관리자 (다른 조회와 같다. B-17 에서 확정한다) | 아직 만들지 않았다. B-17 에서 이 문서에 절을 더한다 |
+| 제약의 위반을 본다 [AD-92] [AD-390] | 변동 감지 화면 안의 목록 (D-18 에서 만든다) | (보드에 기능이 없다. 카드 B-17) | 담당자, 관리자 | 4절 "제약의 위반"과 규격 파일 (`listConstraintViolations`). 구현했다 (B-17) |
 
 뼈대 확인용이던 `GET /api/ping` 은 시점 조회 API 가 생기면서 지웠다 (SK-07).
 
@@ -308,6 +308,23 @@ GET /api/v1/relation-map?entityId={가운데 개체의 id}&asOf={조회 시점}&
 화면: 관계 지도 화면(`/relations`, D-08)이 이 API 로 지도를 그리고 시점 조회 API 로 그 아래의 관계 목록을 보여 준다. 지도를 먼저 받고 서버가 답한 `asOf` 로 목록을 받는다: 조회 시점을 비워도 둘이 같은 날짜를 본다. 시점 막대는 그 `asOf` 의 앞뒤 1년을 하루 단위로 민다 [AD-353]. 지도는 2D 와 3D 로 바꿔 볼 수 있다: 같은 답을 그린다 [AD-361].
 
 규격은 `docs/api/openapi.yaml` 의 `getRelationMap` 이다. 감사 기록에는 `getRelationMap` 으로, 가운데 개체의 `id` 와 조회 시점과 함께 남는다 (2절).
+
+### 제약의 위반
+
+`GET /api/v1/constraint-violations` (규격의 `listConstraintViolations`). [AD-390] [AD-391] [AD-395]
+
+- **요청**: `packId` (반드시), `asOf` (조회 시점. 없으면 서버가 오늘로 정하고 답에 담는다), `offset`, `limit` (2절 "나눠 주기").
+- **물을 때 검사한다.** 그 Pack 의 조회 시점에 유효한 자료에 Pack 의 제약(D6 6절)을 걸어 답한다. 위반을 저장하지 않는다: 같은 자료와 같은 제약이면 언제 물어도 같은 답이다. 쪽을 넘길 때마다 다시 검사한다.
+- **개체는 모두 검사한다.** 조회 시점에 유효한 값이나 관계가 하나도 없는 개체도 검사한다 (개체에는 유효기간이 없다). 그래서 자료가 들어오기 전의 날짜로 물으면 "값이 있어야 한다"는 제약에 개체마다 걸린다.
+- **응답 (200)**: `checked`, `maxRows`, 조회 시점의 수 (`entityCount`, `relationCount`, `valueCount`), `total`, `offset`, `limit`, `violations`.
+  - 위반 하나: 심각도 (`severity`: VIOLATION, WARNING, INFO), 어긴 개체 (`entity`, 2절 "개체". 표시 이름은 조회 시점의 값), 어긴 곳 (`pathKind`: ATTRIBUTE, RELATION, EXPRESSION, NONE 과 `pathName`, `pathLabel`), 어긴 값 (`value`, 저장된 글자 그대로) 또는 값이 개체이면 그 개체 (`valueEntity`), 제약의 종류 (`constraintKind`: SHACL 의 제약 구성요소의 이름에서 뒤의 ConstraintComponent 를 뗀 것), 제약의 이름 (`constraintName`: 제약 파일에 적은 이름), 문구 (`message`).
+  - **순서**: 심각한 것부터 (위반, 경고, 알림), 그 안에서 개체의 id, 어긴 곳의 종류와 이름, 제약의 종류, 값, 제약의 이름, 문구. 모두 글자 코드 순이다.
+  - 문구는 제약에 `sh:message` 를 적었으면 그것이고, 아니면 제품이 제약의 종류마다 만든 한국어 문구다 (어긴 곳, 기대하는 것, 지금의 값, 무엇을 하면 되는지). [AD-392]
+  - 심각도는 그것을 적은 제약의 것이다 (SHACL 의 규칙): 바깥 제약에 적은 `sh:severity` 는 안쪽 속성의 제약에 내려가지 않는다. 적지 않으면 VIOLATION 이다.
+- **자료가 한도보다 크면 검사하지 않는다.** 개체, 관계, 속성 값의 수를 더한 것이 `maxRows` 를 넘으면 `checked` 가 false 이고 `total` 은 0, `violations` 는 비어 있다. 위반이 없다는 뜻이 아니다: 화면은 검사하지 못했다고 알린다. 한도는 설치 설정 `tabnit.constraints.max-rows` 로 정한다 (없으면 200,000). 일부만 검사하지 않는다.
+- **오류**: `MISSING_PACK_ID` (400), `PACK_NOT_FOUND` (404), `INVALID_AS_OF` (400), `INVALID_OFFSET`, `INVALID_LIMIT` (400).
+- 위반은 변동이나 조치로 이어지지 않는다. 제약이 없는 Pack 은 언제나 빈 목록이다.
+- 감사 기록: 기능 `listConstraintViolations`, 대상은 Pack, 조회 시점을 함께 남긴다.
 
 ## 5. 판 올리기
 

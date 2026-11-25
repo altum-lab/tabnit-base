@@ -56,6 +56,52 @@ paths:
           $ref: '#/components/responses/Problem'
         '500':
           $ref: '#/components/responses/Problem'
+  /api/v1/constraint-violations:
+    get:
+      operationId: listConstraintViolations
+      summary: Pack 의 자료가 조회 시점에 Pack 의 제약을 어긴 곳을 돌려준다
+      description: >-
+        물을 때 조회 시점에 유효한 자료에 제약(Pack 의 constraints.ttl, SHACL)을 걸어 답한다. 위반을 저장하지 않는다.
+        Pack 의 개체는 모두 검사한다 (조회 시점에 유효한 값이나 관계가 하나도 없는 개체도). 위반은 보고만 한다:
+        조치로 이어지지 않는다. 담당자와 관리자가 부를 수 있다
+      parameters:
+        - name: packId
+          in: query
+          required: true
+          description: Pack 의 식별자
+          schema:
+            type: string
+            minLength: 1
+        - name: asOf
+          in: query
+          required: false
+          description: 조회 시점. 없으면 설치 설정의 시간대에서의 오늘. 0001-01-01 부터 9999-12-31 까지의 날짜만 받는다
+          schema:
+            type: string
+            format: date
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: >-
+            위반을 나눠 돌려준다: offset 만큼 건너뛰고 limit 개까지 준다. total 은 위반의 전체 수다.
+            순서는 심각한 것부터 (위반, 경고, 알림), 그 안에서 개체의 id, 어긴 곳의 종류와 이름, 제약의 종류, 값,
+            제약의 이름, 문구의 글자 코드 순이다. 위반이 없으면 빈 목록이다.
+            자료가 한도(maxRows)보다 크면 검사하지 않는다: checked 가 false 이고 목록은 비어 있다 (위반이 없다는 뜻이 아니다)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConstraintViolationList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/Problem'
   /api/v1/relation-map:
     get:
       operationId: getRelationMap
@@ -1237,6 +1283,96 @@ components:
         target:
           description: 그 관계의 도착 개체. 표시 이름은 판의 적용일의 값이다
           $ref: '#/components/schemas/EntityRef'
+    ConstraintViolationList:
+      type: object
+      required: [packId, asOf, checked, maxRows, entityCount, relationCount, valueCount, total, offset, limit, violations]
+      properties:
+        packId:
+          type: string
+        asOf:
+          type: string
+          format: date
+          description: 답에 쓴 조회 시점
+        checked:
+          type: boolean
+          description: >-
+            검사했는가. 자료(개체, 관계, 속성 값의 수를 더한 것)가 maxRows 보다 크면 false 이고, 그때 total 은 0 이고
+            violations 는 비어 있다. 화면은 위반이 없다고 보이지 않고 검사하지 못했다고 알린다
+        maxRows:
+          type: integer
+          minimum: 1
+          description: 한 번에 검사하는 자료의 한도
+        entityCount:
+          type: integer
+          minimum: 0
+          description: 그 Pack 의 개체의 수
+        relationCount:
+          type: integer
+          minimum: 0
+          description: 조회 시점에 유효한 관계의 수
+        valueCount:
+          type: integer
+          minimum: 0
+          description: 조회 시점에 유효한 속성 값의 수
+        total:
+          type: integer
+          minimum: 0
+          description: 위반의 전체 수. 나누기 전의 수다. 화면은 다시 세지 않는다
+        offset:
+          type: integer
+          minimum: 0
+          description: 답에 쓴 건너뛴 수
+        limit:
+          type: integer
+          minimum: 1
+          description: 답에 쓴 한 번에 주는 수
+        violations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConstraintViolation'
+    ConstraintViolation:
+      type: object
+      description: 제약의 위반 하나
+      required: [severity, entity, pathKind, pathName, pathLabel, value, valueEntity, constraintKind, constraintName, message]
+      properties:
+        severity:
+          type: string
+          enum: [VIOLATION, WARNING, INFO]
+          description: 심각도. 제약에 sh:severity 를 적지 않았으면 VIOLATION 이다. 그것을 적은 제약의 것이다 (바깥 제약에서 내려받지 않는다)
+        entity:
+          description: 제약을 어긴 개체. 표시 이름은 조회 시점의 값이다. 제약의 대상이 개체가 아니면 (값을 대상으로 삼은 제약) null
+          oneOf:
+            - $ref: '#/components/schemas/EntityRef'
+            - type: 'null'
+        pathKind:
+          type: string
+          enum: [ATTRIBUTE, RELATION, EXPRESSION, NONE]
+          description: 어긴 곳이 속성인가, 관계인가, 경로의 식인가, 개체 자신인가 (NONE)
+        pathName:
+          type: [string, 'null']
+          description: 속성이나 관계 유형의 이름. 경로의 식이면 그 식을 적은 글자. 개체 자신이면 null
+        pathLabel:
+          type: [string, 'null']
+          description: 속성이나 관계 유형의 이름표. 경로의 식이거나 개체 자신이면 null
+        value:
+          type: [string, 'null']
+          description: 어긴 값. 저장된 글자 그대로다. 값 하나에 걸린 제약이 아니거나 값이 개체이면 null
+        valueEntity:
+          description: 어긴 값이 개체일 때 그 개체 (관계가 가리키는 개체). 아니면 null
+          oneOf:
+            - $ref: '#/components/schemas/EntityRef'
+            - type: 'null'
+        constraintKind:
+          type: string
+          description: >-
+            제약의 종류. SHACL 의 제약 구성요소의 이름에서 뒤의 ConstraintComponent 를 뗀 것이다
+            (MinCount, MaxCount, Datatype, Class, MinInclusive, Pattern, Or …)
+        constraintName:
+          type: [string, 'null']
+          description: 그 제약이 딸린, 이름 있는 제약의 이름 (Pack 의 제약 파일에 적은 이름). 없으면 null
+        message:
+          type: string
+          description: 알리는 문구. 제약에 sh:message 를 적었으면 그것이고, 아니면 제품이 제약의 종류마다 만든 한국어 문구다
     EditionList:
       type: object
       required: [packId, total, offset, limit, editions]

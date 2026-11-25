@@ -204,6 +204,7 @@ class PackConstraintsTest {
                 new String[] { "ex:C a sh:ConstraintComponent ; sh:parameter [ sh:path ex:title ] ; sh:validator [ a sh:SPARQLAskValidator ; sh:ask \"ASK { ?s ?p ?o }\" ] .", "sh:validator", "C" },
                 new String[] { "ex:F a sh:SPARQLFunction ; sh:select \"SELECT ?x WHERE { ?x ?p ?o }\" .", "sh:SPARQLFunction", "F" },
                 new String[] { "ex:S a sh:NodeShape ; sh:targetClass ex:Base ; sh:expression [ sh:path ex:title ] .", "sh:expression", "S" },
+                new String[] { "ex:S a sh:NodeShape ; sh:targetNode ex:one ; sh:property [ sh:path ex:title ; sh:minCount 1 ] .", "sh:targetNode", "S" },
                 new String[] { "<urn:tabnit:pack:c-refused:shapes> owl:imports <http://example.invalid/shapes> .", "owl:imports", "shapes" });
         for (String[] one : refused) {
             Path dir = pack("c-refused", one[0] + "\n");
@@ -225,7 +226,9 @@ class PackConstraintsTest {
         List<String> bodies = List.of(
                 "ex:TwoPaths a sh:NodeShape ; sh:targetClass ex:Base ; sh:property [ sh:path ex:title , ex:count ; sh:minCount 1 ] .",
                 "ex:NoPath a sh:NodeShape ; sh:targetClass ex:Base ; sh:property [ sh:minCount 1 ] .",
-                "ex:BadCount a sh:NodeShape ; sh:targetClass ex:Base ; sh:property [ sh:path ex:title ; sh:minCount \"x\" ] .");
+                "ex:BadCount a sh:NodeShape ; sh:targetClass ex:Base ; sh:property [ sh:path ex:title ; sh:minCount \"x\" ] .",
+                // 읽히기는 하지만 자료에 걸 때 터지는 제약: 개체 자신에 건 개수. 적재할 때 막는다.
+                "ex:NodeCount a sh:NodeShape ; sh:targetClass ex:Base ; sh:minCount 1 .");
         for (String body : bodies) {
             Path dir = pack("c-shacl", body + "\nex:Fine a sh:NodeShape ; sh:targetClass ex:Other ;"
                     + " sh:property [ sh:path ex:otherName ; sh:minCount 1 ] .\n");

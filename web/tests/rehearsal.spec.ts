@@ -109,6 +109,18 @@ for (const pack of PACKS) {
       }
     }
     writeFileSync(path.join(OUT, `${pack}.json`), JSON.stringify(log, null, 2));
+
+    // 예시 Pack 의 자료는 제 제약을 어기지 않는다 (B-17). 시나리오를 다 올린 뒤의 날짜와 처음 자료만 있던 날짜로 물어 본다.
+    // 화면은 아직 없다 (D-18): 화면이 쓰는 주소로 API 를 부른다. 로그인은 이 화면의 것을 쓴다.
+    for (const asOf of ["2026-12-31", "2026-01-01"]) {
+      const answered = await page.request.get("/api/v1/constraint-violations", { params: { packId: pack, asOf } });
+      expect(answered.status()).toBe(200);
+      const violations = (await answered.json()) as { checked: boolean; total: number; entityCount: number; valueCount: number };
+      expect(violations.checked).toBe(true);
+      expect(violations.entityCount).toBeGreaterThan(0);
+      expect(violations.valueCount).toBeGreaterThan(0);
+      expect(violations.total, `${pack} 의 ${asOf} 의 제약의 위반`).toBe(0);
+    }
     expect(log.some((entry) => entry.added + entry.changed + entry.removed > 0), "시나리오에 변동이 있어야 한다").toBe(true);
     expect(lastWithActions, "시나리오에 조치가 만들어진 변동이 있어야 한다").not.toBeNull();
     const shown = lastWithActions!;

@@ -496,7 +496,7 @@ for n, (source, idx) in enumerate(STEPS, start=1):
             STEP_H1: "    # 2026-12-10: 새 공정 다-세정-02 를 들인다. 새 물질 둘(MAT-13, 특별관리 물질인 MAT-14)과 그 자료, 새 공정, 새 설비 넷, 옮겨 오는 인원 셋, 배기 연결, 공정이 쓰는 물질 셋이 차례로 들어온다 (차례가 정답에 닿는다)."}.get(n)
     if note: y.append(note)
     y.append("    - { step: %d, inputSource: %s, file: data/%s, effectiveDate: %s }" % (n, source, name, date))
-y.append("\n# 시점: 과거 2026-01-01 과 2026-09-30 / 2026-10-01 (인원이 옮기는 경계), 현재 2026-12-01 (마지막 판 뒤).\n\nquestions:\n")
+y.append("\n# 시점: 과거 2026-01-01 과 2026-09-30 / 2026-10-01 (인원이 옮기는 경계), 현재 2026-12-01 (새 공정을 들이기 전의 마지막 판 뒤), 2026-12-10 (새 공정을 들인 날).\n\nquestions:\n")
 
 def q_relations(qid, title, t, k, day, why):
     y.append("  - id: %s\n    kind: relations-as-of\n    title: %s\n    asOf: %s\n    entity: { type: %s, key: %s }" % (qid, title, day, t, k))
@@ -616,6 +616,8 @@ a35 = q_actions("Q-35", "W-%s 이 새 공정으로 옮겨 생긴 조치" % JOINI
                 "규칙 0006 (배치가 바뀐 인원의 배치 전 검진, 10일) 하나다. 새 규칙들은 인원의 입력 자료에서 나온 변동에 걸리지 않는다.")
 a36 = q_actions("Q-36", "새 공정이 배출구에 이어져 생긴 조치", STEP_H6, "다-세정-02|EMI-다-02",
                 "규칙 0015 (배출 시설의 변경 신고, 30일) 하나다. 대상은 배출구다. 이 행은 공정도 가리키지만 규칙의 대상은 대기 배출구다.")
+q_relations("Q-41", "새 공정을 들인 날, 공정 다-세정-02 의 관계 (초안)", T_PRC, NEW_PRC[0], DH,
+            "모든 관계가 이날 시작해 당일에 든다: 배기 연결 하나, 쓰는 물질 셋, 설비 넷, 옮겨 온 인원 셋. 전날에는 이 공정의 관계가 없다.")
 i37, t37 = q_impact("Q-37", "새 공정이 새 물질 MAT-13 을 쓰게 된 것의 영향 범위", STEP_H7, "다-세정-02|MAT-13",
                     "변동 대상은 공정 다-세정-02 와 물질 MAT-13 이다. 공정의 설비 넷과 같은 날 먼저 옮겨 온 인원 셋이 깊이 1 이다. MAT-13 을 쓰는 다른 공정은 없고 보관소에도 없고 걸린 요건도 없다. 배기 연결로는 퍼지지 않는다.")
 a38 = q_actions("Q-38", "새 공정이 새 물질 MAT-13 을 쓰게 되어 생긴 조치", STEP_H7, "다-세정-02|MAT-13",
@@ -691,7 +693,8 @@ x = ["""# 제조 안전 Pack 의 전수 대조. 형식은 D4 3절 "전수 대조
 scenario: S-01
 checks:
 """]
-CURRENT = "2026-12-01"
+# 마지막 판(2026-12-10) 뒤의 날이다. 질문의 "현재"(2026-12-01)와 다르다: 새 공정까지 든 자료의 관계 지도를 본다.
+CURRENT = "2026-12-31"
 ALL_ENTITIES = sorted({e for f in PREV.values() for v in f.values() for e in v[1]} | {r[1] for r in REL} | {r[2] for r in REL})
 def day_before(day): return (D(day) - datetime.timedelta(days=1)).isoformat()
 n_i = 0

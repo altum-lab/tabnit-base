@@ -63,7 +63,7 @@ scenario:
     - { step: 33, inputSource: process-emission, file: data/process-emission-v2.csv, effectiveDate: 2026-12-10 }
     - { step: 34, inputSource: process-substance, file: data/process-substance-v3.csv, effectiveDate: 2026-12-10 }
 
-# 시점: 과거 2026-01-01 과 2026-09-30 / 2026-10-01 (인원이 옮기는 경계), 현재 2026-12-01 (마지막 판 뒤).
+# 시점: 과거 2026-01-01 과 2026-09-30 / 2026-10-01 (인원이 옮기는 경계), 현재 2026-12-01 (새 공정을 들이기 전의 마지막 판 뒤), 2026-12-10 (새 공정을 들인 날).
 
 questions:
 
@@ -1074,6 +1074,26 @@ questions:
     expect:
       actions:
         - { rule: "0015", priority: 2, target: { type: 대기배출구, key: EMI-다-02 }, dueDate: 2027-01-09, basis: { entity: { type: 제조공정, key: 다-세정-02 }, inputSource: process-emission, edition: 2 } }
+
+  - id: Q-41
+    kind: relations-as-of
+    title: 새 공정을 들인 날, 공정 다-세정-02 의 관계 (초안)
+    asOf: 2026-12-10
+    entity: { type: 제조공정, key: 다-세정-02 }
+    # 모든 관계가 이날 시작해 당일에 든다: 배기 연결 하나, 쓰는 물질 셋, 설비 넷, 옮겨 온 인원 셋. 전날에는 이 공정의 관계가 없다.
+    expect:
+      relations:
+        - { type: 물질사용, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 화학물질, key: MAT-01 }, validFrom: 2026-12-10, validTo: null }
+        - { type: 물질사용, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 화학물질, key: MAT-13 }, validFrom: 2026-12-10, validTo: null }
+        - { type: 물질사용, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 화학물질, key: MAT-14 }, validFrom: 2026-12-10, validTo: null }
+        - { type: 배기연결, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 대기배출구, key: EMI-다-02 }, validFrom: 2026-12-10, validTo: null }
+        - { type: 설비구성, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 공정설비, key: 다-세정-02-E1 }, validFrom: 2026-12-10, validTo: null }
+        - { type: 설비구성, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 공정설비, key: 다-세정-02-E2 }, validFrom: 2026-12-10, validTo: null }
+        - { type: 설비구성, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 공정설비, key: 다-세정-02-E3 }, validFrom: 2026-12-10, validTo: null }
+        - { type: 설비구성, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 공정설비, key: 다-세정-02-E4 }, validFrom: 2026-12-10, validTo: null }
+        - { type: 인원배치, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 작업인원, key: W-1049 }, validFrom: 2026-12-10, validTo: null }
+        - { type: 인원배치, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 작업인원, key: W-1050 }, validFrom: 2026-12-10, validTo: null }
+        - { type: 인원배치, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 작업인원, key: W-1051 }, validFrom: 2026-12-10, validTo: null }
 
   - id: Q-37
     kind: impact

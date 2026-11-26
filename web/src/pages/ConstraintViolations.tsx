@@ -84,6 +84,10 @@ export function ConstraintViolations({ packId, refreshKey }: Props) {
           id="violations-as-of-input"
           name="violationsAsOf"
           type="date"
+          // 서버가 받는 날짜의 범위다 (D7 2절). 연도를 네 자리까지만 적게 한다: 범위를 주지 않으면 브라우저가 여섯 자리까지
+          // 받아, 글쇠로 20270102 를 치면 70102년이 된다.
+          min="0001-01-01"
+          max="9999-12-31"
           value={draft}
           onChange={(event) => {
             setDraft(event.target.value);

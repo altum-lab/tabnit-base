@@ -273,6 +273,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/change-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pack 의 변동 이벤트를 판을 거치지 않고 목록으로 돌려준다
+         * @description 줄마다 변동이 나온 판, 상태, 조치의 수, 저장된 영향 범위의 영향 대상의 수가 있다. 변동마다 영향 범위가 하나이므로 이 목록이 영향 범위의 이력이기도 하다. 순서는 가장 최근에 받은 판의 변동부터이고 (판의 목록과 같은 차례), 한 판 안에서는 항목의 키의 글자 코드 순이다. 변동 대상과 바뀐 값은 담지 않는다: 판 하나(getEdition)에서 본다. 담당자와 관리자가 부를 수 있다
+         */
+        get: operations["listChangeEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/unprocessed-changes": {
         parameters: {
             query?: never;
@@ -1279,6 +1299,46 @@ export interface components {
             /** @description 걸린 값. 없으면 null */
             value: string | null;
         };
+        ChangeEventList: {
+            packId: string;
+            /** @description 답에 쓴 거르는 상태. 요청에 없었으면 null 이다 */
+            status: string | null;
+            /** @description 거른 변동의 전체 수. 나누기 전의 수다 */
+            total: number;
+            offset: number;
+            limit: number;
+            /** @description 이 쪽의 변동 이벤트. 가장 최근에 받은 판의 것부터다 */
+            changes: components["schemas"]["ChangeEventListItem"][];
+        };
+        ChangeEventListItem: {
+            changeEventId: string;
+            /** @description 그 변동이 나온 판의 id */
+            editionId: string;
+            inputSourceId: string;
+            inputSourceLabel: string;
+            editionNo: number;
+            /**
+             * Format: date
+             * @description 그 판의 적용일
+             */
+            effectiveDate: string;
+            /** @description 항목의 키 */
+            itemKey: string;
+            /** @enum {string} */
+            kind: "ADDED" | "CHANGED" | "REMOVED";
+            primaryEntityId: string;
+            /** @description 그 행의 주 개체. 표시 이름은 그 판의 적용일의 값이다 */
+            primaryEntity: components["schemas"]["EntityRef"];
+            /** @enum {string} */
+            status: "PENDING" | "PROCESSED" | "FAILED";
+            /** @description 실패했을 때 어느 단계인가 (IMPACT, RULES). 아니면 null */
+            failedStage: string | null;
+            failureCode: string | null;
+            /** @description 그 변동에 저장된 조치의 수. 상태를 가리지 않고 센다 */
+            actionCount: number;
+            /** @description 저장된 영향 범위의 영향 대상의 수. 영향 범위가 저장되지 않은 변동 (대기인 변동, 어느 단계에서든 실패한 변동)은 null 이다. 규칙 실행에서 실패한 변동도 아무것도 저장되지 않는다. 0 은 계산했더니 영향 대상이 없다는 뜻이다 */
+            impactTargetCount: number | null;
+        };
         UnprocessedChangeList: {
             packId: string;
             /** @description 처리되지 않은 변동. 처리하는 차례다 */
@@ -1881,6 +1941,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EditionSubmission"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    listChangeEvents: {
+        parameters: {
+            query: {
+                /** @description Pack 의 식별자 */
+                packId: string;
+                /** @description 이 상태의 변동만. 없으면 모든 상태 */
+                status?: "PENDING" | "PROCESSED" | "FAILED";
+                /** @description 건너뛸 수. 없으면 0. 전체 수와 같거나 크면 빈 목록이다 */
+                offset?: components["parameters"]["Offset"];
+                /** @description 한 번에 받을 수. 없으면 50. 1 부터 200 까지 */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 변동 이벤트를 나눠 돌려준다. total 은 거른 변동의 전체 수다. 변동이 없으면 빈 목록이다 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeEventList"];
                 };
             };
             400: components["responses"]["Problem"];

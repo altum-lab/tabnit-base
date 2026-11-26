@@ -184,6 +184,12 @@ class ApiConfiguration implements WebMvcConfigurer {
 		return new PackDataQuery(dataSource);
 	}
 
+	/** 변동 이벤트를 읽는다. 목록의 API 가 쓴다 (카드 C-15, D2 AD-417). 판을 처리하는 쪽은 제 것을 따로 든다. */
+	@Bean
+	com.altumlab.tabnit.link.ChangeEvents changeEvents(DataSource dataSource) {
+		return new com.altumlab.tabnit.link.ChangeEvents(dataSource);
+	}
+
 	/** 두 개체 사이의 가장 짧은 경로를 찾는 조회 (카드 A-18, D2 AD-413). */
 	@Bean
 	com.altumlab.tabnit.core.RelationPathQuery relationPathQuery(DataSource dataSource) {

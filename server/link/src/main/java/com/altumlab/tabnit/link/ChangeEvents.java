@@ -81,6 +81,57 @@ public class ChangeEvents {
                 """, packId)), packId);
     }
 
+    /**
+     * 이 Pack 의 변동 이벤트를 나눠 읽는다 (카드 C-15, D2 AD-417). 읽기만 한다.
+     *
+     * <p>순서: 가장 최근에 받은 판의 변동부터다. 받은 때가 같은 판은 입력 자료의 식별자 순, 그 안에서는 판 번호가 큰 것부터다
+     * (판의 목록 {@link EditionRecords#packEditions} 과 같은 차례다. 판 번호는 수로 견준다). 한 판 안에서는 항목의 키의
+     * 글자 코드 순이다. (판, 항목의 키)는 유일하므로 동률이 없다.
+     *
+     * @param packId Pack 의 식별자. 그 Pack 에 변동이 없으면 (없는 Pack 포함) 빈 목록이다
+     * @param status 이 상태의 것만. null 이면 모든 상태다
+     * @param offset 건너뛸 수. 0 이상. 전체 수와 같거나 크면 빈 목록이다
+     * @param limit 한 번에 받을 수. 1 이상. 위쪽 한도는 부르는 쪽이 정한다
+     * @return 그 쪽의 변동 이벤트와, 나누기 전의 전체 수. 둘은 한 시점의 것이다
+     */
+    public ChangeEventPage packChangeEvents(String packId, ChangeEventStatus status, int offset, int limit) {
+        Objects.requireNonNull(packId, "Pack 의 식별자는 반드시 있어야 합니다");
+        if (offset < 0) {
+            throw new IllegalArgumentException("건너뛸 수는 0 이상이어야 합니다: " + offset);
+        }
+        if (limit < 1) {
+            throw new IllegalArgumentException("한 번에 줄 수는 1 이상이어야 합니다: " + limit);
+        }
+        // 상태를 주지 않으면 그 조건을 걸지 않는다. 둘째와 셋째 인자가 그 일을 한다.
+        boolean all = status == null;
+        String wanted = all ? "" : status.name();
+        return snapshot.execute(transaction -> {
+            Integer total = jdbc.queryForObject("""
+                    select count(*)
+                      from change_event e
+                      join edition d on d.id = e.edition_id
+                     where d.pack_id = ? and (? or e.status = ?)
+                    """, Integer.class, packId, all, wanted);
+            List<ChangeEventSummary> events = jdbc.query("""
+                    select e.id, e.edition_id, d.input_source_id, d.edition_no, d.effective_date, e.item_key,
+                           e.change_kind, e.primary_entity_id, e.status, e.failed_stage, e.failure_code
+                      from change_event e
+                      join edition d on d.id = e.edition_id
+                     where d.pack_id = ? and (? or e.status = ?)
+                     order by d.received_at desc, d.input_source_id, d.edition_no desc, e.item_key
+                     limit ? offset ?
+                    """,
+                    (rs, row) -> new ChangeEventSummary(rs.getString("id"), rs.getString("edition_id"),
+                            rs.getString("input_source_id"), rs.getInt("edition_no"),
+                            rs.getObject("effective_date", java.time.LocalDate.class), rs.getString("item_key"),
+                            ChangeKind.valueOf(rs.getString("change_kind")), rs.getString("primary_entity_id"),
+                            ChangeEventStatus.valueOf(rs.getString("status")), rs.getString("failed_stage"),
+                            rs.getString("failure_code")),
+                    packId, all, wanted, limit, offset);
+            return new ChangeEventPage(events, total == null ? 0 : total);
+        });
+    }
+
     /** 변동 이벤트 하나. 없으면 비어 있다. */
     public Optional<ChangeEvent> find(String changeEventId) {
         Objects.requireNonNull(changeEventId, "변동 이벤트의 식별자는 반드시 있어야 합니다");

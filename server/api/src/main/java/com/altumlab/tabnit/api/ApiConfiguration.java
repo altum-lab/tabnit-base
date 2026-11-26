@@ -184,6 +184,12 @@ class ApiConfiguration implements WebMvcConfigurer {
 		return new PackDataQuery(dataSource);
 	}
 
+	/** 개체를 글자로 찾는 조회 (카드 A-17, D2 AD-411). */
+	@Bean
+	com.altumlab.tabnit.core.EntitySearchQuery entitySearchQuery(DataSource dataSource) {
+		return new com.altumlab.tabnit.core.EntitySearchQuery(dataSource);
+	}
+
 	/** 판을 투입하고 그 변동을 조치까지 잇는다 (D2 AD-233). */
 	@Bean
 	EditionProcessing editionProcessing(DataSource dataSource, Clock clock,

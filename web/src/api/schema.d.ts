@@ -41,6 +41,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/entities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pack 의 개체를 글자로 찾는다
+         * @description 검색어가 다음 가운데 하나에 맞는 개체를 돌려준다: 키에 검색어가 들어 있다, id 전체가 검색어와 같다, 조회 시점에 유효한 속성 값에 검색어가 들어 있다 (표시 이름도 속성 값이다). 영어 글자의 대소문자만 가리지 않는다. 검색어의 % 와 _ 는 글자 그대로다. 검색어가 없으면 그 Pack 의 개체 전부다. 개체에는 유효기간이 없어서 키와 id 로는 어느 조회 시점에나 찾는다. 담당자와 관리자가 부를 수 있다
+         */
+        get: operations["searchEntities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/relation-map": {
         parameters: {
             query?: never;
@@ -672,6 +692,22 @@ export interface components {
             /** @description 그 관계의 도착 개체. 표시 이름은 판의 적용일의 값이다 */
             target: components["schemas"]["EntityRef"];
         };
+        EntityList: {
+            packId: string;
+            /**
+             * Format: date
+             * @description 답에 쓴 조회 시점. 속성 값은 이 날짜에 유효한 것으로 찾았고, 표시 이름도 이 날짜의 값이다
+             */
+            asOf: string;
+            /** @description 답에 쓴 검색어. 요청에 없었으면 빈 글자다 */
+            q: string;
+            /** @description 찾은 개체의 전체 수. 나누기 전의 수다 */
+            total: number;
+            offset: number;
+            limit: number;
+            /** @description 찾은 개체 가운데 이 쪽의 것. id 의 글자 코드 순이다 */
+            entities: components["schemas"]["EntityRef"][];
+        };
         ConstraintViolationList: {
             packId: string;
             /**
@@ -1039,6 +1075,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConstraintViolationList"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    searchEntities: {
+        parameters: {
+            query: {
+                /** @description Pack 의 식별자 */
+                packId: string;
+                /** @description 검색어. 없거나 비어 있으면 그 Pack 의 개체 전부다. 빈칸도 글자로 본다. 200자까지 */
+                q?: string;
+                /** @description 걸러 낼 개체 유형의 이름. 여러 번 적을 수 있다 (entityType=A&entityType=B). 상위 유형을 적으면 그 하위 유형의 개체도 나온다. 없으면 모든 유형이다. Pack 의 온톨로지에 없는 이름이면 400 이다 */
+                entityType?: string[];
+                /** @description 조회 시점. 없으면 설치 설정의 시간대에서의 오늘. 0001-01-01 부터 9999-12-31 까지의 날짜만 받는다 */
+                asOf?: string;
+                /** @description 건너뛸 수. 없으면 0. 전체 수와 같거나 크면 빈 목록이다 */
+                offset?: components["parameters"]["Offset"];
+                /** @description 한 번에 받을 수. 없으면 50. 1 부터 200 까지 */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 찾은 개체를 나눠 돌려준다: offset 만큼 건너뛰고 limit 개까지 준다. total 은 찾은 개체의 전체 수다. 순서는 개체의 id 의 글자 코드 순이다. 맞는 것이 없으면 빈 목록이다 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityList"];
                 };
             };
             400: components["responses"]["Problem"];

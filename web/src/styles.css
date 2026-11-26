@@ -474,3 +474,11 @@ table.impact-targets td:nth-child(4) {
 table.impact-targets td {
   overflow-wrap: anywhere;
 }
+
+/* 제약의 위반의 표. 문구의 칸을 넓게 둔다 (D-18). */
+table.constraint-violations th:nth-child(1) {
+  width: 4.5rem;
+}
+table.constraint-violations th:nth-child(5) {
+  width: 34%;
+}

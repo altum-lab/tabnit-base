@@ -3,6 +3,7 @@ import { type FormEvent, useCallback, useEffect, useRef, useState } from "react"
 import { Link, useSearchParams } from "react-router";
 import { api, type ChangeProcessing, type EditionChange, type EditionSubmission, type PackSummary } from "../api/client";
 import { CONNECTION_FAILED, messageOf } from "../api/problem";
+import { ConstraintViolations } from "./ConstraintViolations";
 import { PastEditions } from "./PastEditions";
 import { UnprocessedChanges } from "./UnprocessedChanges";
 
@@ -240,6 +241,9 @@ export function ChangesPage() {
       {/* 고른 Pack 의 처리되지 않은 변동. 판을 올릴 때마다 다시 받는다. Pack 을 바꾸면 새로 그린다:
           앞에 고른 Pack 에서 아직 돌고 있던 다시 처리의 결과와 목록이 새로 고른 Pack 의 것처럼 보이지 않게 한다. */}
       {pack && <UnprocessedChanges key={pack.packId} packId={pack.packId} refreshKey={uploadCount} />}
+
+      {/* 고른 Pack 의 자료가 제약을 어긴 곳. 판을 올릴 때마다 다시 받는다. Pack 을 바꾸면 조회 시점도 새로 시작한다. */}
+      {pack && <ConstraintViolations key={`violations-${pack.packId}`} packId={pack.packId} refreshKey={uploadCount} />}
 
       {/* 고른 Pack 의 지난 판. 판을 올릴 때마다 다시 받는다. 고른 판의 결과는 올린 결과와 같은 방식으로 그린다. */}
       {pack && (

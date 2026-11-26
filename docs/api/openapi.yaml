@@ -269,6 +269,69 @@ paths:
           $ref: '#/components/responses/Problem'
         '500':
           $ref: '#/components/responses/Problem'
+  /api/v1/audit-records:
+    get:
+      operationId: listAuditRecords
+      summary: 감사 기록을 걸러 본다 (관리자만)
+      description: >-
+        저장된 줄을 그대로 준다. 처리에 들어간 요청은 두 줄이다 (하기 전의 STARTED, 끝난 뒤의 SUCCESS 나 FAILED.
+        결과의 줄이 startedId 로 시작의 줄을 가리킨다). 권한이 없어 들어가지 못한 요청은 DENIED 한 줄이다.
+        순서는 id 의 내림차순이다 (가장 최근에 남긴 것부터). 관리자만 부를 수 있다: 담당자가 부르면 403 이다.
+        보는 것도 감사 기록에 남는다. 감사 기록을 고치거나 지우는 API 는 없다
+      parameters:
+        - name: actor
+          in: query
+          required: false
+          description: 누가. 아이디가 글자 그대로 같은 줄만. 일부로 찾지 않는다
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+        - name: action
+          in: query
+          required: false
+          description: 무엇을. 기능의 이름(규격의 operationId 따위)이 글자 그대로 같은 줄만
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+        - name: outcome
+          in: query
+          required: false
+          description: 결과
+          schema:
+            $ref: '#/components/schemas/AuditOutcome'
+        - name: from
+          in: query
+          required: false
+          description: 언제부터. 설치 설정의 시간대에서 이 날짜의 첫 순간부터다
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: false
+          description: 언제까지. 설치 설정의 시간대에서 이 날짜의 끝까지다 (이 날짜를 포함한다). from 보다 앞설 수 없다
+          schema:
+            type: string
+            format: date
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 조건에 맞는 줄을 나눠 돌려준다. total 은 조건에 맞는 줄의 전체 수다. 맞는 것이 없으면 빈 목록이다
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditRecordList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/Problem'
   /api/v1/session:
     get:
       operationId: getSession
@@ -1158,6 +1221,80 @@ components:
         editionNo:
           type: integer
           minimum: 1
+    AuditOutcome:
+      type: string
+      description: 감사 기록의 결과. STARTED 하기 전에 남긴 줄, SUCCESS 성공, DENIED 거부 (권한 없음, 로그인 실패), FAILED 실패
+      enum: [STARTED, SUCCESS, DENIED, FAILED]
+    AuditRecordList:
+      type: object
+      required: [actor, action, outcome, from, to, total, offset, limit, records]
+      properties:
+        actor:
+          type: [string, 'null']
+          description: 답에 쓴 거르는 조건. 요청에 없었으면 null 이다
+        action:
+          type: [string, 'null']
+        outcome:
+          oneOf:
+            - $ref: '#/components/schemas/AuditOutcome'
+            - type: 'null'
+        from:
+          type: [string, 'null']
+          format: date
+        to:
+          type: [string, 'null']
+          format: date
+        total:
+          type: integer
+          minimum: 0
+          description: 조건에 맞는 줄의 전체 수. 나누기 전의 수다
+        offset:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+        records:
+          type: array
+          description: 조건에 맞는 줄 가운데 이 쪽의 것. id 의 내림차순이다
+          items:
+            $ref: '#/components/schemas/AuditRecord'
+    AuditRecord:
+      type: object
+      required: [id, occurredAt, actor, action, target, asOf, outcome, httpStatus, detail, startedId]
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 일련번호. 남긴 차례대로 커진다
+        occurredAt:
+          type: string
+          format: date-time
+          description: 언제. 협정 세계시다
+        actor:
+          type: [string, 'null']
+          description: 누가. 사용자의 아이디. 모르면 null 이다 (로그인하기 전의 요청, 서버에서 실행한 명령)
+        action:
+          type: string
+          description: 무엇을 했는가. 기능의 이름
+        target:
+          type: [string, 'null']
+          description: 무엇에 대해. 요청의 항목 가운데 대상을 가리키는 것들
+        asOf:
+          type: [string, 'null']
+          format: date
+          description: 조회에 쓴 조회 시점. 없는 요청이면 null 이다
+        outcome:
+          $ref: '#/components/schemas/AuditOutcome'
+        httpStatus:
+          type: [integer, 'null']
+          description: 응답의 HTTP 상태. 시작의 줄에는 없다
+        detail:
+          type: [string, 'null']
+        startedId:
+          type: [integer, 'null']
+          format: int64
+          description: 이 줄이 결과일 때, 하기 전에 남긴 줄의 id
     Session:
       type: object
       description: 로그인한 사람

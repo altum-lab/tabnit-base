@@ -103,6 +103,9 @@ class SecurityConfiguration {
 			.hasRole(ADMIN)
 			.requestMatchers(HttpMethod.POST, UnprocessedChangesController.REPROCESS_PATH)
 			.hasRole(ADMIN)
+			// 감사 기록을 보는 것 (D2 AD-414). 방식을 가리지 않고 묶는다: 다른 방식의 API 는 없다.
+			.requestMatchers(AuditRecordsController.PATH)
+			.hasRole(ADMIN)
 			.requestMatchers("/actuator/**")
 			.hasRole(ADMIN)
 			// 그 밖의 API 는 담당자와 관리자가 한다. 둘 다 아닌 역할은 아무것도 부르지 못한다.

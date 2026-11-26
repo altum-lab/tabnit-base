@@ -27,10 +27,12 @@ type Props = {
   asOf: string;
   // 고른 개체의 id 를 넘긴다.
   onPick: (entityId: string) => void;
+  // 고른 개체를 다른 곳에 넣는 단추들 (경로 찾기의 출발과 도착, 카드 A-18). 없으면 "고르기" 하나다.
+  extras?: { label: string; onPick: (entityId: string) => void }[];
   disabled?: boolean;
 };
 
-export function EntityPicker({ asOf, onPick, disabled = false }: Props) {
+export function EntityPicker({ asOf, onPick, extras = [], disabled = false }: Props) {
   const [packs, setPacks] = useState<Packs>({ kind: "loading" });
   const [packId, setPackId] = useState("");
   const [text, setText] = useState("");
@@ -172,6 +174,14 @@ export function EntityPicker({ asOf, onPick, disabled = false }: Props) {
                           <button type="button" disabled={disabled} onClick={() => onPick(entity.entityId)}>
                             고르기
                           </button>
+                          {extras.map((extra) => (
+                            <span key={extra.label}>
+                              {" "}
+                              <button type="button" onClick={() => extra.onPick(entity.entityId)}>
+                                {extra.label}
+                              </button>
+                            </span>
+                          ))}
                         </td>
                       </tr>
                     ))}

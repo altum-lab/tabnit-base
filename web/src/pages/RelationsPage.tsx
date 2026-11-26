@@ -6,6 +6,7 @@ import { addDays } from "../time";
 import { EntityName } from "./EntityName";
 import { EntityPicker } from "./EntityPicker";
 import { ExportButtons } from "./ExportButtons";
+import { RelationPathFinder } from "./RelationPathFinder";
 import { Pager } from "./Pager";
 import { type MapFilter, type MapView, RelationMapView } from "./RelationMapView";
 
@@ -45,6 +46,9 @@ export function RelationsPage() {
   const [mapView, setMapView] = useState<MapView>("2d");
   // 지도에서 가린 유형과 관계 유형 (카드 D-20). 화면을 열어 둔 동안 유지한다 (다시 받아도, 가운데를 옮겨도).
   const [mapFilter, setMapFilter] = useState<MapFilter>({ entityTypes: [], relationTypes: [] });
+  // 경로 찾기의 출발 개체와 도착 개체 (카드 A-18). 개체 찾기에서 골라 넣을 수 있게 화면이 든다.
+  const [pathFrom, setPathFrom] = useState("");
+  const [pathTo, setPathTo] = useState("");
   // 마지막으로 청한 것 (가운데 개체, 조회 시점, 깊이). 막대, 깊이, 노드로 다시 받을 때 여기서 하나만 바꿔 청한다.
   // 받은 것이 아니라 청한 것을 둔다: 청한 것이 실패했어도 화면의 입력란과 막대는 청한 값을 보이고 있으므로,
   // 그 뒤에 깊이나 막대를 바꾸면 화면에 적힌 개체와 날짜로 다시 청해야 한다 (앞서 받은 것으로 돌아가지 않는다).
@@ -170,7 +174,16 @@ export function RelationsPage() {
     <section aria-labelledby="relations-title">
       <h1 id="relations-title">관계 지도</h1>
 
-      <EntityPicker asOf={asOf} onPick={pick} disabled={view.kind === "loading"} />
+      <EntityPicker
+        asOf={asOf}
+        onPick={pick}
+        extras={[
+          { label: "출발로", onPick: setPathFrom },
+          { label: "도착으로", onPick: setPathTo },
+        ]}
+        disabled={view.kind === "loading"}
+      />
+      <RelationPathFinder from={pathFrom} to={pathTo} onFrom={setPathFrom} onTo={setPathTo} asOf={asOf} />
 
       <form onSubmit={search}>
         <p>

@@ -398,7 +398,7 @@ class AuditApiTests {
 			.containsExactlyInAnyOrder("getRelationsAsOf", "listPacks", "submitEdition", "listActions", "getAction",
 					"decideAction", "getChangeImpactScope", "loadPack", "login", "listUnprocessedChanges",
 					"reprocessChanges", "getRelationMap", "listEditions", "getEdition", "searchEntities",
-					"exportRelations", "exportActions", "exportImpactTargets",
+					"exportRelations", "exportActions", "exportImpactTargets", "getRelationPath",
 					"listConstraintViolations");
 	}
 

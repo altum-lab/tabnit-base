@@ -1,6 +1,7 @@
 # 제조 안전 Pack 의 검증 질문. 형식은 D4 3절이다.
 #
-# 상태: 확정 (2026-11-22, D2 AD-315). 자료나 규칙을 바꿔 정답이 달라지면 다시 확정한다 (D4 4절: 정답은 대표가 정한다).
+# 상태: Q-01 ~ Q-26 은 확정 (2026-11-22, D2 AD-315). Q-27 부터는 초안이다 (2026-11-26, D2 AD-400: 새 공정을 들이는 판을 더했다.
+# 대표가 확정하기 전이다). 자료나 규칙을 바꿔 정답이 달라지면 다시 확정한다 (D4 4절: 정답은 대표가 정한다).
 # 모든 이름과 값은 지어낸 것이다. 실제 회사, 현장, 법령, 문서와 관계가 없다.
 #
 # 정답을 만든 방법: 자료가 커서 (개체 157개) 손으로 적지 않았다. 예시 입력 파일에서 문서의 규칙
@@ -17,7 +18,7 @@
 
 scenario:
   id: S-01
-  title: 물질안전자료가 두 번 바뀌고 인원이 옮기고 공정이 운영을 시작하고 물질의 이름을 고치고 물질 하나를 쓰지 않게 된다
+  title: 물질안전자료가 두 번 바뀌고 인원이 옮기고 공정이 운영을 시작하고 물질의 이름을 고치고 물질 하나를 쓰지 않게 되고 새 공정을 들인다
   steps:
     # 2026-01-01: 처음 자료가 들어온다. 모두 첫 판이라 변동은 없다.
     - { step: 1, inputSource: regulation, file: data/regulation-v1.csv, effectiveDate: 2026-01-01 }
@@ -53,8 +54,16 @@ scenario:
     - { step: 26, inputSource: process-substance, file: data/process-substance-v2.csv, effectiveDate: 2026-11-20 }
     # 2026-11-20: 불산 자료가 한 번 더 바뀐다 (8판, 유해성 구분이 또 오른다). 실란 자료(SDS-06)도 유해성 구분이 바뀐다. 실란 자료의 개정일은 2026-09-15 다.
     - { step: 27, inputSource: safety-sheet, file: data/safety-sheet-v3.csv, effectiveDate: 2026-11-20 }
+    # 2026-12-10: 새 공정 다-세정-02 를 들인다. 새 물질 둘(MAT-13, 특별관리 물질인 MAT-14)과 그 자료, 새 공정, 새 설비 넷, 옮겨 오는 인원 셋, 배기 연결, 공정이 쓰는 물질 셋이 차례로 들어온다 (차례가 정답에 닿는다).
+    - { step: 28, inputSource: safety-sheet, file: data/safety-sheet-v4.csv, effectiveDate: 2026-12-10 }
+    - { step: 29, inputSource: substance, file: data/substance-v3.csv, effectiveDate: 2026-12-10 }
+    - { step: 30, inputSource: process, file: data/process-v3.csv, effectiveDate: 2026-12-10 }
+    - { step: 31, inputSource: equipment, file: data/equipment-v3.csv, effectiveDate: 2026-12-10 }
+    - { step: 32, inputSource: worker, file: data/worker-v3.csv, effectiveDate: 2026-12-10 }
+    - { step: 33, inputSource: process-emission, file: data/process-emission-v2.csv, effectiveDate: 2026-12-10 }
+    - { step: 34, inputSource: process-substance, file: data/process-substance-v3.csv, effectiveDate: 2026-12-10 }
 
-# 시점: 과거 2026-01-01 과 2026-09-30 / 2026-10-01 (인원이 옮기는 경계), 현재 2026-12-01 (마지막 판 뒤).
+# 시점: 과거 2026-01-01 과 2026-09-30 / 2026-10-01 (인원이 옮기는 경계), 현재 2026-12-01 (새 공정을 들이기 전의 마지막 판 뒤), 2026-12-10 (새 공정을 들인 날).
 
 questions:
 
@@ -967,4 +976,356 @@ questions:
         - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1040 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-06 }, inputSource: safety-sheet, edition: 3 } }
         - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1041 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-06 }, inputSource: safety-sheet, edition: 3 } }
         - { rule: "0001", priority: 1, target: { type: 작업인원, key: W-1042 }, dueDate: 2026-12-04, basis: { entity: { type: 물질안전자료, key: SDS-06 }, inputSource: safety-sheet, edition: 3 } }
+
+  # ── 새 공정을 들인다 (2026-12-10). 여기부터는 초안이다 (D2 AD-400) ──────────────
+  # 규칙 0007 ~ 0017 은 추가에만 걸린다. 그 앞의 판에는 이 규칙이 걸리는 입력 자료의 추가가 없어 Q-01 ~ Q-26 의 정답은 그대로다.
+
+  - id: Q-27
+    kind: changes
+    title: 물질의 셋째 판에서 나온 변동 (추가 둘)
+    step: 29
+    # 새 물질 MAT-13 과 MAT-14 의 행이 새로 생겼다. 나머지 열두 행은 그대로다.
+    expect:
+      changes:
+        - { itemKey: [MAT-13], kind: added }
+        - { itemKey: [MAT-14], kind: added }
+
+  - id: Q-28
+    kind: changes
+    title: 공정이 쓰는 물질의 셋째 판에서 나온 변동 (추가 셋)
+    step: 34
+    # 새 공정 다-세정-02 가 쓰는 물질 셋의 행이 새로 생겼다. 항목의 키는 공정 번호와 물질 번호다.
+    expect:
+      changes:
+        - { itemKey: [다-세정-02, MAT-01], kind: added }
+        - { itemKey: [다-세정-02, MAT-13], kind: added }
+        - { itemKey: [다-세정-02, MAT-14], kind: added }
+
+  - id: Q-29
+    kind: actions
+    title: 새 물질의 자료 SDS-13 이 추가되어 생긴 조치 (없다)
+    change: { step: 28, itemKey: [SDS-13] }
+    # 물질안전자료의 입력 자료에 걸리는 규칙 0001 ~ 0005 는 변경에만 걸린다. 추가에는 조치가 없다. 자료를 확보해 등록하라는 조치는 물질이 추가될 때 나온다 (Q-30).
+    expect:
+      actions: []
+
+  - id: Q-30
+    kind: actions
+    title: 새 물질 MAT-13 이 추가되어 생긴 조치 (특별관리 물질이 아니다)
+    change: { step: 29, itemKey: [MAT-13] }
+    # 규칙 0007 (새 물질의 자료를 확보해 등록, 7일) 하나다. 특별관리 물질이 아니라 0012 (측정 계획)는 걸리지 않는다. 물질의 행이 자료 SDS-13 을 가리켜 자료도 변동 대상이지만 두 규칙의 대상은 화학물질이다.
+    expect:
+      actions:
+        - { rule: "0007", priority: 1, target: { type: 화학물질, key: MAT-13 }, dueDate: 2026-12-17, basis: { entity: { type: 화학물질, key: MAT-13 }, inputSource: substance, edition: 3 } }
+
+  - id: Q-31
+    kind: actions
+    title: 새 물질 MAT-14 가 추가되어 생긴 조치 (특별관리 물질이다)
+    change: { step: 29, itemKey: [MAT-14] }
+    # 규칙 0007 (7일)과, 특별관리 물질이라 0012 (측정 계획 등록, 30일)가 걸린다.
+    expect:
+      actions:
+        - { rule: "0007", priority: 1, target: { type: 화학물질, key: MAT-14 }, dueDate: 2026-12-17, basis: { entity: { type: 화학물질, key: MAT-14 }, inputSource: substance, edition: 3 } }
+        - { rule: "0012", priority: 2, target: { type: 화학물질, key: MAT-14 }, dueDate: 2027-01-09, basis: { entity: { type: 화학물질, key: MAT-14 }, inputSource: substance, edition: 3 } }
+
+  - id: Q-32
+    kind: actions
+    title: 새 공정 다-세정-02 가 추가되어 생긴 조치
+    change: { step: 30, itemKey: [다-세정-02] }
+    # 규칙 0010 (변경관리 심의와 공정안전자료 갱신, 30일, 우선순위 2)과 0016 (폐액 처리 경로 확인, 30일, 우선순위 3)이다. 기한이 같아 우선순위 순이다.
+    expect:
+      actions:
+        - { rule: "0010", priority: 2, target: { type: 제조공정, key: 다-세정-02 }, dueDate: 2027-01-09, basis: { entity: { type: 제조공정, key: 다-세정-02 }, inputSource: process, edition: 3 } }
+        - { rule: "0016", priority: 3, target: { type: 제조공정, key: 다-세정-02 }, dueDate: 2027-01-09, basis: { entity: { type: 제조공정, key: 다-세정-02 }, inputSource: process, edition: 3 } }
+
+  - id: Q-33
+    kind: actions
+    title: 새 설비 다-세정-02-E1 이 추가되어 생긴 조치 (습식 세정기다)
+    change: { step: 31, itemKey: [다-세정-02-E1] }
+    # 규칙 0014 (물질을 다루는 설비의 설치검사: 설비 종류가 습식 세정기일 때)와 0017 (안전검사와 연동 장치 시험)이다. 둘 다 10일, 우선순위 1 이라 규칙 번호 순이다. 설비의 행이 공정을 가리켜 공정도 변동 대상이지만 두 규칙의 대상은 공정 설비다.
+    expect:
+      actions:
+        - { rule: "0014", priority: 1, target: { type: 공정설비, key: 다-세정-02-E1 }, dueDate: 2026-12-20, basis: { entity: { type: 공정설비, key: 다-세정-02-E1 }, inputSource: equipment, edition: 3 } }
+        - { rule: "0017", priority: 1, target: { type: 공정설비, key: 다-세정-02-E1 }, dueDate: 2026-12-20, basis: { entity: { type: 공정설비, key: 다-세정-02-E1 }, inputSource: equipment, edition: 3 } }
+
+  - id: Q-34
+    kind: actions
+    title: 새 설비 다-세정-02-E4 가 추가되어 생긴 조치 (습식 세정기가 아니다)
+    change: { step: 31, itemKey: [다-세정-02-E4] }
+    # 설비 종류가 약액 공급 장치라 0014 는 걸리지 않고 0017 하나다.
+    expect:
+      actions:
+        - { rule: "0017", priority: 1, target: { type: 공정설비, key: 다-세정-02-E4 }, dueDate: 2026-12-20, basis: { entity: { type: 공정설비, key: 다-세정-02-E4 }, inputSource: equipment, edition: 3 } }
+
+  - id: Q-35
+    kind: actions
+    title: W-1049 이 새 공정으로 옮겨 생긴 조치
+    change: { step: 32, itemKey: [W-1049] }
+    # 규칙 0006 (배치가 바뀐 인원의 배치 전 검진, 10일) 하나다. 새 규칙들은 인원의 입력 자료에서 나온 변동에 걸리지 않는다.
+    expect:
+      actions:
+        - { rule: "0006", priority: 2, target: { type: 작업인원, key: W-1049 }, dueDate: 2026-12-20, basis: { entity: { type: 작업인원, key: W-1049 }, inputSource: worker, edition: 3 } }
+
+  - id: Q-36
+    kind: actions
+    title: 새 공정이 배출구에 이어져 생긴 조치
+    change: { step: 33, itemKey: [다-세정-02, EMI-다-02] }
+    # 규칙 0015 (배출 시설의 변경 신고, 30일) 하나다. 대상은 배출구다. 이 행은 공정도 가리키지만 규칙의 대상은 대기 배출구다.
+    expect:
+      actions:
+        - { rule: "0015", priority: 2, target: { type: 대기배출구, key: EMI-다-02 }, dueDate: 2027-01-09, basis: { entity: { type: 제조공정, key: 다-세정-02 }, inputSource: process-emission, edition: 2 } }
+
+  - id: Q-41
+    kind: relations-as-of
+    title: 새 공정을 들인 날, 공정 다-세정-02 의 관계 (초안)
+    asOf: 2026-12-10
+    entity: { type: 제조공정, key: 다-세정-02 }
+    # 모든 관계가 이날 시작해 당일에 든다: 배기 연결 하나, 쓰는 물질 셋, 설비 넷, 옮겨 온 인원 셋. 전날에는 이 공정의 관계가 없다.
+    expect:
+      relations:
+        - { type: 물질사용, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 화학물질, key: MAT-01 }, validFrom: 2026-12-10, validTo: null }
+        - { type: 물질사용, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 화학물질, key: MAT-13 }, validFrom: 2026-12-10, validTo: null }
+        - { type: 물질사용, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 화학물질, key: MAT-14 }, validFrom: 2026-12-10, validTo: null }
+        - { type: 배기연결, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 대기배출구, key: EMI-다-02 }, validFrom: 2026-12-10, validTo: null }
+        - { type: 설비구성, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 공정설비, key: 다-세정-02-E1 }, validFrom: 2026-12-10, validTo: null }
+        - { type: 설비구성, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 공정설비, key: 다-세정-02-E2 }, validFrom: 2026-12-10, validTo: null }
+        - { type: 설비구성, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 공정설비, key: 다-세정-02-E3 }, validFrom: 2026-12-10, validTo: null }
+        - { type: 설비구성, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 공정설비, key: 다-세정-02-E4 }, validFrom: 2026-12-10, validTo: null }
+        - { type: 인원배치, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 작업인원, key: W-1049 }, validFrom: 2026-12-10, validTo: null }
+        - { type: 인원배치, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 작업인원, key: W-1050 }, validFrom: 2026-12-10, validTo: null }
+        - { type: 인원배치, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 작업인원, key: W-1051 }, validFrom: 2026-12-10, validTo: null }
+
+  - id: Q-37
+    kind: impact
+    title: 새 공정이 새 물질 MAT-13 을 쓰게 된 것의 영향 범위
+    change: { step: 34, itemKey: [다-세정-02, MAT-13] }
+    # 변동 대상은 공정 다-세정-02 와 물질 MAT-13 이다. 공정의 설비 넷과 같은 날 먼저 옮겨 온 인원 셋이 깊이 1 이다. MAT-13 을 쓰는 다른 공정은 없고 보관소에도 없고 걸린 요건도 없다. 배기 연결로는 퍼지지 않는다.
+    expect:
+      targets:
+        - entity: { type: 공정설비, key: 다-세정-02-E1 }
+          depth: 1
+          path: { from: { type: 제조공정, key: 다-세정-02 }, asOf: 2026-12-10, relations: [ { type: 설비구성, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 공정설비, key: 다-세정-02-E1 } } ] }
+        - entity: { type: 공정설비, key: 다-세정-02-E2 }
+          depth: 1
+          path: { from: { type: 제조공정, key: 다-세정-02 }, asOf: 2026-12-10, relations: [ { type: 설비구성, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 공정설비, key: 다-세정-02-E2 } } ] }
+        - entity: { type: 공정설비, key: 다-세정-02-E3 }
+          depth: 1
+          path: { from: { type: 제조공정, key: 다-세정-02 }, asOf: 2026-12-10, relations: [ { type: 설비구성, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 공정설비, key: 다-세정-02-E3 } } ] }
+        - entity: { type: 공정설비, key: 다-세정-02-E4 }
+          depth: 1
+          path: { from: { type: 제조공정, key: 다-세정-02 }, asOf: 2026-12-10, relations: [ { type: 설비구성, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 공정설비, key: 다-세정-02-E4 } } ] }
+        - entity: { type: 작업인원, key: W-1049 }
+          depth: 1
+          path: { from: { type: 제조공정, key: 다-세정-02 }, asOf: 2026-12-10, relations: [ { type: 인원배치, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 작업인원, key: W-1049 } } ] }
+        - entity: { type: 작업인원, key: W-1050 }
+          depth: 1
+          path: { from: { type: 제조공정, key: 다-세정-02 }, asOf: 2026-12-10, relations: [ { type: 인원배치, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 작업인원, key: W-1050 } } ] }
+        - entity: { type: 작업인원, key: W-1051 }
+          depth: 1
+          path: { from: { type: 제조공정, key: 다-세정-02 }, asOf: 2026-12-10, relations: [ { type: 인원배치, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 작업인원, key: W-1051 } } ] }
+      countsByType: { 공정설비: 4, 작업인원: 3 }
+      countsByDepth: { 1: 7 }
+      truncated: false
+
+  - id: Q-38
+    kind: actions
+    title: 새 공정이 새 물질 MAT-13 을 쓰게 되어 생긴 조치
+    change: { step: 34, itemKey: [다-세정-02, MAT-13] }
+    # 공정 자신에게 0008 (취급 장소에 자료 게시, 7일)과 0009 (위험성평가, 14일), 그 공정의 인원 셋에게 0011 (취급 교육, 14일)과 0013 (보호구 지급, 21일)이다. 인원은 같은 날 먼저 들어온 판에서 옮겨 와 있다. 공정이 쓰는 물질마다 변동이 따로라 같은 조치가 물질마다 생긴다 (Q-39 도 같다).
+    expect:
+      actions:
+        - { rule: "0008", priority: 2, target: { type: 제조공정, key: 다-세정-02 }, dueDate: 2026-12-17, basis: { entity: { type: 제조공정, key: 다-세정-02 }, inputSource: process-substance, edition: 3 } }
+        - { rule: "0009", priority: 1, target: { type: 제조공정, key: 다-세정-02 }, dueDate: 2026-12-24, basis: { entity: { type: 제조공정, key: 다-세정-02 }, inputSource: process-substance, edition: 3 } }
+        - { rule: "0011", priority: 1, target: { type: 작업인원, key: W-1049 }, dueDate: 2026-12-24, basis: { entity: { type: 제조공정, key: 다-세정-02 }, inputSource: process-substance, edition: 3 } }
+        - { rule: "0011", priority: 1, target: { type: 작업인원, key: W-1050 }, dueDate: 2026-12-24, basis: { entity: { type: 제조공정, key: 다-세정-02 }, inputSource: process-substance, edition: 3 } }
+        - { rule: "0011", priority: 1, target: { type: 작업인원, key: W-1051 }, dueDate: 2026-12-24, basis: { entity: { type: 제조공정, key: 다-세정-02 }, inputSource: process-substance, edition: 3 } }
+        - { rule: "0013", priority: 2, target: { type: 작업인원, key: W-1049 }, dueDate: 2026-12-31, basis: { entity: { type: 제조공정, key: 다-세정-02 }, inputSource: process-substance, edition: 3 } }
+        - { rule: "0013", priority: 2, target: { type: 작업인원, key: W-1050 }, dueDate: 2026-12-31, basis: { entity: { type: 제조공정, key: 다-세정-02 }, inputSource: process-substance, edition: 3 } }
+        - { rule: "0013", priority: 2, target: { type: 작업인원, key: W-1051 }, dueDate: 2026-12-31, basis: { entity: { type: 제조공정, key: 다-세정-02 }, inputSource: process-substance, edition: 3 } }
+
+  - id: Q-39
+    kind: impact
+    title: 새 공정이 이미 있던 불산(MAT-01)을 쓰게 된 것의 영향 범위
+    change: { step: 34, itemKey: [다-세정-02, MAT-01] }
+    # 변동 대상은 공정 다-세정-02 와 불산이다. 불산에서 불산을 쓰는 다른 공정 넷, 보관소 셋, 걸린 요건 일곱으로 퍼지고 그 공정의 설비와 인원까지 닿는다. 다-세정-01 은 2026-11-20 에 불산을 쓰지 않게 되어 들지 않는다.
+    expect:
+      targets:
+        - entity: { type: 공정설비, key: 다-세정-02-E1 }
+          depth: 1
+          path: { from: { type: 제조공정, key: 다-세정-02 }, asOf: 2026-12-10, relations: [ { type: 설비구성, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 공정설비, key: 다-세정-02-E1 } } ] }
+        - entity: { type: 공정설비, key: 다-세정-02-E2 }
+          depth: 1
+          path: { from: { type: 제조공정, key: 다-세정-02 }, asOf: 2026-12-10, relations: [ { type: 설비구성, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 공정설비, key: 다-세정-02-E2 } } ] }
+        - entity: { type: 공정설비, key: 다-세정-02-E3 }
+          depth: 1
+          path: { from: { type: 제조공정, key: 다-세정-02 }, asOf: 2026-12-10, relations: [ { type: 설비구성, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 공정설비, key: 다-세정-02-E3 } } ] }
+        - entity: { type: 공정설비, key: 다-세정-02-E4 }
+          depth: 1
+          path: { from: { type: 제조공정, key: 다-세정-02 }, asOf: 2026-12-10, relations: [ { type: 설비구성, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 공정설비, key: 다-세정-02-E4 } } ] }
+        - entity: { type: 법정요건, key: REQ-01 }
+          depth: 1
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 요건적용, source: { type: 법정요건, key: REQ-01 }, target: { type: 화학물질, key: MAT-01 } } ] }
+        - entity: { type: 법정요건, key: REQ-02 }
+          depth: 1
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 요건적용, source: { type: 법정요건, key: REQ-02 }, target: { type: 화학물질, key: MAT-01 } } ] }
+        - entity: { type: 법정요건, key: REQ-03 }
+          depth: 1
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 요건적용, source: { type: 법정요건, key: REQ-03 }, target: { type: 화학물질, key: MAT-01 } } ] }
+        - entity: { type: 법정요건, key: REQ-04 }
+          depth: 1
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 요건적용, source: { type: 법정요건, key: REQ-04 }, target: { type: 화학물질, key: MAT-01 } } ] }
+        - entity: { type: 법정요건, key: REQ-05 }
+          depth: 1
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 요건적용, source: { type: 법정요건, key: REQ-05 }, target: { type: 화학물질, key: MAT-01 } } ] }
+        - entity: { type: 법정요건, key: REQ-06 }
+          depth: 1
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 요건적용, source: { type: 법정요건, key: REQ-06 }, target: { type: 화학물질, key: MAT-01 } } ] }
+        - entity: { type: 법정요건, key: REQ-07 }
+          depth: 1
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 요건적용, source: { type: 법정요건, key: REQ-07 }, target: { type: 화학물질, key: MAT-01 } } ] }
+        - entity: { type: 약품보관소, key: STO-가-A }
+          depth: 1
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질보관, source: { type: 화학물질, key: MAT-01 }, target: { type: 약품보관소, key: STO-가-A } } ] }
+        - entity: { type: 약품보관소, key: STO-나-B }
+          depth: 1
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질보관, source: { type: 화학물질, key: MAT-01 }, target: { type: 약품보관소, key: STO-나-B } } ] }
+        - entity: { type: 약품보관소, key: STO-다-A }
+          depth: 1
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질보관, source: { type: 화학물질, key: MAT-01 }, target: { type: 약품보관소, key: STO-다-A } } ] }
+        - entity: { type: 작업인원, key: W-1049 }
+          depth: 1
+          path: { from: { type: 제조공정, key: 다-세정-02 }, asOf: 2026-12-10, relations: [ { type: 인원배치, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 작업인원, key: W-1049 } } ] }
+        - entity: { type: 작업인원, key: W-1050 }
+          depth: 1
+          path: { from: { type: 제조공정, key: 다-세정-02 }, asOf: 2026-12-10, relations: [ { type: 인원배치, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 작업인원, key: W-1050 } } ] }
+        - entity: { type: 작업인원, key: W-1051 }
+          depth: 1
+          path: { from: { type: 제조공정, key: 다-세정-02 }, asOf: 2026-12-10, relations: [ { type: 인원배치, source: { type: 제조공정, key: 다-세정-02 }, target: { type: 작업인원, key: W-1051 } } ] }
+        - entity: { type: 제조공정, key: 가-세정-01 }
+          depth: 1
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 가-세정-01 }, target: { type: 화학물질, key: MAT-01 } } ] }
+        - entity: { type: 제조공정, key: 가-세정-02 }
+          depth: 1
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 가-세정-02 }, target: { type: 화학물질, key: MAT-01 } } ] }
+        - entity: { type: 제조공정, key: 나-세정-02 }
+          depth: 1
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 나-세정-02 }, target: { type: 화학물질, key: MAT-01 } } ] }
+        - entity: { type: 제조공정, key: 나-세정-03 }
+          depth: 1
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 나-세정-03 }, target: { type: 화학물질, key: MAT-01 } } ] }
+        - entity: { type: 공정설비, key: 가-세정-01-E1 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 가-세정-01 }, target: { type: 화학물질, key: MAT-01 } }, { type: 설비구성, source: { type: 제조공정, key: 가-세정-01 }, target: { type: 공정설비, key: 가-세정-01-E1 } } ] }
+        - entity: { type: 공정설비, key: 가-세정-01-E2 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 가-세정-01 }, target: { type: 화학물질, key: MAT-01 } }, { type: 설비구성, source: { type: 제조공정, key: 가-세정-01 }, target: { type: 공정설비, key: 가-세정-01-E2 } } ] }
+        - entity: { type: 공정설비, key: 가-세정-01-E3 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 가-세정-01 }, target: { type: 화학물질, key: MAT-01 } }, { type: 설비구성, source: { type: 제조공정, key: 가-세정-01 }, target: { type: 공정설비, key: 가-세정-01-E3 } } ] }
+        - entity: { type: 공정설비, key: 가-세정-02-E1 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 가-세정-02 }, target: { type: 화학물질, key: MAT-01 } }, { type: 설비구성, source: { type: 제조공정, key: 가-세정-02 }, target: { type: 공정설비, key: 가-세정-02-E1 } } ] }
+        - entity: { type: 공정설비, key: 가-세정-02-E2 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 가-세정-02 }, target: { type: 화학물질, key: MAT-01 } }, { type: 설비구성, source: { type: 제조공정, key: 가-세정-02 }, target: { type: 공정설비, key: 가-세정-02-E2 } } ] }
+        - entity: { type: 공정설비, key: 가-세정-02-E3 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 가-세정-02 }, target: { type: 화학물질, key: MAT-01 } }, { type: 설비구성, source: { type: 제조공정, key: 가-세정-02 }, target: { type: 공정설비, key: 가-세정-02-E3 } } ] }
+        - entity: { type: 공정설비, key: 나-세정-02-E1 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 나-세정-02 }, target: { type: 화학물질, key: MAT-01 } }, { type: 설비구성, source: { type: 제조공정, key: 나-세정-02 }, target: { type: 공정설비, key: 나-세정-02-E1 } } ] }
+        - entity: { type: 공정설비, key: 나-세정-02-E2 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 나-세정-02 }, target: { type: 화학물질, key: MAT-01 } }, { type: 설비구성, source: { type: 제조공정, key: 나-세정-02 }, target: { type: 공정설비, key: 나-세정-02-E2 } } ] }
+        - entity: { type: 공정설비, key: 나-세정-02-E3 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 나-세정-02 }, target: { type: 화학물질, key: MAT-01 } }, { type: 설비구성, source: { type: 제조공정, key: 나-세정-02 }, target: { type: 공정설비, key: 나-세정-02-E3 } } ] }
+        - entity: { type: 공정설비, key: 나-세정-03-E1 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 나-세정-03 }, target: { type: 화학물질, key: MAT-01 } }, { type: 설비구성, source: { type: 제조공정, key: 나-세정-03 }, target: { type: 공정설비, key: 나-세정-03-E1 } } ] }
+        - entity: { type: 공정설비, key: 나-세정-03-E2 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 나-세정-03 }, target: { type: 화학물질, key: MAT-01 } }, { type: 설비구성, source: { type: 제조공정, key: 나-세정-03 }, target: { type: 공정설비, key: 나-세정-03-E2 } } ] }
+        - entity: { type: 공정설비, key: 나-세정-03-E3 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 나-세정-03 }, target: { type: 화학물질, key: MAT-01 } }, { type: 설비구성, source: { type: 제조공정, key: 나-세정-03 }, target: { type: 공정설비, key: 나-세정-03-E3 } } ] }
+        - entity: { type: 공정설비, key: 나-세정-03-E4 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 나-세정-03 }, target: { type: 화학물질, key: MAT-01 } }, { type: 설비구성, source: { type: 제조공정, key: 나-세정-03 }, target: { type: 공정설비, key: 나-세정-03-E4 } } ] }
+        - entity: { type: 작업인원, key: W-1001 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 가-세정-01 }, target: { type: 화학물질, key: MAT-01 } }, { type: 인원배치, source: { type: 제조공정, key: 가-세정-01 }, target: { type: 작업인원, key: W-1001 } } ] }
+        - entity: { type: 작업인원, key: W-1002 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 가-세정-01 }, target: { type: 화학물질, key: MAT-01 } }, { type: 인원배치, source: { type: 제조공정, key: 가-세정-01 }, target: { type: 작업인원, key: W-1002 } } ] }
+        - entity: { type: 작업인원, key: W-1003 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 나-세정-02 }, target: { type: 화학물질, key: MAT-01 } }, { type: 인원배치, source: { type: 제조공정, key: 나-세정-02 }, target: { type: 작업인원, key: W-1003 } } ] }
+        - entity: { type: 작업인원, key: W-1004 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 가-세정-01 }, target: { type: 화학물질, key: MAT-01 } }, { type: 인원배치, source: { type: 제조공정, key: 가-세정-01 }, target: { type: 작업인원, key: W-1004 } } ] }
+        - entity: { type: 작업인원, key: W-1005 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 가-세정-01 }, target: { type: 화학물질, key: MAT-01 } }, { type: 인원배치, source: { type: 제조공정, key: 가-세정-01 }, target: { type: 작업인원, key: W-1005 } } ] }
+        - entity: { type: 작업인원, key: W-1006 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 가-세정-01 }, target: { type: 화학물질, key: MAT-01 } }, { type: 인원배치, source: { type: 제조공정, key: 가-세정-01 }, target: { type: 작업인원, key: W-1006 } } ] }
+        - entity: { type: 작업인원, key: W-1007 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 가-세정-01 }, target: { type: 화학물질, key: MAT-01 } }, { type: 인원배치, source: { type: 제조공정, key: 가-세정-01 }, target: { type: 작업인원, key: W-1007 } } ] }
+        - entity: { type: 작업인원, key: W-1008 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 가-세정-02 }, target: { type: 화학물질, key: MAT-01 } }, { type: 인원배치, source: { type: 제조공정, key: 가-세정-02 }, target: { type: 작업인원, key: W-1008 } } ] }
+        - entity: { type: 작업인원, key: W-1009 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 가-세정-02 }, target: { type: 화학물질, key: MAT-01 } }, { type: 인원배치, source: { type: 제조공정, key: 가-세정-02 }, target: { type: 작업인원, key: W-1009 } } ] }
+        - entity: { type: 작업인원, key: W-1010 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 가-세정-02 }, target: { type: 화학물질, key: MAT-01 } }, { type: 인원배치, source: { type: 제조공정, key: 가-세정-02 }, target: { type: 작업인원, key: W-1010 } } ] }
+        - entity: { type: 작업인원, key: W-1011 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 가-세정-02 }, target: { type: 화학물질, key: MAT-01 } }, { type: 인원배치, source: { type: 제조공정, key: 가-세정-02 }, target: { type: 작업인원, key: W-1011 } } ] }
+        - entity: { type: 작업인원, key: W-1012 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 가-세정-02 }, target: { type: 화학물질, key: MAT-01 } }, { type: 인원배치, source: { type: 제조공정, key: 가-세정-02 }, target: { type: 작업인원, key: W-1012 } } ] }
+        - entity: { type: 작업인원, key: W-1013 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 가-세정-02 }, target: { type: 화학물질, key: MAT-01 } }, { type: 인원배치, source: { type: 제조공정, key: 가-세정-02 }, target: { type: 작업인원, key: W-1013 } } ] }
+        - entity: { type: 작업인원, key: W-1032 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 나-세정-02 }, target: { type: 화학물질, key: MAT-01 } }, { type: 인원배치, source: { type: 제조공정, key: 나-세정-02 }, target: { type: 작업인원, key: W-1032 } } ] }
+        - entity: { type: 작업인원, key: W-1033 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 나-세정-02 }, target: { type: 화학물질, key: MAT-01 } }, { type: 인원배치, source: { type: 제조공정, key: 나-세정-02 }, target: { type: 작업인원, key: W-1033 } } ] }
+        - entity: { type: 작업인원, key: W-1034 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 나-세정-02 }, target: { type: 화학물질, key: MAT-01 } }, { type: 인원배치, source: { type: 제조공정, key: 나-세정-02 }, target: { type: 작업인원, key: W-1034 } } ] }
+        - entity: { type: 작업인원, key: W-1035 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 나-세정-02 }, target: { type: 화학물질, key: MAT-01 } }, { type: 인원배치, source: { type: 제조공정, key: 나-세정-02 }, target: { type: 작업인원, key: W-1035 } } ] }
+        - entity: { type: 작업인원, key: W-1036 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 나-세정-02 }, target: { type: 화학물질, key: MAT-01 } }, { type: 인원배치, source: { type: 제조공정, key: 나-세정-02 }, target: { type: 작업인원, key: W-1036 } } ] }
+        - entity: { type: 작업인원, key: W-1037 }
+          depth: 2
+          path: { from: { type: 화학물질, key: MAT-01 }, asOf: 2026-12-10, relations: [ { type: 물질사용, source: { type: 제조공정, key: 나-세정-02 }, target: { type: 화학물질, key: MAT-01 } }, { type: 인원배치, source: { type: 제조공정, key: 나-세정-02 }, target: { type: 작업인원, key: W-1037 } } ] }
+      countsByType: { 공정설비: 17, 법정요건: 7, 약품보관소: 3, 작업인원: 22, 제조공정: 4 }
+      countsByDepth: { 1: 21, 2: 32 }
+      truncated: false
+
+  - id: Q-40
+    kind: actions
+    title: 새 공정이 불산을 쓰게 되어 생긴 조치 (다른 공정의 인원에게는 걸리지 않는다)
+    change: { step: 34, itemKey: [다-세정-02, MAT-01] }
+    # 영향 범위에는 불산을 쓰는 다른 공정의 인원도 있지만, 0011 과 0013 은 근거 경로가 공정에서 시작한 인원에게만 건다 (변동 대상의 유형이 제조 공정일 때). 다른 공정의 인원은 근거 경로가 불산에서 시작해 빠진다. 그래서 Q-38 과 같은 대상에 같은 조치다.
+    expect:
+      actions:
+        - { rule: "0008", priority: 2, target: { type: 제조공정, key: 다-세정-02 }, dueDate: 2026-12-17, basis: { entity: { type: 제조공정, key: 다-세정-02 }, inputSource: process-substance, edition: 3 } }
+        - { rule: "0009", priority: 1, target: { type: 제조공정, key: 다-세정-02 }, dueDate: 2026-12-24, basis: { entity: { type: 제조공정, key: 다-세정-02 }, inputSource: process-substance, edition: 3 } }
+        - { rule: "0011", priority: 1, target: { type: 작업인원, key: W-1049 }, dueDate: 2026-12-24, basis: { entity: { type: 제조공정, key: 다-세정-02 }, inputSource: process-substance, edition: 3 } }
+        - { rule: "0011", priority: 1, target: { type: 작업인원, key: W-1050 }, dueDate: 2026-12-24, basis: { entity: { type: 제조공정, key: 다-세정-02 }, inputSource: process-substance, edition: 3 } }
+        - { rule: "0011", priority: 1, target: { type: 작업인원, key: W-1051 }, dueDate: 2026-12-24, basis: { entity: { type: 제조공정, key: 다-세정-02 }, inputSource: process-substance, edition: 3 } }
+        - { rule: "0013", priority: 2, target: { type: 작업인원, key: W-1049 }, dueDate: 2026-12-31, basis: { entity: { type: 제조공정, key: 다-세정-02 }, inputSource: process-substance, edition: 3 } }
+        - { rule: "0013", priority: 2, target: { type: 작업인원, key: W-1050 }, dueDate: 2026-12-31, basis: { entity: { type: 제조공정, key: 다-세정-02 }, inputSource: process-substance, edition: 3 } }
+        - { rule: "0013", priority: 2, target: { type: 작업인원, key: W-1051 }, dueDate: 2026-12-31, basis: { entity: { type: 제조공정, key: 다-세정-02 }, inputSource: process-substance, edition: 3 } }
 

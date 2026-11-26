@@ -5,6 +5,7 @@ import { CONNECTION_FAILED, messageOf } from "../api/problem";
 import { addDays } from "../time";
 import { EntityName } from "./EntityName";
 import { EntityPicker } from "./EntityPicker";
+import { ExportButtons } from "./ExportButtons";
 import { Pager } from "./Pager";
 import { type MapFilter, type MapView, RelationMapView } from "./RelationMapView";
 
@@ -318,6 +319,18 @@ function Result({ result, onMove }: { result: RelationsAsOf; onMove: (offset: nu
           limit={result.limit}
           shown={result.relations.length}
           onMove={onMove}
+        />
+      )}
+      {result.total > 0 && (
+        <ExportButtons
+          label="관계 목록 내보내기"
+          request={(format) =>
+            api.GET("/api/v1/relation-exports", {
+              // 서버가 답한 조회 시점으로 받는다: 화면의 목록과 같은 날짜다.
+              params: { query: { entityId: result.entityId, asOf: result.asOf, format } },
+              parseAs: "blob",
+            })
+          }
         />
       )}
 

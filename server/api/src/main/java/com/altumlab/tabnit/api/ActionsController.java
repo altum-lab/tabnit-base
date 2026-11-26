@@ -9,9 +9,12 @@ import com.altumlab.tabnit.rules.StoredImpactScope;
 import com.altumlab.tabnit.rules.StoredImpactScopePage;
 import com.altumlab.tabnit.rules.StoredPathStep;
 import com.altumlab.tabnit.rules.StoredImpactTarget;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.TreeSet;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -33,7 +36,11 @@ class ActionsController {
 
 	private final EntityViews entityViews;
 
-	ActionsController(ActionRecords actions, PackDefinitions packs, ActionViews views, EntityViews entityViews) {
+	private final ListExports exports;
+
+	ActionsController(ActionRecords actions, PackDefinitions packs, ActionViews views, EntityViews entityViews,
+			ListExports exports) {
+		this.exports = exports;
 		this.entityViews = entityViews;
 		this.actions = actions;
 		this.packs = packs;
@@ -51,6 +58,51 @@ class ActionsController {
 		}
 		ActionStatus wanted = status == null ? null : status(status);
 		PageRequest page = PageRequest.of(offset, limit);
+		return readActions(packId, wanted, changeEventId, page, page);
+	}
+
+	/**
+	 * 조치의 목록을 파일로 내보낸다 (규격의 exportActions, D7 "목록 내보내기", D2 AD-412). 거르는 인자와 순서는 위의
+	 * 목록과 같고 나누지 않는다.
+	 */
+	@GetMapping("/api/v1/action-exports")
+	@Audited(action = "exportActions", params = { "packId", "status", "changeEventId", "format" })
+	ResponseEntity<Object> exportActions(@RequestParam(required = false) String packId,
+			@RequestParam(required = false) String status, @RequestParam(required = false) String changeEventId,
+			@RequestParam(required = false) String format) {
+		if (packId == null || packId.isBlank()) {
+			throw new ApiProblemException(HttpStatus.BAD_REQUEST, "MISSING_PACK_ID", "packId",
+					"Pack 의 식별자가 없습니다. packId 에 Pack 의 식별자를 넣어 다시 보내세요.");
+		}
+		ActionStatus wanted = status == null ? null : status(status);
+		ListExports.Format file = ListExports.format(format);
+		ActionListResponse all = readActions(packId, wanted, changeEventId, this.exports.whole(), this.exports.answered());
+		this.exports.requireWithin(all.total());
+		if (file == ListExports.Format.JSON) {
+			return ListExports.json("actions", all);
+		}
+		List<List<String>> rows = new ArrayList<>();
+		for (ActionListResponse.Item action : all.actions()) {
+			rows.add(Arrays.asList(action.id(), action.changeEventId(), action.ruleNo(), action.ruleLabel(),
+					action.actionText(), String.valueOf(action.priority()), action.dueDate().toString(), action.status(),
+					action.target().entityId(), action.target().entityTypeLabel(), action.target().entityKey(),
+					action.target().displayName(), action.basis().entity().entityId(),
+					action.basis().entity().entityTypeLabel(), action.basis().entity().entityKey(),
+					action.basis().entity().displayName(), action.basis().inputSourceLabel(),
+					String.valueOf(action.basis().editionNo()), action.basis().effectiveDate().toString(),
+					action.createdAt().toString()));
+		}
+		return ListExports.csv("actions", ACTION_COLUMNS, rows);
+	}
+
+	/** 조치의 CSV 의 머리 행. 조치에는 조회 시점이 없다: 근거가 된 판의 적용일을 적는다. */
+	private static final List<String> ACTION_COLUMNS = List.of("조치 id", "변동 이벤트 id", "규칙 번호", "규칙 이름", "할 일",
+			"우선순위", "기한", "상태", "대상 개체 id", "대상 유형", "대상 키", "대상 이름", "근거 개체 id", "근거 유형", "근거 키",
+			"근거 이름", "근거 입력 자료", "근거 판", "근거 판의 적용일", "만든 때");
+
+	/** 조치를 읽어 응답의 모양으로 옮긴다. 목록과 내보내기가 함께 쓴다. */
+	private ActionListResponse readActions(String packId, ActionStatus wanted, String changeEventId, PageRequest page,
+			PageRequest answered) {
 		if (changeEventId != null) {
 			// 항목이 있는데 값이 비었으면 거르지 않는 것으로 보지 않는다. 조용히 빈 목록이 되지 않게 알린다.
 			requireChangeEventId(changeEventId);
@@ -62,7 +114,7 @@ class ActionsController {
 		}
 		// 나누는 일은 rules 가 한다 (D2 AD-347).
 		ActionPage found = this.actions.packActions(packId, wanted, changeEventId, page.offset(), page.limit());
-		return ActionListResponse.of(packId, wanted == null ? null : wanted.name(), changeEventId, found.total(), page,
+		return ActionListResponse.of(packId, wanted == null ? null : wanted.name(), changeEventId, found.total(), answered,
 				this.views.items(found.actions()));
 	}
 
@@ -88,6 +140,59 @@ class ActionsController {
 			}
 		}
 		PageRequest page = PageRequest.of(offset, limit);
+		return readScope(changeEventId, entityId, page, page);
+	}
+
+	/**
+	 * 변동의 영향 대상을 파일로 내보낸다 (규격의 exportImpactTargets, D7 "목록 내보내기", D2 AD-412). 순서는 영향 범위의
+	 * 영향 대상과 같고 나누지 않는다. 대상마다 근거 경로를 함께 적는다.
+	 */
+	@GetMapping("/api/v1/impact-target-exports")
+	@Audited(action = "exportImpactTargets", params = { "changeEventId", "format" })
+	ResponseEntity<Object> exportImpactTargets(@RequestParam(required = false) String changeEventId,
+			@RequestParam(required = false) String format) {
+		if (changeEventId == null || changeEventId.isEmpty()) {
+			throw new ApiProblemException(HttpStatus.BAD_REQUEST, "MISSING_CHANGE_EVENT_ID", "changeEventId",
+					"변동 이벤트의 id 가 없습니다. changeEventId 에 변동 이벤트의 id 를 넣어 다시 보내세요.");
+		}
+		requireChangeEventId(changeEventId);
+		ListExports.Format file = ListExports.format(format);
+		ChangeImpactScopeResponse all = readScope(changeEventId, null, this.exports.whole(), this.exports.answered());
+		this.exports.requireWithin(all.total());
+		String name = "impact-targets-" + all.asOfEffective();
+		if (file == ListExports.Format.JSON) {
+			return ListExports.json(name, all);
+		}
+		List<List<String>> rows = new ArrayList<>();
+		for (ChangeImpactScopeResponse.Target target : all.targets()) {
+			rows.add(Arrays.asList(all.changeEventId(), all.asOfPrevious().toString(), all.asOfEffective().toString(),
+					target.entityId(), target.entity().entityTypeLabel(), target.entity().entityKey(),
+					target.entity().displayName(), String.valueOf(target.depth()), target.path().startEntityId(),
+					target.path().asOf().toString(), pathText(target.path())));
+		}
+		return ListExports.csv(name, IMPACT_TARGET_COLUMNS, rows);
+	}
+
+	/** 영향 대상의 CSV 의 머리 행. 영향 범위는 판의 적용일 전날과 적용일 두 날짜로 본 것이다 (D8). */
+	private static final List<String> IMPACT_TARGET_COLUMNS = List.of("변동 이벤트 id", "적용일 전날", "적용일", "영향 대상 id",
+			"유형", "키", "이름", "깊이", "경로가 시작한 개체 id", "경로의 날짜", "근거 경로");
+
+	/** 근거 경로를 한 칸의 글로 적는다: 단계마다 "출발 id -[관계 유형]-> 도착 id" 를 단계의 차례대로 잇는다. */
+	private static String pathText(ChangeImpactScopeResponse.Path path) {
+		StringBuilder text = new StringBuilder();
+		for (ChangeImpactScopeResponse.Step step : path.steps()) {
+			if (!text.isEmpty()) {
+				text.append(" ; ");
+			}
+			text.append(step.sourceEntityId()).append(" -[").append(step.relationType()).append("]-> ")
+				.append(step.targetEntityId());
+		}
+		return text.toString();
+	}
+
+	/** 영향 범위를 읽어 응답의 모양으로 옮긴다. 영향 범위의 API 와 내보내기가 함께 쓴다. */
+	private ChangeImpactScopeResponse readScope(String changeEventId, String entityId, PageRequest page,
+			PageRequest answered) {
 		// 나누는 일과 대상 하나를 찾는 일은 rules 가 한다 (D2 AD-347).
 		StoredImpactScopePage scope = this.actions.impactScopePage(changeEventId, entityId, page.offset(), page.limit())
 			.orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND, "IMPACT_SCOPE_NOT_FOUND", "changeEventId",
@@ -103,7 +208,7 @@ class ActionsController {
 				ids.add(step.targetEntityId());
 			}
 		}
-		return ChangeImpactScopeResponse.of(scope, page, this.entityViews.items(ids, scope.scope().asOfEffective()));
+		return ChangeImpactScopeResponse.of(scope, answered, this.entityViews.items(ids, scope.scope().asOfEffective()));
 	}
 
 	private static ActionStatus status(String value) {

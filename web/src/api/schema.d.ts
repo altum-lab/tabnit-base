@@ -293,6 +293,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/relation-exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 개체의 관계 가운데 조회 시점에 유효한 것을 파일로 내보낸다
+         * @description 인자와 순서는 getRelationsAsOf 와 같고 offset, limit 이 없다. 담당자와 관리자가 부를 수 있다
+         */
+        get: operations["exportRelations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/action-exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pack 의 조치를 파일로 내보낸다
+         * @description 거르는 인자와 순서는 listActions 와 같고 offset, limit 이 없다. 담당자와 관리자가 부를 수 있다
+         */
+        get: operations["exportActions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impact-target-exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 변동 이벤트의 저장된 영향 범위의 영향 대상을 파일로 내보낸다
+         * @description 순서는 getChangeImpactScope 의 영향 대상과 같고 offset, limit 이 없다. 대상마다 근거 경로를 함께 담는다. 담당자와 관리자가 부를 수 있다
+         */
+        get: operations["exportImpactTargets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/impact-scopes": {
         parameters: {
             query?: never;
@@ -1545,6 +1605,132 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["ActionDecisionConflictProblem"];
+                };
+            };
+            500: components["responses"]["Problem"];
+        };
+    };
+    exportRelations: {
+        parameters: {
+            query: {
+                /** @description 개체의 id */
+                entityId: string;
+                /** @description 조회 시점. 없으면 설치 설정의 시간대에서의 오늘이고, 그 날짜가 파일과 파일 이름에 적힌다 */
+                asOf?: string;
+                /** @description 파일의 형식. csv 또는 json */
+                format: "csv" | "json";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 관계의 파일이다 (Content-Disposition 이 attachment 이고 파일 이름을 준다). 나누지 않는다: 그 조건의 전체를 담는다. 순서는 목록의 API 와 같다. json 은 목록의 답과 같은 모양이고 offset 은 0, limit 은 한 번에 내보내는 행의 한도다. csv 는 UTF-8 (맨 앞에 BOM), 쉼표, CRLF 이고 첫 행이 머리 행이다. 같은 목록에서는 글자까지 같은 파일이다 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelationsAsOf"];
+                    "text/csv": string;
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            /** @description 행이 한 번에 내보내는 한도를 넘는다 (EXPORT_TOO_LARGE). 일부만 담은 파일을 주지 않는다 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            500: components["responses"]["Problem"];
+        };
+    };
+    exportActions: {
+        parameters: {
+            query: {
+                /** @description Pack 의 식별자 */
+                packId: string;
+                /** @description 이 상태의 조치만. 없으면 모든 상태 */
+                status?: components["schemas"]["ActionStatus"];
+                /** @description 이 변동 이벤트의 조치만 */
+                changeEventId?: string;
+                /** @description 파일의 형식. csv 또는 json */
+                format: "csv" | "json";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 조치의 파일이다 (Content-Disposition 이 attachment 이고 파일 이름을 준다). 나누지 않는다: 그 조건의 전체를 담는다. 순서는 목록의 API 와 같다. json 은 목록의 답과 같은 모양이고 offset 은 0, limit 은 한 번에 내보내는 행의 한도다. csv 는 UTF-8 (맨 앞에 BOM), 쉼표, CRLF 이고 첫 행이 머리 행이다. 같은 목록에서는 글자까지 같은 파일이다 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionList"];
+                    "text/csv": string;
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            /** @description 행이 한 번에 내보내는 한도를 넘는다 (EXPORT_TOO_LARGE). 일부만 담은 파일을 주지 않는다 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            500: components["responses"]["Problem"];
+        };
+    };
+    exportImpactTargets: {
+        parameters: {
+            query: {
+                /** @description 변동 이벤트의 id */
+                changeEventId: string;
+                /** @description 파일의 형식. csv 또는 json */
+                format: "csv" | "json";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 영향 대상의 파일이다 (Content-Disposition 이 attachment 이고 파일 이름을 준다). 나누지 않는다: 그 조건의 전체를 담는다. 순서는 목록의 API 와 같다. json 은 목록의 답과 같은 모양이고 offset 은 0, limit 은 한 번에 내보내는 행의 한도다. csv 는 UTF-8 (맨 앞에 BOM), 쉼표, CRLF 이고 첫 행이 머리 행이다. 같은 목록에서는 글자까지 같은 파일이다 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeImpactScope"];
+                    "text/csv": string;
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            /** @description 행이 한 번에 내보내는 한도를 넘는다 (EXPORT_TOO_LARGE). 일부만 담은 파일을 주지 않는다 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
             500: components["responses"]["Problem"];

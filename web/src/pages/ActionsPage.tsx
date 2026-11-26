@@ -12,6 +12,7 @@ import {
 import { CONNECTION_FAILED, isProblem, messageOf } from "../api/problem";
 import { EntityName } from "./EntityName";
 import { ImpactPathView } from "./ImpactPathView";
+import { ExportButtons } from "./ExportButtons";
 import { Pager } from "./Pager";
 import { SessionContext } from "../session";
 import { formatInstant } from "../time";
@@ -261,6 +262,25 @@ export function ActionsPage() {
           )}
           {list.total > 0 && (
             <Pager total={list.total} offset={list.offset} limit={list.limit} shown={list.actions.length} onMove={move} />
+          )}
+          {list.total > 0 && (
+            <ExportButtons
+              label="조치 목록 내보내기"
+              request={(format) =>
+                api.GET("/api/v1/action-exports", {
+                  // 목록을 받을 때와 같은 거르는 조건으로 받는다.
+                  params: {
+                    query: {
+                      packId,
+                      ...(status === "ALL" ? {} : { status }),
+                      ...(changeEventId ? { changeEventId } : {}),
+                      format,
+                    },
+                  },
+                  parseAs: "blob",
+                })
+              }
+            />
           )}
           {list.total === 0 ? (
             <p role="status">해당하는 조치가 없습니다.</p>

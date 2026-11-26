@@ -170,6 +170,7 @@
 | 로그인, 로그아웃, 내 정보 | 모든 화면 | COM-01, COM-02 | 누구나 | 9절과 규격 파일. 구현했다 (E-02) |
 | Pack 을 적재한다 (서버의 Pack 폴더에서 이름으로 고른다) | (설정 화면은 당김 범위) | PACK-03 | 관리자 | 10절과 규격 파일. 구현했다 (E-06) |
 | 개체를 글자로 찾는다 (키, id, 조회 시점의 속성 값) [AD-411] | 관계 지도 (개체를 고르는 칸) | (보드에 기능이 없다. 카드 A-17. 기능 리스트의 2-2) | 담당자, 관리자 | 4절 "개체 찾기"와 규격 파일 (`searchEntities`). 구현했다 (A-17) |
+| 관계, 조치, 영향 대상의 목록을 파일(CSV, JSON)로 내보낸다 [AD-412] | 관계 지도, 조치와 확정, 영향 범위 | (보드에 기능이 없다. 카드 D-21. 기능 리스트의 2-6) | 담당자, 관리자 | 6절 "목록 내보내기"와 규격 파일 (`exportRelations`, `exportActions`, `exportImpactTargets`). 구현했다 (D-21) |
 | 제약의 위반을 본다 [AD-92] [AD-390] | 변동 감지 화면 안의 목록 (D-18. 구현했다) | (보드에 기능이 없다. 카드 B-17) | 담당자, 관리자 | 4절 "제약의 위반"과 규격 파일 (`listConstraintViolations`). 구현했다 (B-17) |
 
 뼈대 확인용이던 `GET /api/ping` 은 시점 조회 API 가 생기면서 지웠다 (SK-07).
@@ -650,6 +651,30 @@ GET /api/v1/impact-scopes?changeEventId={변동 이벤트의 id}&entityId={영�
 ### 규격
 
 `docs/api/openapi.yaml` 의 `listActions` 와 `getChangeImpactScope` 가 이 API 들의 규격이다.
+
+### 목록 내보내기
+
+관계, 조치, 영향 대상의 목록을 파일로 받는다. [AD-412]
+
+```
+GET /api/v1/relation-exports?entityId={개체의 id}&asOf={조회 시점}&format={csv|json}
+GET /api/v1/action-exports?packId={Pack}&status={상태}&changeEventId={변동 이벤트}&format={csv|json}
+GET /api/v1/impact-target-exports?changeEventId={변동 이벤트}&format={csv|json}
+```
+
+- **인자와 순서는 그 목록의 API 와 같다** (4절의 시점 조회, 이 절의 조치 목록과 변동의 영향 범위). `offset` 과 `limit` 이 없다: 나누지 않고 그 조건의 전체를 담는다. 그래서 **파일의 행 수가 목록의 전체 수(`total`)와 같다.** 전체 수와 행은 한 시점의 것으로 읽는다.
+- `format` 은 반드시 적는다: `csv` 또는 `json`. 없거나 다른 값이면 400 `INVALID_FORMAT` 이다.
+- **한도.** 한 번에 내보내는 행의 한도가 있다 (설치 설정 `tabnit.exports.max-rows`, 없으면 100,000). 전체 수가 한도를 넘으면 일부만 담은 파일을 주지 않고 422 `EXPORT_TOO_LARGE` 로 알린다. 한도와 같으면 준다.
+- **답은 파일이다.** `Content-Disposition: attachment` 로 파일 이름을 준다: `relations-{조회 시점}`, `actions`, `impact-targets-{적용일}` 에 `.csv` 나 `.json` 이 붙는다. 파일 이름과 내용에 받은 시각을 넣지 않는다: 같은 목록에서는 글자까지 같은 파일이 나온다.
+- **JSON.** 본문은 그 목록의 API 의 답과 같은 모양이다 (`RelationsAsOf`, `ActionList`, `ChangeImpactScope`). `offset` 은 0, `limit` 은 한도다. 영향 범위는 영향 대상 전부와 유형별·깊이별 수를 함께 담는다.
+- **CSV.** UTF-8 이고 맨 앞에 BOM 을 둔다. 칸은 쉼표로, 줄은 CRLF 로 나눈다 (RFC 4180). 쉼표, 따옴표, 줄바꿈이 든 칸은 따옴표로 싸고 따옴표는 둘로 적는다. 없는 값은 빈 칸이다. 첫 행은 머리 행이고 열의 이름은 한국어다. 빈 목록은 머리 행만 있다.
+  - 관계: 조회 시점, 관계 id, 관계 유형, 출발 개체 id, 출발 유형, 출발 키, 출발 이름, 도착 개체 id, 도착 유형, 도착 키, 도착 이름, 시작일, 종료일, 입력 자료, 판, 기록한 때. 조회 시점은 모든 행에 적힌다.
+  - 조치: 조치 id, 변동 이벤트 id, 규칙 번호, 규칙 이름, 할 일, 우선순위, 기한, 상태, 대상 개체 id, 대상 유형, 대상 키, 대상 이름, 근거 개체 id, 근거 유형, 근거 키, 근거 이름, 근거 입력 자료, 근거 판, 근거 판의 적용일, 만든 때. 조치에는 조회 시점이 없다: 근거가 된 판의 적용일을 적는다.
+  - 영향 대상: 변동 이벤트 id, 적용일 전날, 적용일, 영향 대상 id, 유형, 키, 이름, 깊이, 경로가 시작한 개체 id, 경로의 날짜, 근거 경로. 근거 경로는 한 칸의 글이다: 단계마다 `출발 id -[관계 유형]-> 도착 id` 를 ` ; ` 로 잇는다.
+  - 유형은 유형의 이름표, 이름은 표시 이름이다 (2절 "개체"). 표시 이름이 없으면 빈 칸이다.
+- **수식으로 읽히는 값.** CSV 에서 `=`, `+`, `-`, `@`, 탭, CR 로 시작하는 칸은 앞에 작은따옴표(`'`)를 붙인다. 표 계산 프로그램이 값을 수식으로 실행하지 않게 한다. 그런 칸은 저장된 값과 한 글자 다르다. JSON 에는 붙이지 않는다: 값을 그대로 다시 읽으려면 JSON 을 받는다.
+- 틀린 입력과 없는 대상의 오류는 그 목록의 API 와 같다 (`MISSING_ENTITY_ID`, `ENTITY_NOT_FOUND`, `PACK_NOT_FOUND`, `INVALID_STATUS`, `IMPACT_SCOPE_NOT_FOUND` 따위).
+- 내보내기도 감사 기록에 남는다 (기능 이름 `exportRelations`, `exportActions`, `exportImpactTargets`. 대상에 형식이 함께 적힌다).
 
 ## 7. 확정과 보류
 

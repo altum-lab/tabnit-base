@@ -35,7 +35,8 @@ test("지난 판이 받은 것이 늦은 것부터 서버가 준 수와 함께 �
     await expect(row.getByTestId("change-count")).toHaveText(String(edition.changeCount));
     await expect(row.getByTestId("notice-count")).toHaveText(String(edition.noticeCount));
   }
-  await expect(page.getByTestId("pager-position")).toContainText(`전체 ${listed.total}건`);
+  // 이 화면에는 나눠 보는 목록이 둘이다 (제약의 위반, 지난 판). 지난 판의 것을 본다.
+  await expect(page.getByRole("region", { name: "지난 판" }).getByTestId("pager-position")).toContainText(`전체 ${listed.total}건`);
 
   // 변동이 있는 판을 고른다. 맨 위의 판이 아닌 것으로: 다음 판을 올린 뒤에도 보인다는 것을 본다.
   const past = listed.editions.slice(1).find((edition) => edition.changeCount > 0);

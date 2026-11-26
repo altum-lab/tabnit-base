@@ -57,3 +57,4 @@ export type ActionDetail = components["schemas"]["ActionDetail"];
 export type ActionDecision = components["schemas"]["ActionDecision"];
 export type ChangeImpactScope = components["schemas"]["ChangeImpactScope"];
 export type ImpactTarget = components["schemas"]["ImpactTarget"];
+export type ConstraintViolationList = components["schemas"]["ConstraintViolationList"];

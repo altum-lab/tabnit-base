@@ -188,7 +188,7 @@ for (const pack of PACKS) {
     await page.getByLabel("Pack").selectOption(pack);
     const pastRows = page.getByRole("table", { name: "지난 판" }).locator("tbody tr");
     // 올린 판이 모두 있다 (한 쪽에 50 판까지다).
-    await expect(page.getByTestId("pager-position")).toContainText(`전체 ${steps.length}건`);
+    await expect(page.getByRole("region", { name: "지난 판" }).getByTestId("pager-position")).toContainText(`전체 ${steps.length}건`);
     await pastRows
       .filter({ hasText: shown.step.inputSource })
       .filter({ hasText: shown.step.effectiveDate })

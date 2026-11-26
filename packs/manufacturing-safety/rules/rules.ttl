@@ -12,6 +12,16 @@
 # - 0005 특수검진: 특별관리가 바뀌었고 그 값이 참일 때.
 # 0006 은 인원의 입력 자료(worker)에서 나온 추가나 변경 가운데 배치(인원배치)가 바뀐 것에만 걸린다.
 # 이름이나 교육 이수일만 바뀐 인원, 인원을 가리키는 다른 입력 자료(이행 증빙 evidence)의 변동에는 걸리지 않는다.
+#
+# 0007 ~ 0017 은 새로 들인 것(추가)에 걸리는 변경관리의 규칙이다 (D2 AD-400). 변경과 삭제에는 걸리지 않는다.
+# - 물질이 추가되면 (substance): 0007 자료 확보, 0012 측정 계획 (특별관리 물질일 때만).
+# - 공정이 추가되면 (process): 0010 변경관리 심의, 0016 폐액 처리 경로.
+# - 설비가 추가되면 (equipment): 0014 설치검사 (습식 세정기일 때만), 0017 안전검사.
+# - 공정이 배출구에 새로 이어지면 (process-emission): 0015 변경 신고.
+# - 공정이 물질을 새로 쓰게 되면 (process-substance): 공정에 0008 게시, 0009 위험성평가, 그 공정의 인원에게 0011 교육, 0013 보호구.
+#   이 행은 공정과 물질을 함께 가리켜 변동 대상이 둘이다. 영향 범위에는 그 물질을 쓰는 다른 공정의 인원도 들지만,
+#   0011 과 0013 은 근거 경로가 공정에서 시작한 인원에게만 건다 (변동 대상의 유형이 제조 공정일 때. D2 AD-323).
+#   공정이 쓰는 물질마다 변동이 따로라 같은 조치가 물질마다 생긴다.
 @prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix tabnit: <urn:tabnit:vocab:> .
 @prefix ex:     <urn:tabnit:pack:manufacturing-safety:> .
@@ -120,4 +130,153 @@ ex:규칙-0006 a tabnit:Rule ;
     tabnit:appliesTo tabnit:ChangeTarget ;
     tabnit:targetType ex:작업인원 ;
     tabnit:actionText "새 공정의 유해 요인에 맞춰 배치 전 건강검진을 받게 한다" ;
+    tabnit:dueInDays 10 .
+
+ex:규칙-0007 a tabnit:Rule ;
+    tabnit:ruleNo "0007" ;
+    rdfs:label "새 물질의 자료 확보" ;
+    tabnit:priority 1 ;
+    tabnit:whenChangeKind tabnit:Added ;
+    tabnit:whenInputSource "substance" ;
+    tabnit:appliesTo tabnit:ChangeTarget ;
+    tabnit:targetType ex:화학물질 ;
+    tabnit:actionText "새 물질의 물질안전자료를 확보해 등록한다" ;
+    tabnit:dueInDays 7 .
+
+ex:규칙-0008 a tabnit:Rule ;
+    tabnit:ruleNo "0008" ;
+    rdfs:label "새로 쓰는 물질의 자료 게시" ;
+    tabnit:priority 2 ;
+    tabnit:whenChangeKind tabnit:Added ;
+    tabnit:whenInputSource "process-substance" ;
+    tabnit:appliesTo tabnit:ChangeTarget ;
+    tabnit:targetType ex:제조공정 ;
+    tabnit:actionText "공정의 취급 장소에 새로 쓰는 물질의 물질안전자료를 게시한다" ;
+    tabnit:dueInDays 7 .
+
+ex:규칙-0009 a tabnit:Rule ;
+    tabnit:ruleNo "0009" ;
+    rdfs:label "새로 쓰는 물질의 위험성평가" ;
+    tabnit:priority 1 ;
+    tabnit:whenChangeKind tabnit:Added ;
+    tabnit:whenInputSource "process-substance" ;
+    tabnit:appliesTo tabnit:ChangeTarget ;
+    tabnit:targetType ex:제조공정 ;
+    tabnit:actionText "새로 쓰는 물질에 대해 공정의 위험성평가를 실시한다" ;
+    tabnit:dueInDays 14 .
+
+ex:규칙-0010 a tabnit:Rule ;
+    tabnit:ruleNo "0010" ;
+    rdfs:label "새 공정의 변경관리 심의" ;
+    tabnit:priority 2 ;
+    tabnit:whenChangeKind tabnit:Added ;
+    tabnit:whenInputSource "process" ;
+    tabnit:appliesTo tabnit:ChangeTarget ;
+    tabnit:targetType ex:제조공정 ;
+    tabnit:actionText "변경관리 심의를 열고 공정안전자료를 갱신한다" ;
+    tabnit:dueInDays 30 .
+
+ex:규칙-0011 a tabnit:Rule ;
+    tabnit:ruleNo "0011" ;
+    rdfs:label "새로 쓰는 물질의 취급 교육" ;
+    tabnit:priority 1 ;
+    tabnit:whenChangeKind tabnit:Added ;
+    tabnit:whenInputSource "process-substance" ;
+    tabnit:appliesTo tabnit:ImpactTarget ;
+    tabnit:targetType ex:작업인원 ;
+    tabnit:condition [
+        tabnit:subject tabnit:ChangeTarget ;
+        tabnit:typeIs ex:제조공정
+    ] ;
+    tabnit:actionText "새로 쓰는 물질의 취급 교육을 실시한다" ;
+    tabnit:dueInDays 14 .
+
+ex:규칙-0012 a tabnit:Rule ;
+    tabnit:ruleNo "0012" ;
+    rdfs:label "특별관리 물질의 측정 계획" ;
+    tabnit:priority 2 ;
+    tabnit:whenChangeKind tabnit:Added ;
+    tabnit:whenInputSource "substance" ;
+    tabnit:appliesTo tabnit:ChangeTarget ;
+    tabnit:targetType ex:화학물질 ;
+    tabnit:condition [
+        tabnit:subject tabnit:ChangeTarget ;
+        tabnit:typeIs ex:화학물질
+    ] ;
+    tabnit:condition [
+        tabnit:subject tabnit:ChangeTarget ;
+        tabnit:property ex:특별관리여부 ;
+        tabnit:operator tabnit:Equals ;
+        tabnit:value true
+    ] ;
+    tabnit:actionText "작업환경측정 계획에 새 물질을 등록한다" ;
+    tabnit:dueInDays 30 .
+
+ex:규칙-0013 a tabnit:Rule ;
+    tabnit:ruleNo "0013" ;
+    rdfs:label "새로 쓰는 물질의 보호구 지급" ;
+    tabnit:priority 2 ;
+    tabnit:whenChangeKind tabnit:Added ;
+    tabnit:whenInputSource "process-substance" ;
+    tabnit:appliesTo tabnit:ImpactTarget ;
+    tabnit:targetType ex:작업인원 ;
+    tabnit:condition [
+        tabnit:subject tabnit:ChangeTarget ;
+        tabnit:typeIs ex:제조공정
+    ] ;
+    tabnit:actionText "새로 쓰는 물질에 맞는 보호구의 사양을 정해 지급한다" ;
+    tabnit:dueInDays 21 .
+
+ex:규칙-0014 a tabnit:Rule ;
+    tabnit:ruleNo "0014" ;
+    rdfs:label "물질을 다루는 설비의 설치검사" ;
+    tabnit:priority 1 ;
+    tabnit:whenChangeKind tabnit:Added ;
+    tabnit:whenInputSource "equipment" ;
+    tabnit:appliesTo tabnit:ChangeTarget ;
+    tabnit:targetType ex:공정설비 ;
+    tabnit:condition [
+        tabnit:subject tabnit:ChangeTarget ;
+        tabnit:typeIs ex:공정설비
+    ] ;
+    tabnit:condition [
+        tabnit:subject tabnit:ChangeTarget ;
+        tabnit:property ex:설비종류 ;
+        tabnit:operator tabnit:Equals ;
+        tabnit:value "습식 세정기"
+    ] ;
+    tabnit:actionText "물질을 다루는 설비의 설치검사를 받는다" ;
+    tabnit:dueInDays 10 .
+
+ex:규칙-0015 a tabnit:Rule ;
+    tabnit:ruleNo "0015" ;
+    rdfs:label "배출 시설의 변경 신고" ;
+    tabnit:priority 2 ;
+    tabnit:whenChangeKind tabnit:Added ;
+    tabnit:whenInputSource "process-emission" ;
+    tabnit:appliesTo tabnit:ChangeTarget ;
+    tabnit:targetType ex:대기배출구 ;
+    tabnit:actionText "배출구에 새 공정이 이어진 것을 배출 시설의 변경으로 신고한다" ;
+    tabnit:dueInDays 30 .
+
+ex:규칙-0016 a tabnit:Rule ;
+    tabnit:ruleNo "0016" ;
+    rdfs:label "새 공정의 폐액 처리 경로 확인" ;
+    tabnit:priority 3 ;
+    tabnit:whenChangeKind tabnit:Added ;
+    tabnit:whenInputSource "process" ;
+    tabnit:appliesTo tabnit:ChangeTarget ;
+    tabnit:targetType ex:제조공정 ;
+    tabnit:actionText "폐액의 처리 경로와 위탁 계약을 확인한다" ;
+    tabnit:dueInDays 30 .
+
+ex:규칙-0017 a tabnit:Rule ;
+    tabnit:ruleNo "0017" ;
+    rdfs:label "새 설비의 안전검사" ;
+    tabnit:priority 1 ;
+    tabnit:whenChangeKind tabnit:Added ;
+    tabnit:whenInputSource "equipment" ;
+    tabnit:appliesTo tabnit:ChangeTarget ;
+    tabnit:targetType ex:공정설비 ;
+    tabnit:actionText "설비의 안전검사와 연동 장치의 시험을 한다" ;
     tabnit:dueInDays 10 .

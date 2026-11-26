@@ -127,7 +127,7 @@ for (const pack of PACKS) {
 
     // 2) 그 변동의 영향 범위로 간다. 마지막으로 올린 판의 결과가 화면에 남아 있을 때만 그 링크가 있다:
     //    마지막 단계의 변동이 아니면 주소로 연다 (지난 변동의 목록이 화면에 없다).
-    const row = page.locator(`tr[data-change-event-id="${shown.changeEventId.replace(/"/g, '\\"')}"]`);
+    const row = page.locator(`tr[data-change-event-id="${shown.changeEventId.replace(/["\\]/g, "\\$&")}"]`);
     if ((await row.count()) > 0) {
       await row.getByRole("link", { name: "영향 범위 보기" }).click();
     } else {
@@ -196,7 +196,8 @@ for (const pack of PACKS) {
       .getByRole("button", { name: "결과 보기" })
       .click();
     const pastResult = page.getByRole("region", { name: "지난 판의 결과" });
-    await expect(pastResult.locator(`tr[data-change-event-id="${shown.changeEventId.replace(/"/g, '\\"')}"]`)).toBeVisible();
+    // 키 열이 둘인 항목의 변동 이벤트 번호에는 역빗금이 있다 (`공정\|물질`). 선택자 안에서는 역빗금도 따옴표와 함께 달아나게 적는다.
+    await expect(pastResult.locator(`tr[data-change-event-id="${shown.changeEventId.replace(/["\\]/g, "\\$&")}"]`)).toBeVisible();
     await shot("past-edition");
 
     // 7) 화면이 낸 오류가 없다.

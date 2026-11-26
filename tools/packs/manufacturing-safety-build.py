@@ -8,6 +8,8 @@
 #
 # 이 계산이 하지 않는 것 (그래서 이 Pack 의 질문은 이런 경우를 묻지 않는다. 그 규칙은 엔진의 일반 시험과 시험용 Pack 이 본다):
 # - 길이가 같은 근거 경로가 둘일 때 관계 식별자로 가리는 것 (D3 7절). 그런 경우를 만나면 멈춘다.
+#   (같은 날짜 안의 경우를 말한다. 적용일과 전날의 경로가 길이가 같은 경우는 더 늦은 날짜의 것을 남기는 규칙으로 계산한다:
+#   인원 셋이 같은 공정으로 함께 옮기는 32단계의 영향 범위에 그런 대상이 있고 전수 대조가 본다.)
 # - 관계 유형과 상대 개체가 같은 관계가 둘일 때 관계 식별자로 차례를 정하는 것 (D3 5절). 질문의 정답을 만들다 만나면 멈춘다
 #   (전수 대조는 관계 식별자로 차례를 정한다). 관계의 식별자는 값을 그대로 잇는다: 키에 세로 막대나 역빗금이 없어야 한다
 #   (이 자료에는 없다).
@@ -15,7 +17,7 @@
 # - 값을 읽은 뒤의 표기로 다듬어 견주는 것 (25 와 25.0, D2 AD-156). 이 자료에는 그런 값이 없다.
 # - 속성 값의 유효기간만 달라진 것을 그 속성이 바뀐 것으로 보는 것, 적었지만 넣지 못한 것을 바뀐 것에서 빼는 것 (D8 2절).
 #   이 자료에는 유효기간 열이 없고 값이 부딪히지 않는다.
-# - 속성 값을 판의 적용일과 견주는 조건 (D8 3절). 이 Pack 의 규칙은 다른 대상의 속성과만 견준다.
+# - 속성 값을 판의 적용일과 견주는 조건 (D8 3절). 이 Pack 의 규칙은 다른 대상의 속성이나 고정 값과만 견준다.
 # 아래의 MAPPING, RULES, DIRECTION 은 정의 파일을 손으로 옮긴 것이다. 정의 파일을 고치면 여기도 고친다.
 import csv, io, os, sys, datetime
 
@@ -187,13 +189,35 @@ edition("safety-sheet", "safety-sheet-v3.csv", DD, SDS_COLS,
         sds_rows({"SDS-01": 8, "SDS-04": 7, "SDS-06": 5}, {"SDS-01": "급성독성 구분1", "SDS-06": "인화성 가스 구분1, 자연발화성"},
                  {"SDS-04": "0.1"}, {"SDS-01": True}))
 
+# 2026-12-10: 새 공정 다-세정-02 를 들인다 (시연의 "새 설비와 새 물질의 변경관리"를 본떴다. D2 AD-400). 모두 계획 상태다.
+# 새 물질 둘(하나는 특별관리 물질이다)과 그 자료 둘, 새 공정 하나, 새 설비 넷(셋은 습식 세정기, 하나는 약액 공급 장치),
+# 나-연마-01 에서 옮겨 오는 인원 셋, 새 공정의 배기 연결 하나, 새 공정이 쓰는 물질 셋(새 물질 둘과 이미 있던 불산).
+# 모두 같은 날이고 투입하는 차례가 정답에 닿는다: 공정이 물질을 쓰게 되는 판이 마지막이라 그때 인원이 이미 배치되어 있다.
+DH = "2026-12-10"
+NEW_SUBS = [("MAT-13", "구연산 세정액", False, "SDS-13", "피부자극성 구분2", "10"), ("MAT-14", "불화암모늄 혼합액", True, "SDS-14", "급성독성 구분3", "0.5")]
+NEW_PRC = ("다-세정-02", "다동", "세정", "신규 약액 세정")
+edition("safety-sheet", "safety-sheet-v4.csv", DH, SDS_COLS, SOURCES["safety-sheet"][-1][3] + [[m[3], "1", "2026-11-28", m[4], m[5], yn(m[2])] for m in NEW_SUBS])
+edition("substance", "substance-v3.csv", DH, ["물질번호", "물질명칭", "특별관리여부", "자료번호"],
+        SOURCES["substance"][-1][3] + [[m[0], m[1], yn(m[2]), m[3]] for m in NEW_SUBS])
+edition("process", "process-v3.csv", DH, ["공정번호", "공정명칭", "소속동", "공정구역", "공정상태"],
+        SOURCES["process"][-1][3] + [[NEW_PRC[0], NEW_PRC[3], NEW_PRC[1], NEW_PRC[2], "계획"]])
+edition("equipment", "equipment-v3.csv", DH, ["설비번호", "설비종류", "설비상태", "소속공정"],
+        SOURCES["equipment"][-1][3] + [[f"{NEW_PRC[0]}-E{i}", "습식 세정기" if i < 4 else "약액 공급 장치", "계획", NEW_PRC[0]] for i in range(1, 5)])
+# 나-연마-01 의 인원 넷 가운데 파트장을 뺀 셋이 옮겨 온다.
+JOINING = [w[0] for w in WRKS if w[4] == "나-연마-01"][1:]
+edition("worker", "worker-v3.csv", DH, WRK_COLS, [[w[0], w[1], w[2], w[3], NEW_PRC[0] if w[0] in JOINING else w[4]] for w in SOURCES["worker"][-1][3]])
+edition("process-emission", "process-emission-v2.csv", DH, ["공정번호", "배출구번호"], SOURCES["process-emission"][-1][3] + [[NEW_PRC[0], "EMI-다-02"]])
+edition("process-substance", "process-substance-v3.csv", DH, ["공정번호", "물질번호"],
+        SOURCES["process-substance"][-1][3] + [[NEW_PRC[0], m] for m in ("MAT-01", "MAT-13", "MAT-14")])
+
 # 시나리오: 투입하는 차례
 # 물질안전자료를 화학물질보다 먼저 넣는다: 화학물질의 행이 물질안전자료를 가리킨다. 거꾸로 넣으면 화학물질의 첫 판에
 # 참조로만 만들어진 개체의 알림이 물질마다 나온다 (D2 AD-378, AD-382). 첫 판들이라 차례는 정답에 닿지 않는다.
 ORDER = ["regulation", "requirement", "safety-sheet", "substance", "process", "process-substance", "equipment", "storage",
          "substance-storage", "emission-point", "process-emission", "worker", "incident", "incident-substance", "permit", "evidence",
          "requirement-substance", "requirement-storage", "requirement-emission", "requirement-equipment"]
-STEPS = [(s, 0) for s in ORDER] + [("safety-sheet", 1), ("worker", 1), ("process", 1), ("equipment", 1), ("substance", 1), ("process-substance", 1), ("safety-sheet", 2)]
+STEPS = [(s, 0) for s in ORDER] + [("safety-sheet", 1), ("worker", 1), ("process", 1), ("equipment", 1), ("substance", 1), ("process-substance", 1), ("safety-sheet", 2),
+                                         ("safety-sheet", 3), ("substance", 2), ("process", 2), ("equipment", 2), ("worker", 2), ("process-emission", 1), ("process-substance", 2)]
 
 # ── 매핑 (매핑 파일과 같아야 한다): 행 → 개체의 속성, 관계 ─────────────────
 # 입력 자료 → (키 열, 주 개체 (유형, 열), 개체 [(유형, 열, {속성: 열})], 관계 [(관계 유형, (출발 유형, 열), (도착 유형, 열))])
@@ -238,6 +262,18 @@ RULES = {
     "0004": (1, {"CHANGED"}, {"safety-sheet"}, None, "CHANGE", T_SDS, [], 3),
     "0005": (1, {"CHANGED"}, {"safety-sheet"}, {"자료특별관리"}, "IMPACT", T_WRK, [("CHANGE", "type", T_SDS), ("CHANGE", "자료특별관리", "예")], 30),
     "0006": (2, {"ADDED", "CHANGED"}, {"worker"}, {"인원배치"}, "CHANGE", T_WRK, [], 10),
+    # 0007 ~ 0017: 새로 들인 것(추가)에 걸리는 변경관리의 규칙 (D2 AD-400).
+    "0007": (1, {"ADDED"}, {"substance"}, None, "CHANGE", T_SUB, [], 7),
+    "0008": (2, {"ADDED"}, {"process-substance"}, None, "CHANGE", T_PRC, [], 7),
+    "0009": (1, {"ADDED"}, {"process-substance"}, None, "CHANGE", T_PRC, [], 14),
+    "0010": (2, {"ADDED"}, {"process"}, None, "CHANGE", T_PRC, [], 30),
+    "0011": (1, {"ADDED"}, {"process-substance"}, None, "IMPACT", T_WRK, [("CHANGE", "type", T_PRC)], 14),
+    "0012": (2, {"ADDED"}, {"substance"}, None, "CHANGE", T_SUB, [("CHANGE", "type", T_SUB), ("CHANGE", "특별관리여부", "예")], 30),
+    "0013": (2, {"ADDED"}, {"process-substance"}, None, "IMPACT", T_WRK, [("CHANGE", "type", T_PRC)], 21),
+    "0014": (1, {"ADDED"}, {"equipment"}, None, "CHANGE", T_EQP, [("CHANGE", "type", T_EQP), ("CHANGE", "설비종류", "습식 세정기")], 10),
+    "0015": (2, {"ADDED"}, {"process-emission"}, None, "CHANGE", T_EMI, [], 30),
+    "0016": (3, {"ADDED"}, {"process"}, None, "CHANGE", T_PRC, [], 30),
+    "0017": (1, {"ADDED"}, {"equipment"}, None, "CHANGE", T_EQP, [], 10),
 }
 
 # ── 문서의 규칙을 따로 구현한 계산 ────────────────────────────────
@@ -427,11 +463,12 @@ def find(step, key):
         if e[0] == key: return e
     raise SystemExit(f"{step}단계에 {key} 의 변동이 없다")
 
-STEP_A, STEP_B, STEP_C, STEP_E, STEP_G, STEP_F, STEP_D = (len(ORDER) + i for i in range(1, 8))
+STEP_A, STEP_B, STEP_C, STEP_E, STEP_G, STEP_F, STEP_D, STEP_H1, STEP_H2, STEP_H3, STEP_H4, STEP_H5, STEP_H6, STEP_H7 = (len(ORDER) + i for i in range(1, 15))
 y = []
 y.append("""# 제조 안전 Pack 의 검증 질문. 형식은 D4 3절이다.
 #
-# 상태: 확정 (2026-11-22, D2 AD-315). 자료나 규칙을 바꿔 정답이 달라지면 다시 확정한다 (D4 4절: 정답은 대표가 정한다).
+# 상태: Q-01 ~ Q-26 은 확정 (2026-11-22, D2 AD-315). Q-27 부터는 초안이다 (2026-11-26, D2 AD-400: 새 공정을 들이는 판을 더했다.
+# 대표가 확정하기 전이다). 자료나 규칙을 바꿔 정답이 달라지면 다시 확정한다 (D4 4절: 정답은 대표가 정한다).
 # 모든 이름과 값은 지어낸 것이다. 실제 회사, 현장, 법령, 문서와 관계가 없다.
 #
 # 정답을 만든 방법: 자료가 커서 (개체 157개) 손으로 적지 않았다. 예시 입력 파일에서 문서의 규칙
@@ -446,7 +483,7 @@ y.append("""# 제조 안전 Pack 의 검증 질문. 형식은 D4 3절이다.
 # 정답을 만든 계산이 그 두 규칙(관계 식별자로 가리기)을 구현하지 않아 그런 자료를 넣지 않았다.
 # 그 규칙은 엔진의 일반 시험과 시험용 Pack 의 질문이 본다.
 """)
-y.append("scenario:\n  id: S-01\n  title: 물질안전자료가 두 번 바뀌고 인원이 옮기고 공정이 운영을 시작하고 물질의 이름을 고치고 물질 하나를 쓰지 않게 된다\n  steps:")
+y.append("scenario:\n  id: S-01\n  title: 물질안전자료가 두 번 바뀌고 인원이 옮기고 공정이 운영을 시작하고 물질의 이름을 고치고 물질 하나를 쓰지 않게 되고 새 공정을 들인다\n  steps:")
 y.append("    # 2026-01-01: 처음 자료가 들어온다. 모두 첫 판이라 변동은 없다.")
 for n, (source, idx) in enumerate(STEPS, start=1):
     name, date, _, _ = SOURCES[source][idx]
@@ -455,7 +492,8 @@ for n, (source, idx) in enumerate(STEPS, start=1):
             STEP_G: "    # 2026-10-20: 물질 MAT-02 의 이름을 고친다. 물질의 행은 자료를 가리키므로 자료 SDS-02 도 변동 대상이 된다.",
             STEP_C: "    # 2026-10-15: 계획이던 공정 나-세정-03 이 운영을 시작한다. 같은 날 그 공정의 설비 넷도 운영이 된다.",
             STEP_F: "    # 2026-11-20: 공정 다-세정-01 이 불산을 더 쓰지 않는다. 그 뒤에 같은 날의 물질안전자료가 들어온다 (차례가 정답에 닿는다).",
-            STEP_D: "    # 2026-11-20: 불산 자료가 한 번 더 바뀐다 (8판, 유해성 구분이 또 오른다). 실란 자료(SDS-06)도 유해성 구분이 바뀐다. 실란 자료의 개정일은 2026-09-15 다."}.get(n)
+            STEP_D: "    # 2026-11-20: 불산 자료가 한 번 더 바뀐다 (8판, 유해성 구분이 또 오른다). 실란 자료(SDS-06)도 유해성 구분이 바뀐다. 실란 자료의 개정일은 2026-09-15 다.",
+            STEP_H1: "    # 2026-12-10: 새 공정 다-세정-02 를 들인다. 새 물질 둘(MAT-13, 특별관리 물질인 MAT-14)과 그 자료, 새 공정, 새 설비 넷, 옮겨 오는 인원 셋, 배기 연결, 공정이 쓰는 물질 셋이 차례로 들어온다 (차례가 정답에 닿는다)."}.get(n)
     if note: y.append(note)
     y.append("    - { step: %d, inputSource: %s, file: data/%s, effectiveDate: %s }" % (n, source, name, date))
 y.append("\n# 시점: 과거 2026-01-01 과 2026-09-30 / 2026-10-01 (인원이 옮기는 경계), 현재 2026-12-01 (마지막 판 뒤).\n\nquestions:\n")
@@ -472,16 +510,20 @@ def q_relations(qid, title, t, k, day, why):
         y.append("        - { type: %s, source: %s, target: %s, validFrom: %s, validTo: %s }" % (rt, ref(s), ref(tgt), f, to or "null"))
     y.append("")
 
+def key_list(key):
+    """항목의 키를 열마다 나눠 적는다 (키 열이 둘인 입력 자료: 공정 번호와 물질 번호)."""
+    return ", ".join(key.split("|"))
+
 def q_changes(qid, title, step, why):
     y.append("  - id: %s\n    kind: changes\n    title: %s\n    step: %d\n    # %s\n    expect:\n      changes:" % (qid, title, step, why))
     for e in EVENTS[step]:
-        y.append("        - { itemKey: [%s], kind: %s }" % (e[0], e[1].lower()))
+        y.append("        - { itemKey: [%s], kind: %s }" % (key_list(e[0]), e[1].lower()))
     y.append("")
 
 def q_impact(qid, title, step, key, why):
     e = find(step, key)
     ordered, truncated, day, prev = IMPACTS[(step, key)]
-    y.append("  - id: %s\n    kind: impact\n    title: %s\n    change: { step: %d, itemKey: [%s] }\n    # %s\n    expect:\n      targets:" % (qid, title, step, key, why))
+    y.append("  - id: %s\n    kind: impact\n    title: %s\n    change: { step: %d, itemKey: [%s] }\n    # %s\n    expect:\n      targets:" % (qid, title, step, key_list(key), why))
     by_type, by_depth = {}, {}
     for o, (depth, path, start, used) in ordered:
         rels = ", ".join("{ type: %s, source: %s, target: %s }" % (p[0], ref(p[1]), ref(p[2])) for p in path)
@@ -497,7 +539,7 @@ def q_impact(qid, title, step, key, why):
 def q_actions(qid, title, step, key, why):
     e = find(step, key)
     acts = ACTIONS[(step, key)]
-    y.append("  - id: %s\n    kind: actions\n    title: %s\n    change: { step: %d, itemKey: [%s] }\n    # %s\n    expect:\n      actions:%s" % (qid, title, step, key, why, "" if acts else " []"))
+    y.append("  - id: %s\n    kind: actions\n    title: %s\n    change: { step: %d, itemKey: [%s] }\n    # %s\n    expect:\n      actions:%s" % (qid, title, step, key_list(key), why, "" if acts else " []"))
     for due, priority, no, target, prim, source, edition_no in acts:
         y.append('        - { rule: "%s", priority: %d, target: %s, dueDate: %s, basis: { entity: %s, inputSource: %s, edition: %d } }'
                  % (no, priority, ref(target), due, ref(prim), source, edition_no))
@@ -555,7 +597,36 @@ a25 = q_actions("Q-25", "물질 MAT-02 의 이름을 고쳐 생긴 조치 (없�
                 "물질의 행이 자료를 가리켜 자료 SDS-02 도 변동 대상이고 영향 범위에는 공정, 설비, 인원이 있다. 그러나 규칙 0001 ~ 0005 는 물질안전자료의 입력 자료에서 나온 변동에만 걸린다. 조치가 없다.")
 a26 = q_actions("Q-26", "실란 자료의 유해성 구분이 바뀌어 생긴 조치 (교육 이수일이 개정일보다 앞선 인원만 교육한다)", STEP_D, "SDS-06",
                 "실란 자료의 개정일은 2026-09-15 다 (판의 적용일 2026-11-20 과 다르다). 규칙 0001 은 교육 이수일이 개정일보다 앞선 인원에게만 건다: 이수일이 2026-09-25 인 W-1024 와 개정일 당일(2026-09-15)인 W-1038 은 빠지고, 전날(2026-09-14)인 W-1039 는 든다. 설비의 표지(0002)와 게시물(0004)은 이수일과 무관하다. 실란은 보관소에 없어 0003 이 없고, 특별관리가 바뀌지 않아 0005 도 없다.")
+y.append("  # ── 새 공정을 들인다 (2026-12-10). 여기부터는 초안이다 (D2 AD-400) ──────────────\n  # 규칙 0007 ~ 0017 은 추가에만 걸린다. 그 앞의 판에는 이 규칙이 걸리는 입력 자료의 추가가 없어 Q-01 ~ Q-26 의 정답은 그대로다.\n")
+q_changes("Q-27", "물질의 셋째 판에서 나온 변동 (추가 둘)", STEP_H2, "새 물질 MAT-13 과 MAT-14 의 행이 새로 생겼다. 나머지 열두 행은 그대로다.")
+q_changes("Q-28", "공정이 쓰는 물질의 셋째 판에서 나온 변동 (추가 셋)", STEP_H7, "새 공정 다-세정-02 가 쓰는 물질 셋의 행이 새로 생겼다. 항목의 키는 공정 번호와 물질 번호다.")
+a29 = q_actions("Q-29", "새 물질의 자료 SDS-13 이 추가되어 생긴 조치 (없다)", STEP_H1, "SDS-13",
+                "물질안전자료의 입력 자료에 걸리는 규칙 0001 ~ 0005 는 변경에만 걸린다. 추가에는 조치가 없다. 자료를 확보해 등록하라는 조치는 물질이 추가될 때 나온다 (Q-30).")
+a30 = q_actions("Q-30", "새 물질 MAT-13 이 추가되어 생긴 조치 (특별관리 물질이 아니다)", STEP_H2, "MAT-13",
+                "규칙 0007 (새 물질의 자료를 확보해 등록, 7일) 하나다. 특별관리 물질이 아니라 0012 (측정 계획)는 걸리지 않는다. 물질의 행이 자료 SDS-13 을 가리켜 자료도 변동 대상이지만 두 규칙의 대상은 화학물질이다.")
+a31 = q_actions("Q-31", "새 물질 MAT-14 가 추가되어 생긴 조치 (특별관리 물질이다)", STEP_H2, "MAT-14",
+                "규칙 0007 (7일)과, 특별관리 물질이라 0012 (측정 계획 등록, 30일)가 걸린다.")
+a32 = q_actions("Q-32", "새 공정 다-세정-02 가 추가되어 생긴 조치", STEP_H3, "다-세정-02",
+                "규칙 0010 (변경관리 심의와 공정안전자료 갱신, 30일, 우선순위 2)과 0016 (폐액 처리 경로 확인, 30일, 우선순위 3)이다. 기한이 같아 우선순위 순이다.")
+a33 = q_actions("Q-33", "새 설비 다-세정-02-E1 이 추가되어 생긴 조치 (습식 세정기다)", STEP_H4, "다-세정-02-E1",
+                "규칙 0014 (물질을 다루는 설비의 설치검사: 설비 종류가 습식 세정기일 때)와 0017 (안전검사와 연동 장치 시험)이다. 둘 다 10일, 우선순위 1 이라 규칙 번호 순이다. 설비의 행이 공정을 가리켜 공정도 변동 대상이지만 두 규칙의 대상은 공정 설비다.")
+a34 = q_actions("Q-34", "새 설비 다-세정-02-E4 가 추가되어 생긴 조치 (습식 세정기가 아니다)", STEP_H4, "다-세정-02-E4",
+                "설비 종류가 약액 공급 장치라 0014 는 걸리지 않고 0017 하나다.")
+a35 = q_actions("Q-35", "W-%s 이 새 공정으로 옮겨 생긴 조치" % JOINING[0][2:], STEP_H5, JOINING[0],
+                "규칙 0006 (배치가 바뀐 인원의 배치 전 검진, 10일) 하나다. 새 규칙들은 인원의 입력 자료에서 나온 변동에 걸리지 않는다.")
+a36 = q_actions("Q-36", "새 공정이 배출구에 이어져 생긴 조치", STEP_H6, "다-세정-02|EMI-다-02",
+                "규칙 0015 (배출 시설의 변경 신고, 30일) 하나다. 대상은 배출구다. 이 행은 공정도 가리키지만 규칙의 대상은 대기 배출구다.")
+i37, t37 = q_impact("Q-37", "새 공정이 새 물질 MAT-13 을 쓰게 된 것의 영향 범위", STEP_H7, "다-세정-02|MAT-13",
+                    "변동 대상은 공정 다-세정-02 와 물질 MAT-13 이다. 공정의 설비 넷과 같은 날 먼저 옮겨 온 인원 셋이 깊이 1 이다. MAT-13 을 쓰는 다른 공정은 없고 보관소에도 없고 걸린 요건도 없다. 배기 연결로는 퍼지지 않는다.")
+a38 = q_actions("Q-38", "새 공정이 새 물질 MAT-13 을 쓰게 되어 생긴 조치", STEP_H7, "다-세정-02|MAT-13",
+                "공정 자신에게 0008 (취급 장소에 자료 게시, 7일)과 0009 (위험성평가, 14일), 그 공정의 인원 셋에게 0011 (취급 교육, 14일)과 0013 (보호구 지급, 21일)이다. 인원은 같은 날 먼저 들어온 판에서 옮겨 와 있다. 공정이 쓰는 물질마다 변동이 따로라 같은 조치가 물질마다 생긴다 (Q-39 도 같다).")
+i39, t39 = q_impact("Q-39", "새 공정이 이미 있던 불산(MAT-01)을 쓰게 된 것의 영향 범위", STEP_H7, "다-세정-02|MAT-01",
+                    "변동 대상은 공정 다-세정-02 와 불산이다. 불산에서 불산을 쓰는 다른 공정 넷, 보관소 셋, 걸린 요건 일곱으로 퍼지고 그 공정의 설비와 인원까지 닿는다. 다-세정-01 은 2026-11-20 에 불산을 쓰지 않게 되어 들지 않는다.")
+a40 = q_actions("Q-40", "새 공정이 불산을 쓰게 되어 생긴 조치 (다른 공정의 인원에게는 걸리지 않는다)", STEP_H7, "다-세정-02|MAT-01",
+                "영향 범위에는 불산을 쓰는 다른 공정의 인원도 있지만, 0011 과 0013 은 근거 경로가 공정에서 시작한 인원에게만 건다 (변동 대상의 유형이 제조 공정일 때). 다른 공정의 인원은 근거 경로가 불산에서 시작해 빠진다. 그래서 Q-38 과 같은 대상에 같은 조치다.")
 open(os.path.join(OUT, "questions", "S-01.yaml"), "w", encoding="utf-8").write("\n".join(y) + "\n")
+print("Q-29", len(a29), "| Q-30", len(a30), "| Q-31", len(a31), "| Q-32", len(a32), "| Q-33", len(a33), "| Q-34", len(a34), "| Q-35", len(a35), "| Q-36", len(a36), "| Q-37", len(i37), t37, "| Q-38", len(a38), "| Q-39", len(i39), t39, "| Q-40", len(a40))
+for s in (STEP_H1, STEP_H2, STEP_H3, STEP_H4, STEP_H5, STEP_H6, STEP_H7): print(s, [(e[0], e[1]) for e in EVENTS[s]])
 
 n_entities = len({e for f in PREV.values() for x in f.values() for e in x[1]})
 print("개체", n_entities, "관계", len(REL), "단계", len(STEPS))

@@ -114,6 +114,41 @@ class E2eSeedData {
 		};
 	}
 
+	/** 화면 시험이 적재할 Pack 의 폴더: 문제없는 것, 경고가 나오는 것, 틀린 것. 모두 시험용 Pack 의 사본이다. */
+	static final String LOADABLE_PACK = "e2e-loadable";
+
+	static final String WARNING_PACK = "e2e-warning";
+
+	static final String BROKEN_PACK = "e2e-broken";
+
+	/**
+	 * 시험용 서버의 Pack 폴더를 임시 폴더에 만든다 (설치 설정 tabnit.packs-dir 로 쓴다). 적재하지는 않는다:
+	 * 화면 시험이 관리자로 골라 적재한다 (web/tests/pack-loading.spec.ts).
+	 */
+	static java.nio.file.Path preparePacksDirectory() {
+		try {
+			java.nio.file.Path directory = java.nio.file.Files.createTempDirectory("tabnit-e2e-packs-dir").toRealPath();
+			PackCopies.copyInto(directory, LOADABLE_PACK, text -> text);
+			// 적재는 되지만 뜻대로 걸리지 않을 수 있는 규칙 하나를 더한다: 경고가 하나 나온다 (D2 AD-323).
+			String more = """
+
+					ex:규칙-0009 a tabnit:Rule ; tabnit:ruleNo "0009" ; rdfs:label "경고가 나오는 규칙" ; tabnit:priority 9 ;
+					    tabnit:appliesTo tabnit:ImpactTarget ; tabnit:targetType ex:의료사업 ;
+					    tabnit:condition [ tabnit:subject tabnit:ChangeTarget ; tabnit:property ex:점검주기일 ;
+					                       tabnit:operator tabnit:LessThanOrEqual ; tabnit:value 30 ] ;
+					    tabnit:actionText "할 일" ; tabnit:dueInDays 1 .
+					""";
+			PackCopies.copyInto(directory, WARNING_PACK, text -> text.contains("a tabnit:Rule") ? text + more : text);
+			// Pack 의 머리에 모르는 항목을 적는다: 검증에서 거부된다.
+			PackCopies.copyInto(directory, BROKEN_PACK,
+					text -> text.replace("tabnit:defaultMaxDepth 3", "tabnit:noSuchThing 3"));
+			return directory;
+		}
+		catch (java.io.IOException e) {
+			throw new java.io.UncheckedIOException("시험용 서버의 Pack 폴더를 만들지 못했습니다", e);
+		}
+	}
+
 	private static EntityRef entity(RelationStore store, String key) {
 		EntityRef ref = new EntityRef(PACK, "T", key);
 		store.saveEntity(ref, RECORDED_AT);

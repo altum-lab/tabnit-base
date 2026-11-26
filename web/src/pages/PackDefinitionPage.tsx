@@ -1,13 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { api, type PackDefinition, type PackSummary } from "../api/client";
 import { CONNECTION_FAILED, messageOf } from "../api/problem";
+import { SessionContext } from "../session";
+import { PackLoader } from "./PackLoader";
 
 // Pack 정의 화면 (카드 B-19, D7 8절 "Pack 의 정의", D2 AD-415). 적재된 Pack 의 정의를 본다.
 // 서버의 listPacks 와 getPackDefinition (docs/api/openapi.yaml) 의 값을 그대로 보여 준다.
 //
 // 이 화면은 계산하지 않고 고치지 않는다.
 // - 항목과 순서는 서버가 준 것이다. 다시 정렬하지 않는다. 수는 서버가 준 목록의 길이를 적은 것이다.
-// - 고치는 단추가 없다. 정의를 고치려면 Pack 의 파일을 고쳐 다시 적재한다.
+// - 정의를 고치는 단추가 없다. 정의를 고치려면 Pack 의 파일을 고쳐 다시 적재한다.
+// - 관리자에게는 서버에 놓인 Pack 을 골라 적재하는 칸이 함께 보인다 (PackLoader, 카드 D-22). 담당자에게는 없다.
 // - 제약은 Pack 의 파일의 글(SHACL) 그대로 보인다. 항목으로 풀지 않는다.
 
 type Packs =
@@ -41,24 +44,35 @@ export function PackDefinitionPage() {
   // 늦게 온 답이 새 답을 덮지 않게 한다.
   const latest = useRef(0);
 
-  useEffect(() => {
-    let current = true;
-    void (async () => {
-      try {
-        const { data, error, response } = await api.GET("/api/v1/packs");
-        if (current) {
-          setPacks(data ? { kind: "loaded", packs: data.packs } : { kind: "failed", message: messageOf(error, response.status) });
-        }
-      } catch {
-        if (current) {
-          setPacks({ kind: "failed", message: CONNECTION_FAILED });
-        }
+  const admin = useContext(SessionContext)?.role === "ADMIN";
+  const mounted = useRef(true);
+
+  async function loadPacks() {
+    try {
+      const { data, error, response } = await api.GET("/api/v1/packs");
+      if (mounted.current) {
+        setPacks(data ? { kind: "loaded", packs: data.packs } : { kind: "failed", message: messageOf(error, response.status) });
       }
-    })();
+    } catch {
+      if (mounted.current) {
+        setPacks({ kind: "failed", message: CONNECTION_FAILED });
+      }
+    }
+  }
+
+  useEffect(() => {
+    mounted.current = true;
+    void loadPacks();
     return () => {
-      current = false;
+      mounted.current = false;
     };
   }, []);
+
+  // 적재가 끝났다: 목록을 다시 받고 (처음 적재한 Pack 이 생긴다) 그 Pack 의 정의를 보인다.
+  async function loaded(loadedPackId: string) {
+    await loadPacks();
+    await choose(loadedPackId);
+  }
 
   async function choose(next: string) {
     const turn = ++latest.current;
@@ -88,6 +102,8 @@ export function PackDefinitionPage() {
         적재된 Pack 이 정한 것을 봅니다: 개체 유형, 속성, 관계 유형과 영향 방향, 입력 자료와 매핑, 규칙, 제약. 여기서는
         고칠 수 없습니다. 고치려면 Pack 의 파일을 고쳐 다시 적재합니다.
       </p>
+
+      {admin && <PackLoader onLoaded={(loadedPackId) => void loaded(loadedPackId)} />}
 
       {packs.kind === "loading" && <p role="status">Pack 의 목록을 불러오는 중입니다…</p>}
       {packs.kind === "failed" && <p role="alert">{packs.message}</p>}

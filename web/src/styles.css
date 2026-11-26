@@ -489,6 +489,7 @@ table.constraint-violations th:nth-child(5) {
 /* 개체를 찾아 고르는 칸 (카드 A-17). 제목의 줄 높이를 온 픽셀로 둔다: 이 칸이 관계 지도의 위에 있어서, 높이에
    소수가 있으면 그 아래의 지도가 반 픽셀에 걸쳐 그려진다. */
 .entity-picker h2,
-.path-finder h2 {
+.path-finder h2,
+.pack-loader h2 {
   line-height: 24px;
 }

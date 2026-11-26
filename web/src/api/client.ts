@@ -61,3 +61,4 @@ export type ConstraintViolationList = components["schemas"]["ConstraintViolation
 export type EntityList = components["schemas"]["EntityList"];
 export type RelationPath = components["schemas"]["RelationPath"];
 export type AuditRecordList = components["schemas"]["AuditRecordList"];
+export type PackDefinition = components["schemas"]["PackDefinition"];

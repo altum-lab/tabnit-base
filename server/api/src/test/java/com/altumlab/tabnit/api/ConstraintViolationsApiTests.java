@@ -128,28 +128,41 @@ class ConstraintViolationsApiTests {
 	}
 
 	@Test
-	void 조회_시점에_값이_하나도_없는_개체도_검사한다() throws Exception {
-		String packId = "cv-before";
+	void 조회_시점에_값도_관계도_없는_개체는_검사하지_않는다() throws Exception {
+		String packId = "cv-empty";
 		Path pack = loadWith(packId, MIN_CYCLE, MIN_CYCLE);
-		int guidelines = (int) Files.readAllLines(pack.resolve("data/guideline-v1.csv")).stream().skip(1)
-			.filter(line -> !line.isBlank()).count();
 
-		// 판의 적용일(2026-01-01)보다 앞선 날짜: 개체는 있고 값은 없다. 제목이 있어야 한다는 제약에 지침마다 걸린다.
+		// 판의 적용일(2026-01-01)보다 앞선 날짜: 개체는 있고 값도 관계도 없다. 아직 들어오지 않은 것이다: 위반으로 알리지 않는다.
 		this.mvc.perform(get("/api/v1/constraint-violations").param("packId", packId).param("asOf", "2025-06-01"))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.checked").value(true))
 			.andExpect(jsonPath("$.valueCount").value(0))
 			.andExpect(jsonPath("$.relationCount").value(0))
-			.andExpect(jsonPath("$.total").value(guidelines))
-			.andExpect(jsonPath("$.violations", hasSize(guidelines)))
-			.andExpect(jsonPath("$.violations[*].constraintKind", everyItem(is("MinCount"))))
-			.andExpect(jsonPath("$.violations[*].value", everyItem(is((Object) null))));
-		// 판의 적용일부터는 제약을 지킨다: 시험용 Pack 의 처음 자료는 제 제약을 어기지 않는다.
-		this.mvc.perform(get("/api/v1/constraint-violations").param("packId", packId).param("asOf", "2026-01-01"))
-			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.checked").value(true))
 			.andExpect(jsonPath("$.total").value(0))
 			.andExpect(jsonPath("$.violations", hasSize(0)));
+		String before = this.mvc.perform(get("/api/v1/constraint-violations").param("packId", packId).param("asOf", "2025-06-01"))
+			.andReturn()
+			.getResponse()
+			.getContentAsString(StandardCharsets.UTF_8);
+		// 개체의 수는 그대로 Pack 의 개체 전부다 (검사한 수가 아니다): 자료가 있는 날짜의 수와 같다.
+		String loaded = this.mvc.perform(get("/api/v1/constraint-violations").param("packId", packId).param("asOf", "2026-01-01"))
+			.andReturn()
+			.getResponse()
+			.getContentAsString(StandardCharsets.UTF_8);
+		assertThat(JsonPath.<Integer>read(before, "$.entityCount")).isPositive()
+			.isEqualTo(JsonPath.<Integer>read(loaded, "$.entityCount"));
+		assertThat(JsonPath.<Integer>read(loaded, "$.valueCount")).isPositive();
+
+		// 둘째 판에서 운영지침 하나의 행이 없어진다. 그 개체의 값은 끝나고 개체는 남는다: "제목이 있어야 한다"에 걸리지 않는다.
+		upload(packId, "guideline", "2026-03-01", pack.resolve("data/guideline-v2.csv")).andExpect(status().isOk());
+		upload(packId, "guideline-program", "2026-03-01", pack.resolve("data/guideline-program-v2.csv"))
+			.andExpect(status().isOk());
+		for (String asOf : new String[] { "2026-01-01", "2026-02-28", "2026-03-01", "2026-06-01" }) {
+			this.mvc.perform(get("/api/v1/constraint-violations").param("packId", packId).param("asOf", asOf))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.checked").value(true))
+				.andExpect(jsonPath("$.total").value(0));
+		}
 	}
 
 	@Test

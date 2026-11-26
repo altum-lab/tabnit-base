@@ -7,7 +7,8 @@ import java.util.Objects;
  * 제약을 걸 자료 ({@link ConstraintChecker}). 부르는 쪽이 한 날짜에 유효한 것을 읽어 넘긴다 (D2 AD-391).
  * 이 모듈은 저장소에서 자료를 읽지 않고, 개체의 식별자를 풀어 읽지 않는다.
  *
- * @param entities 개체. 관계도 값도 없는 개체도 검사한다 (D2 AD-395)
+ * @param entities 개체. 넘겨받은 값이나 관계에 하나라도 나오는 개체만 검사한다: 값도 관계도 없는 개체는 그 날짜에 있는
+ *        것으로 보지 않는다 (D2 AD-397)
  * @param relations 관계. 같은 두 개체의 같은 유형의 관계가 여럿이어도 하나로 본다
  * @param values 속성 값. 글자는 저장된 표기 그대로다 (D6 5절)
  */

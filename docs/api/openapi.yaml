@@ -62,7 +62,8 @@ paths:
       summary: Pack 의 자료가 조회 시점에 Pack 의 제약을 어긴 곳을 돌려준다
       description: >-
         물을 때 조회 시점에 유효한 자료에 제약(Pack 의 constraints.ttl, SHACL)을 걸어 답한다. 위반을 저장하지 않는다.
-        Pack 의 개체는 모두 검사한다 (조회 시점에 유효한 값이나 관계가 하나도 없는 개체도). 위반은 보고만 한다:
+        조회 시점에 유효한 값이나 관계가 하나라도 있는 개체만 검사한다 (값도 관계도 없는 개체는 그 날짜에 없는 것으로
+        본다). 위반은 보고만 한다:
         조치로 이어지지 않는다. 담당자와 관리자가 부를 수 있다
       parameters:
         - name: packId
@@ -1305,7 +1306,7 @@ components:
         entityCount:
           type: integer
           minimum: 0
-          description: 그 Pack 의 개체의 수
+          description: 그 Pack 의 개체의 수. 검사한 수가 아니다 (값도 관계도 없는 개체도 센다)
         relationCount:
           type: integer
           minimum: 0

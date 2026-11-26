@@ -27,8 +27,12 @@ type Props = {
 };
 
 export function ConstraintViolations({ packId, refreshKey }: Props) {
+  // 조회 시점: 칸에 적는 중인 값(draft)과 서버에 물은 값(asOf)을 따로 둔다. 날짜를 글쇠로 적는 동안의 값
+  // (연도를 한 자리씩)마다 묻지 않는다: 물을 때마다 서버가 검사하고 감사 기록을 남긴다. 칸을 떠나거나 Enter 를 누를 때 묻는다.
+  const [draft, setDraft] = useState("");
   const [asOf, setAsOf] = useState("");
   const [offset, setOffset] = useState(0);
+  const [seenRefresh, setSeenRefresh] = useState(refreshKey);
   const [view, setView] = useState<View>({ kind: "loading" });
   const [retry, setRetry] = useState(0);
   const latest = useRef(0);
@@ -53,10 +57,19 @@ export function ConstraintViolations({ packId, refreshKey }: Props) {
     })();
   }, [packId, asOf, offset, refreshKey, retry]);
 
-  // 조회 시점을 바꾸거나 판을 올리면 첫 쪽부터 다시 본다.
-  useEffect(() => {
+  // 판을 올리면 첫 쪽부터 다시 본다. 그리는 중에 맞춘다: 따로 효과로 맞추면 옛 자리로 한 번 더 묻게 된다.
+  if (seenRefresh !== refreshKey) {
+    setSeenRefresh(refreshKey);
     setOffset(0);
-  }, [asOf, refreshKey]);
+  }
+
+  // 조회 시점을 정한다. 첫 쪽부터 다시 본다.
+  function commit(next: string) {
+    if (next !== asOf) {
+      setAsOf(next);
+      setOffset(0);
+    }
+  }
 
   return (
     <section aria-labelledby="constraint-violations-title">
@@ -71,10 +84,22 @@ export function ConstraintViolations({ packId, refreshKey }: Props) {
           id="violations-as-of-input"
           name="violationsAsOf"
           type="date"
-          value={asOf}
-          onChange={(event) => setAsOf(event.target.value)}
+          value={draft}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            // 비우는 것은 바로 묻는다 (지우기 단추로 지운 경우: 칸을 떠나지 않는다).
+            if (event.target.value === "") {
+              commit("");
+            }
+          }}
+          onBlur={() => commit(draft)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              commit(draft);
+            }
+          }}
         />{" "}
-        <small>비우면 서버가 오늘로 정합니다.</small>
+        <small>날짜를 넣고 Enter 를 누르거나 칸을 떠나면 그 날짜로 봅니다. 비우면 서버가 오늘로 정합니다.</small>
       </p>
 
       {view.kind === "loading" && <p role="status">제약의 위반을 불러오는 중입니다…</p>}

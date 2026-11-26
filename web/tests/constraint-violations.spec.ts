@@ -83,6 +83,9 @@ test("제약의 위반을 조회 시점과 함께 서버가 준 그대로 보이
   await shows(now);
   // 조회 시점을 바꾸면 그 날짜의 답이 보인다.
   await section.getByLabel("조회 시점").fill("2025-06-01");
+  // 적는 동안에는 묻지 않는다: 아직 앞의 답이다. Enter 를 누르면 그 날짜로 묻는다.
+  await expect(section.getByTestId("violations-as-of")).toHaveText(now.asOf);
+  await section.getByLabel("조회 시점").press("Enter");
   await shows(before);
   // 조회 시점을 지우면 다시 서버가 정한 날짜다.
   await section.getByLabel("조회 시점").fill("");

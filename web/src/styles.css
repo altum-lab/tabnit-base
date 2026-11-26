@@ -299,6 +299,9 @@ legend {
   color: var(--ink2);
   font-size: 0.86rem;
   font-weight: 600;
+  /* 줄 높이를 온 픽셀로 둔다. 글자 크기에 배수를 곱하면 22.016px 이 되어, 이 묶음의 아래에 있는 관계 지도의
+     그림이 반 픽셀에 걸쳐 그려진다 (카드 D-20 에서 쟀다). */
+  line-height: 22px;
 }
 
 label {

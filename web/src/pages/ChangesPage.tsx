@@ -207,6 +207,9 @@ export function ChangesPage() {
             <input
               id="effective-date"
               type="date"
+              // 서버가 받는 날짜의 범위다 (D7 2절). 범위를 주지 않으면 브라우저가 연도를 여섯 자리까지 받는다.
+              min="0001-01-01"
+              max="9999-12-31"
               value={effectiveDate}
               onChange={(e) => setEffectiveDate(e.target.value)}
               required

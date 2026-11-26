@@ -174,7 +174,16 @@ export function RelationsPage() {
         </p>
         <p>
           <label htmlFor="as-of">조회 시점</label>{" "}
-          <input id="as-of" name="asOf" type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)} />{" "}
+          {/* 범위는 서버가 받는 날짜의 범위다 (D7 2절). 주지 않으면 브라우저가 연도를 여섯 자리까지 받는다. */}
+          <input
+            id="as-of"
+            name="asOf"
+            type="date"
+            min="0001-01-01"
+            max="9999-12-31"
+            value={asOf}
+            onChange={(e) => setAsOf(e.target.value)}
+          />{" "}
           <small>비우면 서버가 오늘로 정합니다.</small>
         </p>
         <p>

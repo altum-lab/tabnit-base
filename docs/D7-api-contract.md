@@ -315,7 +315,7 @@ GET /api/v1/relation-map?entityId={가운데 개체의 id}&asOf={조회 시점}&
 
 - **요청**: `packId` (반드시), `asOf` (조회 시점. 없으면 서버가 오늘로 정하고 답에 담는다), `offset`, `limit` (2절 "나눠 주기").
 - **물을 때 검사한다.** 그 Pack 의 조회 시점에 유효한 자료에 Pack 의 제약(D6 6절)을 걸어 답한다. 위반을 저장하지 않는다: 같은 자료와 같은 제약이면 언제 물어도 같은 답이다. 쪽을 넘길 때마다 다시 검사한다.
-- **개체는 모두 검사한다.** 조회 시점에 유효한 값이나 관계가 하나도 없는 개체도 검사한다 (개체에는 유효기간이 없다). 그래서 자료가 들어오기 전의 날짜로 물으면 "값이 있어야 한다"는 제약에 개체마다 걸린다.
+- **조회 시점에 유효한 값이나 관계가 하나라도 있는 개체만 검사한다.** 값도 관계도 없는 개체(행이 없어져 값이 끝난 개체, 조회 시점보다 뒤의 판이 만든 개체)는 검사하지 않는다. 관계의 한쪽 끝으로만 있는 개체는 검사한다. `entityCount` 는 검사한 수가 아니라 그 Pack 의 개체 전부의 수다. [AD-397]
 - **응답 (200)**: `checked`, `maxRows`, 조회 시점의 수 (`entityCount`, `relationCount`, `valueCount`), `total`, `offset`, `limit`, `violations`.
   - 위반 하나: 심각도 (`severity`: VIOLATION, WARNING, INFO), 어긴 개체 (`entity`, 2절 "개체". 표시 이름은 조회 시점의 값), 어긴 곳 (`pathKind`: ATTRIBUTE, RELATION, EXPRESSION, NONE 과 `pathName`, `pathLabel`), 어긴 값 (`value`, 저장된 글자 그대로) 또는 값이 개체이면 그 개체 (`valueEntity`), 제약의 종류 (`constraintKind`: SHACL 의 제약 구성요소의 이름에서 뒤의 ConstraintComponent 를 뗀 것), 제약의 이름 (`constraintName`: 제약 파일에 적은 이름), 문구 (`message`).
   - **순서**: 심각한 것부터 (위반, 경고, 알림), 그 안에서 개체의 id, 어긴 곳의 종류와 이름, 제약의 종류, 값, 제약의 이름, 문구. 모두 글자 코드 순이다.

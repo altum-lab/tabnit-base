@@ -52,7 +52,7 @@ class ConstraintCheckerTest {
     @Test
     void 값이_없거나_범위를_벗어나거나_꼴이_틀리면_어긴_개체와_속성과_값과_제약의_종류를_알린다() {
         ConstraintData data = data(
-                // B-1 은 제목이 없고 수가 0 이다. B-2 는 수가 숫자가 아니다. B-3 은 값이 하나도 없다: 그래도 검사한다.
+                // B-1 은 제목이 없고 수가 0 이다. B-2 는 수가 숫자가 아니다. B-3 은 값도 관계도 없다: 검사하지 않는다 (D2 AD-397).
                 List.of(entity("B-1", "Base"), entity("B-2", "Base"), entity("B-3", "Base")), List.of(),
                 List.of(value("B-1", "count", "0"), value("B-2", "title", "제목"), value("B-2", "count", "많음")));
 
@@ -64,8 +64,7 @@ class ConstraintCheckerTest {
             .containsExactly(tuple(id("B-1"), ConstraintViolation.PathKind.ATTRIBUTE, "count", "MinInclusive", "0"),
                     tuple(id("B-1"), ConstraintViolation.PathKind.ATTRIBUTE, "title", "MinCount", null),
                     tuple(id("B-2"), ConstraintViolation.PathKind.ATTRIBUTE, "count", "Datatype", "많음"),
-                    tuple(id("B-2"), ConstraintViolation.PathKind.ATTRIBUTE, "count", "MinInclusive", "많음"),
-                    tuple(id("B-3"), ConstraintViolation.PathKind.ATTRIBUTE, "title", "MinCount", null));
+                    tuple(id("B-2"), ConstraintViolation.PathKind.ATTRIBUTE, "count", "MinInclusive", "많음"));
         assertThat(found).allSatisfy(violation -> {
             assertThat(violation.severity()).isEqualTo(ConstraintViolation.Severity.VIOLATION);
             assertThat(violation.constraintName()).isEqualTo("BaseShape");
@@ -86,7 +85,8 @@ class ConstraintCheckerTest {
 
     @Test
     void 하위_유형의_개체에도_상위_유형의_제약이_걸린다() {
-        ConstraintData data = data(List.of(entity("S-1", "Sub")), List.of(), List.of());
+        ConstraintData data = data(List.of(entity("S-1", "Sub")), List.of(),
+                List.of(new ConstraintData.Value(id("S-1", "Sub"), "count", "5")));
 
         assertThat(ConstraintChecker.check(pack(PREFIXES + BASIC), data))
             .extracting(ConstraintViolation::entityId, ConstraintViolation::constraintKind)
@@ -175,7 +175,7 @@ class ConstraintCheckerTest {
                     sh:property [ sh:path ( ex:links ex:otherName ) ; sh:minCount 1 ] ;
                     sh:property [ sh:path [ sh:alternativePath ( ex:title ex:count ) ] ; sh:minCount 1 ] .
                 """;
-        ConstraintData data = data(List.of(entity("B-1", "Base")), List.of(), List.of());
+        ConstraintData data = data(List.of(entity("B-1", "Base")), List.of(), List.of(value("B-1", "otherName", "제약이 보지 않는 값")));
 
         assertThat(ConstraintChecker.check(pack(constraints), data))
             .extracting(ConstraintViolation::pathKind, ConstraintViolation::pathName)
@@ -228,6 +228,32 @@ class ConstraintCheckerTest {
     }
 
     @Test
+    void 값도_관계도_없는_개체는_검사하지_않고_관계의_끝으로만_있는_개체는_검사한다() {
+        String constraints = PREFIXES + BASIC + """
+                ex:OtherShape a sh:NodeShape ; sh:targetClass ex:Other ;
+                    sh:property [ sh:path ex:otherName ; sh:minCount 1 ] ;
+                    # 다른 개체를 보는 제약: 자기를 잇는 것이 하나 이상 있어야 한다. 가려진 개체는 여기에도 걸리지 않는다.
+                    sh:property [ sh:path [ sh:inversePath ex:links ] ; sh:minCount 1 ; sh:class ex:Base ] .
+                """;
+        ConstraintData data = data(
+                // B-gone: 행이 없어져 값이 끝난 개체. O-gone: 아직 들어오지 않은 개체. 둘 다 그 날짜에 유효한 것이 없다.
+                // B-1 은 값이 있고, O-1 은 관계의 도착 끝으로만, B-2 는 관계의 출발 끝으로만 있다.
+                List.of(entity("B-gone", "Base"), entity("O-gone", "Other"), entity("B-1", "Base"), entity("B-2", "Base"),
+                        entity("O-1", "Other")),
+                List.of(link("B-2", "O-1", "links")), List.of(value("B-1", "count", "3")));
+
+        List<ConstraintViolation> found = ConstraintChecker.check(pack(constraints), data);
+
+        assertThat(found).extracting(ConstraintViolation::entityId, ConstraintViolation::pathName,
+                ConstraintViolation::constraintKind)
+            .containsExactly(tuple(id("B-1"), "title", "MinCount"), tuple(id("B-2"), "title", "MinCount"),
+                    tuple(id("O-1"), "otherName", "MinCount"));
+        // 개체가 모두 비어 있으면 위반이 없다.
+        assertThat(ConstraintChecker.check(pack(constraints),
+                data(List.of(entity("B-gone", "Base"), entity("O-gone", "Other")), List.of(), List.of()))).isEmpty();
+    }
+
+    @Test
     void 자료를_넘기는_차례가_달라도_결과와_순서가_같다() {
         List<ConstraintData.Entity> entities = new ArrayList<>();
         List<ConstraintData.Value> values = new ArrayList<>();
@@ -272,7 +298,8 @@ class ConstraintCheckerTest {
                     sh:property [ sh:path [ sh:inversePath ex:links ] ; sh:minCount 1 ] ;
                     sh:or ( [ sh:path ex:otherName ; sh:minCount 1 ] [ sh:path [ sh:inversePath ex:links ] ; sh:minCount 2 ] ) .
                 """;
-        ConstraintData data = data(List.of(entity("O-1", "Other")), List.of(), List.of());
+        // 제약이 보지 않는 값 하나를 둔다: 값도 관계도 없는 개체는 검사하지 않는다.
+        ConstraintData data = data(List.of(entity("O-1", "Other")), List.of(), List.of(value("O-1", "count", "1")));
 
         List<ConstraintViolation> found = ConstraintChecker.check(pack(constraints), data);
 

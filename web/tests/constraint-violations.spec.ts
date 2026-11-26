@@ -5,7 +5,7 @@ import { expect, test } from "./fixtures";
 //
 // 자료는 서버의 시험용 실행이 넣는다 (E2eSeedData): 시험용 Pack 의 사본 e2e-actions. 이 시험은 그 Pack 을 읽기만 한다.
 // 기대값은 같은 API 를 직접 불러 받은 답이다: 화면이 서버의 값을 그대로 보이는지를 본다.
-// 서버가 내기 어려운 답(검사하지 못함, 경고와 알림, 실패)은 지어낸 답으로 본다.
+// 시험용 자료에는 위반이 없다. 위반이 있는 답, 서버가 내기 어려운 답(검사하지 못함, 경고와 알림, 실패)은 지어낸 답으로 본다.
 
 const PACK_ID = "e2e-actions";
 
@@ -45,9 +45,12 @@ test("제약의 위반을 조회 시점과 함께 서버가 준 그대로 보이
   const now = await ask();
   const before = await ask("2025-06-01");
   expect(now.checked).toBe(true);
-  // 자료가 들어오기 전: 개체는 있고 값이 없어, 값이 있어야 한다는 제약에 걸린다 (개체는 모두 검사한다).
-  expect(before.total, "자료가 들어오기 전의 날짜에는 위반이 있어야 이 시험에 뜻이 있다").toBeGreaterThan(1);
-  expect(before.total, "두 날짜의 답이 달라야 조회 시점을 바꾼 것이 보인다").not.toBe(now.total);
+  // 시험용 Pack 의 자료는 제 제약을 어기지 않는다. 행이 없어진 개체와 아직 들어오지 않은 개체는 검사하지 않는다 (B-18):
+  // 둘째 판에서 행이 없어진 운영지침도, 자료가 들어오기 전의 날짜의 개체도 위반이 아니다.
+  expect(now.total).toBe(0);
+  expect(before.total).toBe(0);
+  expect(before.entityCount).toBeGreaterThan(0);
+  expect(before.valueCount).toBe(0);
 
   await page.goto("/changes");
   await page.getByLabel("Pack").selectOption(PACK_ID);

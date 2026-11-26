@@ -28,7 +28,7 @@ import org.apache.jena.sparql.path.Path;
 /**
  * 넘겨받은 자료에 Pack 의 제약(SHACL)을 걸어 위반을 돌려준다 (D6 6절, D2 AD-389 ~ AD-392, AD-395).
  *
- * <p>자료를 RDF 의 그림으로 바꾸어 건다: 개체는 그 유형의 것이고 (상위 유형도 함께 알린다), 속성 값은 온톨로지가 정한
+ * <p>자료를 RDF 의 그림으로 바꾸어 건다: 값이나 관계가 하나라도 있는 개체만 넣는다 (D2 AD-397). 개체는 그 유형의 것이고 (상위 유형도 함께 알린다), 속성 값은 온톨로지가 정한
  * 형식의 값이고, 관계는 출발 개체에서 도착 개체로 가는 문장이다. 저장하지 않고, 저장소를 읽지 않는다. 같은 자료와
  * 같은 제약이면 넘긴 차례와 무관하게 같은 위반이 같은 순서로 나온다. 검사하는 라이브러리의 영어 문구와 이름 없는
  * 정의의 이름은 결과에 넣지 않는다.
@@ -125,8 +125,20 @@ public final class ConstraintChecker {
                         NodeFactory.createURI(prefix + parent)));
             }
         }
+        // 값도 관계도 없는 개체는 그림에 넣지 않는다: 그 날짜에 있는 것으로 보지 않는다 (D2 AD-397). 개체에는
+        // 유효기간이 없어서, 행이 없어져 값이 끝난 개체와 아직 들어오지 않은 개체도 넘겨받는다.
+        TreeSet<String> present = new TreeSet<>(PackOrder.STRINGS);
+        for (ConstraintData.Value value : data.values()) {
+            present.add(value.entityId());
+        }
+        for (ConstraintData.Link link : data.relations()) {
+            present.add(link.sourceId());
+            present.add(link.targetId());
+        }
         for (ConstraintData.Entity entity : data.entities()) {
-            graph.add(Triple.create(nodeById.get(entity.id()), type, NodeFactory.createURI(prefix + entity.entityType())));
+            if (present.contains(entity.id())) {
+                graph.add(Triple.create(nodeById.get(entity.id()), type, NodeFactory.createURI(prefix + entity.entityType())));
+            }
         }
         for (ConstraintData.Value value : data.values()) {
             Node subject = nodeById.get(value.entityId());

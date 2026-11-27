@@ -7,7 +7,7 @@ set -o pipefail
 cd "$(git rev-parse --show-toplevel)"
 [ -f tools/pack-terms.txt ] || { echo "tools/pack-terms.txt 가 없어 검사를 건너뜁니다."; exit 0; }
 mode="${1:---all}"; found=0
-paths="server/common/src/main server/core/src/main server/pack/src/main server/link/src/main server/rules/src/main server/api/src/main verify"
+paths="server/common/src/main server/core/src/main server/pack/src/main server/link/src/main server/rules/src/main server/api/src/main server/verify-core/src/main verify"
 while IFS= read -r w; do
   w="${w%%#*}"; w="$(echo "$w" | xargs)"; [ -n "$w" ] || continue
   if [ "$mode" = "--staged" ]; then

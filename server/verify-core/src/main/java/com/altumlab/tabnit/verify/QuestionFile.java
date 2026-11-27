@@ -58,7 +58,12 @@ record QuestionFile(String fileName, String scenarioId, String title, List<Step>
         try {
             loaded = yaml().load(Files.readString(path, StandardCharsets.UTF_8));
         }
-        catch (IOException | RuntimeException e) {
+        catch (IOException e) {
+            // 파일을 열지 못했다. 예외의 문구에는 파일의 전체 경로가 들어 있다: 밖으로 내보내는 문구에 담지 않는다.
+            throw new QuestionFileException(name + ": 질문 파일을 읽지 못했습니다. 파일이 있는지와 읽기 권한을 확인하세요. ("
+                    + e.getClass().getSimpleName() + ")", e);
+        }
+        catch (RuntimeException e) {
             throw new QuestionFileException(name + ": 질문 파일을 읽지 못했습니다. YAML 형식인지 확인하세요. (" + e.getMessage() + ")", e);
         }
         if (!(loaded instanceof Map<?, ?> root)) {
@@ -120,7 +125,12 @@ record QuestionFile(String fileName, String scenarioId, String title, List<Step>
         try {
             loaded = yaml().load(Files.readString(path, StandardCharsets.UTF_8));
         }
-        catch (IOException | RuntimeException e) {
+        catch (IOException e) {
+            // 예외의 문구에는 파일의 전체 경로가 들어 있다: 밖으로 내보내는 문구에 담지 않는다.
+            throw new QuestionFileException(shownName + ": 대조 파일을 읽지 못했습니다. 파일이 있는지와 읽기 권한을 확인하세요. ("
+                    + e.getClass().getSimpleName() + ")", e);
+        }
+        catch (RuntimeException e) {
             throw new QuestionFileException(shownName + ": 대조 파일을 읽지 못했습니다. YAML 형식인지 확인하세요. (" + e.getMessage() + ")", e);
         }
         if (!(loaded instanceof Map<?, ?> root)) {

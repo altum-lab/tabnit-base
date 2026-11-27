@@ -397,7 +397,7 @@ class AuditApiTests {
 		assertThat(actions).doesNotHaveDuplicates()
 			.containsExactlyInAnyOrder("getRelationsAsOf", "listPacks", "submitEdition", "listActions", "getAction",
 					"decideAction", "getChangeImpactScope", "loadPack", "login", "listUnprocessedChanges",
-					"reprocessChanges", "getRelationMap", "listEditions", "getEdition",
+					"reprocessChanges", "getRelationMap", "listEditions", "getEdition", "searchEntities",
 					"listConstraintViolations");
 	}
 

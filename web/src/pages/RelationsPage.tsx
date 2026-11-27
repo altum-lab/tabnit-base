@@ -4,6 +4,7 @@ import { api, type RelationMap, type RelationsAsOf } from "../api/client";
 import { CONNECTION_FAILED, messageOf } from "../api/problem";
 import { addDays } from "../time";
 import { EntityName } from "./EntityName";
+import { EntityPicker } from "./EntityPicker";
 import { Pager } from "./Pager";
 import { type MapView, RelationMapView } from "./RelationMapView";
 
@@ -132,6 +133,12 @@ export function RelationsPage() {
     void load(asOf ? { entityId, asOf, depth } : { entityId, depth }, true);
   }
 
+  // 찾아서 고른 개체를 조회 단추를 누른 것처럼 연다 (카드 A-17).
+  function pick(pickedId: string) {
+    setEntityId(pickedId);
+    void load(asOf ? { entityId: pickedId, asOf, depth } : { entityId: pickedId, depth }, true);
+  }
+
   function center(nodeId: string) {
     if (!wanted.current) {
       return;
@@ -159,6 +166,8 @@ export function RelationsPage() {
   return (
     <section aria-labelledby="relations-title">
       <h1 id="relations-title">관계 지도</h1>
+
+      <EntityPicker asOf={asOf} onPick={pick} disabled={view.kind === "loading"} />
 
       <form onSubmit={search}>
         <p>

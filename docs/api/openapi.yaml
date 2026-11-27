@@ -103,6 +103,71 @@ paths:
           $ref: '#/components/responses/Problem'
         '500':
           $ref: '#/components/responses/Problem'
+  /api/v1/entities:
+    get:
+      operationId: searchEntities
+      summary: Pack 의 개체를 글자로 찾는다
+      description: >-
+        검색어가 다음 가운데 하나에 맞는 개체를 돌려준다: 키에 검색어가 들어 있다, id 전체가 검색어와 같다,
+        조회 시점에 유효한 속성 값에 검색어가 들어 있다 (표시 이름도 속성 값이다). 영어 글자의 대소문자만 가리지
+        않는다. 검색어의 % 와 _ 는 글자 그대로다. 검색어가 없으면 그 Pack 의 개체 전부다.
+        개체에는 유효기간이 없어서 키와 id 로는 어느 조회 시점에나 찾는다. 담당자와 관리자가 부를 수 있다
+      parameters:
+        - name: packId
+          in: query
+          required: true
+          description: Pack 의 식별자
+          schema:
+            type: string
+            minLength: 1
+        - name: q
+          in: query
+          required: false
+          description: 검색어. 없거나 비어 있으면 그 Pack 의 개체 전부다. 빈칸도 글자로 본다. 200자까지
+          schema:
+            type: string
+            maxLength: 200
+        - name: entityType
+          in: query
+          required: false
+          description: >-
+            걸러 낼 개체 유형의 이름. 여러 번 적을 수 있다 (entityType=A&entityType=B). 상위 유형을 적으면 그 하위
+            유형의 개체도 나온다. 없으면 모든 유형이다. Pack 의 온톨로지에 없는 이름이면 400 이다
+          schema:
+            type: array
+            items:
+              type: string
+              minLength: 1
+          style: form
+          explode: true
+        - name: asOf
+          in: query
+          required: false
+          description: 조회 시점. 없으면 설치 설정의 시간대에서의 오늘. 0001-01-01 부터 9999-12-31 까지의 날짜만 받는다
+          schema:
+            type: string
+            format: date
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: >-
+            찾은 개체를 나눠 돌려준다: offset 만큼 건너뛰고 limit 개까지 준다. total 은 찾은 개체의 전체 수다.
+            순서는 개체의 id 의 글자 코드 순이다. 맞는 것이 없으면 빈 목록이다
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EntityList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/Problem'
   /api/v1/relation-map:
     get:
       operationId: getRelationMap
@@ -1284,6 +1349,34 @@ components:
         target:
           description: 그 관계의 도착 개체. 표시 이름은 판의 적용일의 값이다
           $ref: '#/components/schemas/EntityRef'
+    EntityList:
+      type: object
+      required: [packId, asOf, q, total, offset, limit, entities]
+      properties:
+        packId:
+          type: string
+        asOf:
+          type: string
+          format: date
+          description: 답에 쓴 조회 시점. 속성 값은 이 날짜에 유효한 것으로 찾았고, 표시 이름도 이 날짜의 값이다
+        q:
+          type: string
+          description: 답에 쓴 검색어. 요청에 없었으면 빈 글자다
+        total:
+          type: integer
+          minimum: 0
+          description: 찾은 개체의 전체 수. 나누기 전의 수다
+        offset:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+        entities:
+          type: array
+          description: 찾은 개체 가운데 이 쪽의 것. id 의 글자 코드 순이다
+          items:
+            $ref: '#/components/schemas/EntityRef'
     ConstraintViolationList:
       type: object
       required: [packId, asOf, checked, maxRows, entityCount, relationCount, valueCount, total, offset, limit, violations]

@@ -122,15 +122,5 @@ public final class VerificationQuestions {
                         result.passed(), result.expected(), result.actual(), result.reason()))
                 .toList();
         }
-
-        /** 묻기 전에 막혔을 때: 건너뛰지 않고 모든 질문을 그 까닭의 실패로 낸다. 번호 순이다. */
-        public List<Result> allFailed(String reason) {
-            List<QuestionFile.Question> ordered = new ArrayList<>(this.file.questions());
-            ordered.sort(java.util.Comparator.comparing(QuestionFile.Question::id, Evaluator.CODE_POINT_ORDER));
-            return ordered.stream()
-                .map(question -> new Result(question.id(), question.kind(), Report.kindLabel(question.kind()), "", false,
-                        null, null, reason))
-                .toList();
-        }
     }
 }

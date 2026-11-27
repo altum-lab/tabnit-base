@@ -20,6 +20,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.function.Supplier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -29,6 +31,8 @@ import tools.jackson.databind.ObjectMapper;
  * 저장소의 판이 시나리오의 단계와 꼭 같은지 맞춰 보고, 같은 API 의 답을 서버 안에서 만들어 묻는 길로 내준다.
  */
 class VerificationRuns {
+
+	private static final Logger log = LoggerFactory.getLogger(VerificationRuns.class);
 
 	/** 한 번에 받는 수. 목록의 API 가 받는 가장 큰 값이다 (D7 2절). */
 	private static final int PAGE_SIZE = 200;
@@ -73,6 +77,17 @@ class VerificationRuns {
 	record ScenarioResult(String fileName, String scenarioId, String title, int stepCount, int questionCount, boolean matched,
 			String mismatch, int passedCount, boolean repeatable, List<String> differingQuestionIds,
 			List<VerificationQuestions.Result> results) {
+
+		/** 묻지 않은 시나리오: 통과도 실패도 없다. */
+		static ScenarioResult notAsked(VerificationQuestions.Scenario scenario, String mismatch) {
+			return new ScenarioResult(scenario.fileName(), scenario.scenarioId(), scenario.title(), scenario.steps().size(),
+					scenario.questionCount(), false, mismatch, 0, true, List.of(), List.of());
+		}
+
+		ScenarioResult withMismatch(String text) {
+			return new ScenarioResult(this.fileName, this.scenarioId, this.title, this.stepCount, this.questionCount,
+					this.matched, text, this.passedCount, this.repeatable, this.differingQuestionIds, this.results);
+		}
 	}
 
 	/**
@@ -90,7 +105,8 @@ class VerificationRuns {
 			files = VerificationQuestions.read(folder.get());
 		}
 		catch (IllegalArgumentException e) {
-			// 어느 파일의 어느 항목인지는 verify-core 가 담는다. 서버의 경로는 담기지 않는다 (파일의 이름까지다).
+			// 어느 파일의 어느 항목인지는 verify-core 가 담는다. 파일을 열지 못한 때에도 서버의 경로는 담지 않는다:
+			// 파일의 이름과 오류의 종류까지다 (시험이 본다).
 			return unavailable(packId, "질문 파일을 읽지 못했습니다: " + e.getMessage());
 		}
 		if (files.isEmpty()) {
@@ -99,7 +115,14 @@ class VerificationRuns {
 		List<Edition> stored = storedEditions(packId);
 		List<ScenarioResult> scenarios = new ArrayList<>();
 		for (VerificationQuestions.Loaded file : files) {
-			scenarios.add(scenario(packId, folder.get(), file, stored));
+			ScenarioResult result = scenario(packId, folder.get(), file, stored);
+			// 시나리오는 저마다 빈 저장소에서 시작하는 것이다 (D2 AD-110). 질문 파일이 여럿이면 한 저장소가 그 모두와
+			// 맞을 수 없다: 맞지 않은 시나리오에 그 까닭을 덧붙인다 (D2 AD-423).
+			if (!result.matched() && files.size() > 1) {
+				result = result.withMismatch(result.mismatch() + " 이 Pack 에는 질문 파일이 " + files.size()
+						+ "개 있습니다: 시나리오마다 빈 저장소에서 시작하는 것이라 화면에서는 한 번에 하나만 맞을 수 있습니다.");
+			}
+			scenarios.add(result);
 		}
 		return new Results(packId, true, null, scenarios);
 	}
@@ -113,15 +136,19 @@ class VerificationRuns {
 		Map<Integer, Edition> matched = new LinkedHashMap<>();
 		String mismatch = match(packId, folder, scenario, stored, matched);
 		if (mismatch != null) {
-			return new ScenarioResult(scenario.fileName(), scenario.scenarioId(), scenario.title(), scenario.steps().size(),
-					scenario.questionCount(), false, mismatch, 0, true, List.of(), List.of());
+			return ScenarioResult.notAsked(scenario, mismatch);
 		}
-		// 판을 올렸을 때의 답 대신 저장된 그 판의 답을 준다: 같은 모양이다 (D2 AD-383).
-		Map<Integer, Product.Reply> steps = new LinkedHashMap<>();
-		matched.forEach((step, edition) -> steps.put(step, call(() -> this.editionResults.stored(edition.id()))));
 		Product product = new InProcess();
-		List<VerificationQuestions.Result> first = file.evaluate(packId, product, steps);
-		List<VerificationQuestions.Result> second = file.evaluate(packId, product, steps);
+		// 두 번 묻는다. 저장된 판의 답도 번마다 다시 읽는다: 한 번 읽은 것을 두 번 견주면 변동의 질문은 제 자신과
+		// 견주는 것이 된다.
+		List<VerificationQuestions.Result> first = file.evaluate(packId, product, storedReplies(matched));
+		List<VerificationQuestions.Result> second = file.evaluate(packId, product, storedReplies(matched));
+		// 묻는 사이에 판이 올라왔으면 위의 답은 시나리오와 같은 저장소의 것이 아니다. 통과도 실패도 내지 않는다
+		// (D2 AD-423). 판은 지워지지 않으므로 (D5 5절) 처음 읽은 것과 식별자와 수가 같으면 달라진 것이 없다.
+		if (!sameEditions(stored, storedEditions(packId))) {
+			return ScenarioResult.notAsked(scenario, "묻는 사이에 저장소의 판이 달라졌습니다 (판을 올리는 일이 함께 돌았습니다). "
+					+ "결과를 내지 않습니다. 판을 올리는 일이 끝난 뒤 다시 돌리세요.");
+		}
 		List<String> differing = new ArrayList<>();
 		for (int i = 0; i < first.size(); i++) {
 			if (i >= second.size() || !first.get(i).equals(second.get(i))) {
@@ -131,6 +158,22 @@ class VerificationRuns {
 		int passed = (int) first.stream().filter(VerificationQuestions.Result::passed).count();
 		return new ScenarioResult(scenario.fileName(), scenario.scenarioId(), scenario.title(), scenario.steps().size(),
 				scenario.questionCount(), true, null, passed, differing.isEmpty(), differing, first);
+	}
+
+	/** 판을 올렸을 때의 답 대신 저장된 그 판의 답을 준다: 같은 모양이다 (D2 AD-383). 부를 때마다 새로 읽는다. */
+	private Map<Integer, Product.Reply> storedReplies(Map<Integer, Edition> matched) {
+		Map<Integer, Product.Reply> steps = new LinkedHashMap<>();
+		matched.forEach((step, edition) -> steps.put(step, call(() -> this.editionResults.stored(edition.id()))));
+		return steps;
+	}
+
+	private static boolean sameEditions(List<Edition> before, List<Edition> after) {
+		if (before.size() != after.size()) {
+			return false;
+		}
+		java.util.TreeSet<String> ids = new java.util.TreeSet<>();
+		before.forEach(edition -> ids.add(edition.id()));
+		return after.stream().allMatch(edition -> ids.contains(edition.id()));
 	}
 
 	/**
@@ -144,8 +187,30 @@ class VerificationRuns {
 		Map<String, Edition> byKey = new TreeMap<>();
 		stored.forEach(edition -> byKey.put(edition.inputSourceId() + "|" + edition.editionNo(), edition));
 		Map<String, Integer> seen = new TreeMap<>();
+		// 입력 자료마다, 바로 앞에 올린 파일의 내용.
+		Map<String, byte[]> lastContent = new TreeMap<>();
 		Edition previous = null;
 		for (VerificationQuestions.Step step : scenario.steps()) {
+			Path data = folder.resolve(step.file()).normalize();
+			byte[] expected;
+			try {
+				if (!data.startsWith(folder) || !Files.isRegularFile(data)) {
+					return "시나리오의 " + step.step() + "단계의 파일이 서버의 Pack 폴더에 없습니다: " + step.file();
+				}
+				expected = Files.readAllBytes(data);
+			}
+			catch (IOException e) {
+				return "시나리오의 " + step.step() + "단계의 파일을 읽지 못했습니다: " + step.file();
+			}
+			// 앞 판과 같은 파일을 다시 올리는 단계는 판을 만들지 않는다 ("바뀐 것 없음", D2 AD-164). 명령줄 실행기는 그
+			// 단계까지 올려서 묻지만, 여기서는 저장소의 판을 단계와 하나씩 맞출 수 없다. 틀린 까닭("판이 없다")으로
+			// 답하지 않고 돌릴 수 없는 시나리오라고 알린다 (D2 AD-423).
+			if (Arrays.equals(expected, lastContent.get(step.inputSource()))) {
+				return "시나리오의 " + step.step() + "단계는 판을 만들지 않는 단계입니다 (입력 자료 " + step.inputSource()
+						+ " 에 앞 판과 같은 파일을 다시 올립니다). 이런 시나리오는 화면에서 돌릴 수 없습니다. "
+						+ "명령줄에서 돌리세요 (bash verify/run.sh).";
+			}
+			lastContent.put(step.inputSource(), expected);
 			int editionNo = seen.merge(step.inputSource(), 1, Integer::sum);
 			String where = "시나리오의 " + step.step() + "단계 (입력 자료 " + step.inputSource() + " 의 " + editionNo + "번째 판)";
 			Edition edition = byKey.remove(step.inputSource() + "|" + editionNo);
@@ -155,17 +220,6 @@ class VerificationRuns {
 			if (!edition.effectiveDate().equals(step.effectiveDate())) {
 				return where + "의 적용일이 다릅니다. 시나리오는 " + step.effectiveDate() + ", 저장소는 " + edition.effectiveDate()
 						+ " 입니다.";
-			}
-			Path data = folder.resolve(step.file()).normalize();
-			byte[] expected;
-			try {
-				if (!data.startsWith(folder) || !Files.isRegularFile(data)) {
-					return where + "의 파일이 서버의 Pack 폴더에 없습니다: " + step.file();
-				}
-				expected = Files.readAllBytes(data);
-			}
-			catch (IOException e) {
-				return where + "의 파일을 읽지 못했습니다: " + step.file();
 			}
 			byte[] original = this.editions.originalContent(edition.id()).orElse(null);
 			if (original == null || !Arrays.equals(original, expected)) {
@@ -216,6 +270,15 @@ class VerificationRuns {
 			problem.put("code", "ENTITY_NOT_FOUND");
 			problem.put("detail", e.getMessage());
 			return new Product.Reply(404, problem);
+		}
+		catch (RuntimeException e) {
+			// 그 밖의 것은 서버 쪽의 문제다. HTTP 로 불렀을 때와 같이 원인은 기록에 남기고 답에는 담지 않는다:
+			// 예외의 종류와 문구(SQL 따위)가 질문의 실패 사유로 나가지 않는다.
+			log.error("검증 질문을 묻다가 서버 안에서 오류가 났습니다", e);
+			Map<String, Object> problem = new LinkedHashMap<>();
+			problem.put("code", "INTERNAL_ERROR");
+			problem.put("detail", "서버 안에서 오류가 났습니다. 서버의 기록을 확인하세요.");
+			return new Product.Reply(500, problem);
 		}
 	}
 

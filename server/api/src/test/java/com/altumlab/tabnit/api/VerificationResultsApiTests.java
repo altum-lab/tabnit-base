@@ -210,6 +210,74 @@ class VerificationResultsApiTests {
 	}
 
 	@Test
+	void 판을_만들지_않는_단계가_든_시나리오는_돌릴_수_없다고_분명히_알린다() throws Exception {
+		// 같은 파일을 한 번 더 올리는 단계: 올리면 "바뀐 것 없음"이라 판이 생기지 않는다 (D2 AD-164).
+		// 명령줄 실행기는 그 단계까지 올려서 묻지만, 저장소의 판을 단계와 하나씩 맞추는 화면의 길은 맞출 수 없다.
+		String packId = "vr-noedition";
+		Path pack = prepare(packId);
+		Path questions = pack.resolve("questions/S-01.yaml");
+		String text = Files.readString(questions, StandardCharsets.UTF_8);
+		String last = "    - { step: 10, inputSource: guideline,         file: data/guideline-v3.csv,         effectiveDate: 2026-06-01 }\n";
+		assertThat(text).contains(last);
+		Files.writeString(questions, text.replace(last,
+				last + "    - { step: 11, inputSource: guideline, file: data/guideline-v3.csv, effectiveDate: 2026-07-01 }\n"),
+				StandardCharsets.UTF_8);
+		uploadScenario(packId, pack, 10);
+
+		String body = results(packId);
+
+		assertThat(JsonPath.<Boolean>read(body, "$.scenarios[0].matched")).isFalse();
+		assertThat(JsonPath.<String>read(body, "$.scenarios[0].mismatch")).contains("11단계").contains("판을 만들지 않는")
+			.contains("verify/run.sh");
+		assertThat(JsonPath.<List<Object>>read(body, "$.scenarios[0].results")).isEmpty();
+	}
+
+	@Test
+	void 질문_파일이_여럿이면_맞지_않는_시나리오에_한_번에_하나만_맞을_수_있다고_알린다() throws Exception {
+		String packId = "vr-two";
+		Path pack = prepare(packId);
+		// 둘째 질문 파일: 같은 시나리오에서 마지막 단계를 뺀 것. 두 시나리오가 같은 저장소에서 함께 맞을 수 없다.
+		String text = Files.readString(pack.resolve("questions/S-01.yaml"), StandardCharsets.UTF_8);
+		String last = "    - { step: 10, inputSource: guideline,         file: data/guideline-v3.csv,         effectiveDate: 2026-06-01 }\n";
+		Files.writeString(pack.resolve("questions/S-02.yaml"), text.replace(last, "").replace("id: S-01", "id: S-02"),
+				StandardCharsets.UTF_8);
+		uploadScenario(packId, pack, Integer.MAX_VALUE);
+
+		String body = results(packId);
+
+		assertThat(JsonPath.<List<String>>read(body, "$.scenarios[*].scenarioId")).containsExactly("S-01", "S-02");
+		assertThat(JsonPath.<Boolean>read(body, "$.scenarios[0].matched")).isTrue();
+		assertThat(JsonPath.<Boolean>read(body, "$.scenarios[1].matched")).isFalse();
+		assertThat(JsonPath.<String>read(body, "$.scenarios[1].mismatch")).contains("질문 파일이 2개").contains("한 번에 하나");
+		// 질문 파일이 하나뿐인 Pack 에는 그 말을 붙이지 않는다.
+		String single = "vr-two-single";
+		prepare(single);
+		assertThat(JsonPath.<String>read(results(single), "$.scenarios[0].mismatch")).doesNotContain("질문 파일이");
+	}
+
+	@Test
+	void 질문_파일을_읽지_못해도_서버의_경로를_답에_담지_않는다() throws Exception {
+		String packId = "vr-unreadable";
+		Path pack = prepare(packId);
+		Path questions = pack.resolve("questions/S-01.yaml");
+		java.util.Set<java.nio.file.attribute.PosixFilePermission> before = Files.getPosixFilePermissions(questions);
+		Files.setPosixFilePermissions(questions, java.util.Set.of());
+		try {
+			org.junit.jupiter.api.Assumptions.assumeFalse(Files.isReadable(questions), "읽기를 막을 수 없는 환경이다 (관리자 권한)");
+
+			String body = results(packId);
+
+			assertThat(JsonPath.<Boolean>read(body, "$.available")).isFalse();
+			String reason = JsonPath.read(body, "$.unavailableReason");
+			assertThat(reason).contains("S-01.yaml");
+			assertThat(reason).doesNotContain(PACKS.toString()).doesNotContain(pack.getParent().getFileName().toString());
+		}
+		finally {
+			Files.setPosixFilePermissions(questions, before);
+		}
+	}
+
+	@Test
 	void 돌려도_자료가_바뀌지_않는다() throws Exception {
 		String packId = "vr-readonly";
 		Path pack = prepare(packId);

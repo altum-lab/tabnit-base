@@ -167,6 +167,10 @@ final class LargeMeasure {
                             "/api/v1/relation-map?asOf=" + LargePack.CHANGED_DATE + "&depth=" + depth + "&entityId="
                                     + HttpProduct.encoded(start));
                 }
+                // Pack 의 전체 지도 (A-20): 가운데 개체가 없다. 유효한 관계를 모두 세므로 자료의 크기만큼 걸린다.
+                failed |= get(samples, lines, http, "Pack 의 전체 지도",
+                        "/api/v1/pack-relation-map?asOf=" + LargePack.CHANGED_DATE + "&packId="
+                                + HttpProduct.encoded(expected.packId()));
                 // 깊이 1 의 대상: 들어오는 관계와 나가는 관계가 모두 있다.
                 failed |= get(samples, lines, http, "관계 조회: 가운데 층의 개체 (첫 쪽 " + PAGE + "개)",
                         relations + HttpProduct.encoded(String.valueOf(first.get("entityId"))));

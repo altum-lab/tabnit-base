@@ -61,6 +61,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pack-relation-map": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 가운데 개체 없이 Pack 의 지도를 조회 시점으로 돌려준다
+         * @description 조회 시점에 유효한 관계와 그 관계에 닿은 개체다. 이어진 개체가 한도(maxNodes) 이하이면 개체와 관계를 그대로 주고, 넘으면 유형별 묶음만 준다 (grouped 가 true, nodes 와 edges 는 비어 있다). 유형별 묶음과 수는 언제나 준다: 유형마다의 개체 수를 더한 것이 connectedEntities 와 같다. 관계가 하나도 없는 개체는 지도에 넣지 않고 수만 준다 (isolatedEntities). 담당자와 관리자가 부를 수 있다
+         */
+        get: operations["getPackRelationMap"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/relation-path": {
         parameters: {
             query?: never;
@@ -561,6 +581,46 @@ export interface components {
             to: components["schemas"]["EntityRef"];
             /** @description 건넌 관계. 관계에 적힌 방향(출발, 도착)은 저장된 그대로다. 걸어간 방향(from 에서 to)과 다를 수 있다 */
             relation: components["schemas"]["Relation"];
+        };
+        PackRelationMap: {
+            packId: string;
+            /**
+             * Format: date
+             * @description 답에 쓴 조회 시점
+             */
+            asOf: string;
+            /** @description 개체 하나하나를 담는 한도. 개체 하나의 둘레의 지도와 같은 값이다 */
+            maxNodes: number;
+            /** @description 조회 시점에 유효한 관계에 닿은 개체의 수. typeGroups 의 entityCount 를 더한 것과 같다 */
+            connectedEntities: number;
+            /** @description 그 Pack 의 개체 가운데 조회 시점에 유효한 관계가 하나도 없는 것의 수. 지도에 넣지 않는다 */
+            isolatedEntities: number;
+            /** @description 조회 시점에 유효한 관계의 수. relationGroups 의 relationCount 를 더한 것과 같다 */
+            relations: number;
+            /** @description 이어진 개체가 한도를 넘어 개체 하나하나를 담지 않았는가. true 이면 nodes 와 edges 가 비어 있다 */
+            grouped: boolean;
+            /** @description 유형마다의 이어진 개체의 수. 유형의 이름의 글자 코드 순이다. 개체에 적힌 유형 그대로다 */
+            typeGroups: {
+                entityType: string;
+                /** @description Pack 의 정의의 이름표. 없으면 유형의 이름이다 */
+                entityTypeLabel: string;
+                entityCount: number;
+            }[];
+            /** @description (출발 개체의 유형, 관계 유형, 도착 개체의 유형)마다의 관계의 수. 그 셋의 글자 코드 순이다 */
+            relationGroups: {
+                sourceEntityType: string;
+                relationType: string;
+                targetEntityType: string;
+                relationCount: number;
+            }[];
+            /** @description 이어진 개체. 유형, 식별자의 글자 코드 순이다. grouped 가 true 이면 비어 있다 */
+            nodes: {
+                entityId: string;
+                /** @description 그 개체. 표시 이름은 조회 시점의 값이다 */
+                entity: components["schemas"]["EntityRef"];
+            }[];
+            /** @description 유효한 관계. 관계 유형, 출발 개체, 도착 개체, 관계의 식별자 순이다. grouped 가 true 이면 비어 있다 */
+            edges: components["schemas"]["RelationMapEdge"][];
         };
         RelationMapNode: {
             entityId: string;
@@ -1604,6 +1664,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntityList"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getPackRelationMap: {
+        parameters: {
+            query: {
+                packId: string;
+                /** @description 조회 시점. 없으면 오늘 */
+                asOf?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pack 의 지도 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackRelationMap"];
                 };
             };
             400: components["responses"]["Problem"];

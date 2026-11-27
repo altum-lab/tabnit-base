@@ -48,6 +48,9 @@ class EditionComparisonApiTests {
 			{ "guideline", "guideline-v1.csv", "2026-01-01" }, { "guideline", "guideline-v2.csv", "2026-03-01" },
 			{ "guideline", "guideline-v3.csv", "2026-05-01" } };
 
+	/** 운영지침의 속성이 파일의 어느 칸인가 (시험용 Pack 의 mappings/guideline.ttl). 속성의 이름의 글자 코드 순이다. */
+	private static final Map<String, Integer> COLUMN_OF = new TreeMap<>(Map.of("점검주기일", 2, "지침제목", 1));
+
 	private static final RequestPostProcessor OFFICER = user("ec-officer").roles("OFFICER");
 
 	@Autowired
@@ -127,17 +130,28 @@ class EditionComparisonApiTests {
 		assertThat(JsonPath.<List<String>>read(compared, "$.changes[*].kind")).containsExactlyElementsOf(expectedKinds);
 		assertThat(JsonPath.<String>read(compared, "$.packId")).isEqualTo(packId);
 		assertThat(JsonPath.<String>read(compared, "$.from.inputSourceLabel")).isNotBlank();
-		// 값의 앞뒤: 변경된 행의 바뀐 값마다 앞의 값은 첫째 판의 파일에, 뒤의 값은 셋째 판의 파일에 있다.
+		// 값의 앞뒤: 항목마다 바뀐 속성과 그 앞뒤의 값이, 두 파일의 그 행의 그 칸에서 따로 읽은 것과 꼭 같다.
+		// 속성은 칸으로 맞춘다 (운영지침의 매핑: 지침제목은 둘째 칸, 점검주기일은 셋째 칸). 값이 같은 칸은 나오지 않는다:
+		// 이 자료에는 값이 바뀌었다가 되돌아온 칸이 없다 (있으면 앞뒤가 같은 값으로 나온다, D2 AD-418).
 		for (int i = 0; i < expectedKeys.size(); i++) {
-			if (!expectedKinds.get(i).equals("CHANGED")) {
-				continue;
+			String key = expectedKeys.get(i);
+			String[] firstCells = first.containsKey(key) ? first.get(key).split(",", -1) : null;
+			String[] thirdCells = third.containsKey(key) ? third.get(key).split(",", -1) : null;
+			List<String> expectedValues = new ArrayList<>();
+			for (Map.Entry<String, Integer> column : COLUMN_OF.entrySet()) {
+				String before = firstCells == null ? null : firstCells[column.getValue()];
+				String after = thirdCells == null ? null : thirdCells[column.getValue()];
+				if (!java.util.Objects.equals(before, after)) {
+					expectedValues.add(column.getKey() + "|" + before + "|" + after);
+				}
 			}
-			List<String> befores = JsonPath.read(compared, "$.changes[" + i + "].changedValues[*].before");
-			List<String> afters = JsonPath.read(compared, "$.changes[" + i + "].changedValues[*].after");
-			String firstRow = first.get(expectedKeys.get(i));
-			String thirdRow = third.get(expectedKeys.get(i));
-			assertThat(befores).isNotEmpty().allMatch(firstRow::contains);
-			assertThat(afters).isNotEmpty().allMatch(thirdRow::contains);
+			assertThat(expectedValues).as(key + " 의 따로 읽은 값").isNotEmpty();
+			List<Map<String, Object>> values = JsonPath.read(compared, "$.changes[" + i + "].changedValues");
+			List<String> actualValues = values.stream()
+				.map(value -> value.get("attributeName") + "|" + value.get("before") + "|" + value.get("after"))
+				.toList();
+			// 순서는 속성의 이름의 글자 코드 순이다 (개체가 하나다).
+			assertThat(actualValues).as(key + " 의 바뀐 값 (" + expectedKinds.get(i) + ")").containsExactlyElementsOf(expectedValues);
 		}
 		// 두 번 물어도 같다.
 		assertThat(body("/api/v1/edition-comparison?fromEditionId=" + packId + "|guideline|1&toEditionId=" + packId

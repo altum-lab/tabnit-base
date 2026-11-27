@@ -60,3 +60,4 @@ export type ImpactTarget = components["schemas"]["ImpactTarget"];
 export type ConstraintViolationList = components["schemas"]["ConstraintViolationList"];
 export type EntityList = components["schemas"]["EntityList"];
 export type RelationPath = components["schemas"]["RelationPath"];
+export type AuditRecordList = components["schemas"]["AuditRecordList"];

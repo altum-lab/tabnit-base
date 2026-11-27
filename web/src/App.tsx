@@ -3,6 +3,7 @@ import { Navigate, NavLink, Route, Routes } from "react-router";
 import { api, SESSION_ENDED, type Session } from "./api/client";
 import { CONNECTION_FAILED, messageOf } from "./api/problem";
 import { ActionsPage } from "./pages/ActionsPage";
+import { AuditPage } from "./pages/AuditPage";
 import { ChangesPage } from "./pages/ChangesPage";
 import { Brand } from "./Brand";
 import { ImpactPage } from "./pages/ImpactPage";
@@ -18,11 +19,14 @@ import { RelationsPage } from "./pages/RelationsPage";
 // 로그인하지 않으면 어느 주소에서도 로그인 화면만 보인다 (E-02, D7 9절). 로그인했는지는 서버에 묻는다:
 // 화면은 세션을 들고 있지 않다. 주소는 바꾸지 않으므로 로그인하면 열려던 화면이 나온다.
 
+// adminOnly: 관리자에게만 메뉴에 보인다 (감사 기록, D2 AD-414). 감추는 것은 편의일 뿐이다: 주소로 열면 그 화면이
+// 볼 수 없다고 알리고, 권한은 서버가 확인한다.
 const SCREENS = [
-  { path: "/changes", label: "변동 감지", element: <ChangesPage /> },
-  { path: "/impact", label: "영향 범위", element: <ImpactPage /> },
-  { path: "/actions", label: "조치", element: <ActionsPage /> },
-  { path: "/relations", label: "관계 지도", element: <RelationsPage /> },
+  { path: "/changes", label: "변동 감지", element: <ChangesPage />, adminOnly: false },
+  { path: "/impact", label: "영향 범위", element: <ImpactPage />, adminOnly: false },
+  { path: "/actions", label: "조치", element: <ActionsPage />, adminOnly: false },
+  { path: "/relations", label: "관계 지도", element: <RelationsPage />, adminOnly: false },
+  { path: "/audit", label: "감사 기록", element: <AuditPage />, adminOnly: true },
 ];
 
 const ROLE_LABELS: Record<Session["role"], string> = { ADMIN: "관리자", OFFICER: "담당자" };
@@ -111,7 +115,7 @@ export function App() {
         <Brand />
         <nav aria-label="화면">
           <ul>
-            {SCREENS.map((screen) => (
+            {SCREENS.filter((screen) => !screen.adminOnly || state.session.role === "ADMIN").map((screen) => (
               <li key={screen.path}>
                 <NavLink to={screen.path}>{screen.label}</NavLink>
               </li>

@@ -101,6 +101,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/audit-records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 감사 기록을 걸러 본다 (관리자만)
+         * @description 저장된 줄을 그대로 준다. 처리에 들어간 요청은 두 줄이다 (하기 전의 STARTED, 끝난 뒤의 SUCCESS 나 FAILED. 결과의 줄이 startedId 로 시작의 줄을 가리킨다). 권한이 없어 들어가지 못한 요청은 DENIED 한 줄이다. 순서는 id 의 내림차순이다 (가장 최근에 남긴 것부터). 관리자만 부를 수 있다: 담당자가 부르면 403 이다. 보는 것도 감사 기록에 남는다. 감사 기록을 고치거나 지우는 API 는 없다
+         */
+        get: operations["listAuditRecords"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/session": {
         parameters: {
             query?: never;
@@ -522,6 +542,59 @@ export interface components {
             /** @description 입력 자료의 이름표. Pack 의 매핑에 적은 화면에 보일 이름이다. 적지 않았으면 (또는 그 Pack 이 적재되어 있지 않으면) 입력 자료의 id 와 같다 */
             inputSourceLabel: string;
             editionNo: number;
+        };
+        /**
+         * @description 감사 기록의 결과. STARTED 하기 전에 남긴 줄, SUCCESS 성공, DENIED 거부 (권한 없음, 로그인 실패), FAILED 실패
+         * @enum {string}
+         */
+        AuditOutcome: "STARTED" | "SUCCESS" | "DENIED" | "FAILED";
+        AuditRecordList: {
+            /** @description 답에 쓴 거르는 조건. 요청에 없었으면 null 이다 */
+            actor: string | null;
+            action: string | null;
+            outcome: components["schemas"]["AuditOutcome"] | null;
+            /** Format: date */
+            from: string | null;
+            /** Format: date */
+            to: string | null;
+            /** @description 조건에 맞는 줄의 전체 수. 나누기 전의 수다 */
+            total: number;
+            offset: number;
+            limit: number;
+            /** @description 조건에 맞는 줄 가운데 이 쪽의 것. id 의 내림차순이다 */
+            records: components["schemas"]["AuditRecord"][];
+        };
+        AuditRecord: {
+            /**
+             * Format: int64
+             * @description 일련번호. 남긴 차례대로 커진다
+             */
+            id: number;
+            /**
+             * Format: date-time
+             * @description 언제. 협정 세계시다
+             */
+            occurredAt: string;
+            /** @description 누가. 사용자의 아이디. 모르면 null 이다 (로그인하기 전의 요청, 서버에서 실행한 명령) */
+            actor: string | null;
+            /** @description 무엇을 했는가. 기능의 이름 */
+            action: string;
+            /** @description 무엇에 대해. 요청의 항목 가운데 대상을 가리키는 것들 */
+            target: string | null;
+            /**
+             * Format: date
+             * @description 조회에 쓴 조회 시점. 없는 요청이면 null 이다
+             */
+            asOf: string | null;
+            outcome: components["schemas"]["AuditOutcome"];
+            /** @description 응답의 HTTP 상태. 시작의 줄에는 없다 */
+            httpStatus: number | null;
+            detail: string | null;
+            /**
+             * Format: int64
+             * @description 이 줄이 결과일 때, 하기 전에 남긴 줄의 id
+             */
+            startedId: number | null;
         };
         /** @description 로그인한 사람 */
         Session: {
@@ -1291,6 +1364,45 @@ export interface operations {
             401: components["responses"]["Problem"];
             403: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    listAuditRecords: {
+        parameters: {
+            query?: {
+                /** @description 누가. 아이디가 글자 그대로 같은 줄만. 일부로 찾지 않는다 */
+                actor?: string;
+                /** @description 무엇을. 기능의 이름(규격의 operationId 따위)이 글자 그대로 같은 줄만 */
+                action?: string;
+                /** @description 결과 */
+                outcome?: components["schemas"]["AuditOutcome"];
+                /** @description 언제부터. 설치 설정의 시간대에서 이 날짜의 첫 순간부터다 */
+                from?: string;
+                /** @description 언제까지. 설치 설정의 시간대에서 이 날짜의 끝까지다 (이 날짜를 포함한다). from 보다 앞설 수 없다 */
+                to?: string;
+                /** @description 건너뛸 수. 없으면 0. 전체 수와 같거나 크면 빈 목록이다 */
+                offset?: components["parameters"]["Offset"];
+                /** @description 한 번에 받을 수. 없으면 50. 1 부터 200 까지 */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 조건에 맞는 줄을 나눠 돌려준다. total 은 조건에 맞는 줄의 전체 수다. 맞는 것이 없으면 빈 목록이다 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditRecordList"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
             500: components["responses"]["Problem"];
         };
     };

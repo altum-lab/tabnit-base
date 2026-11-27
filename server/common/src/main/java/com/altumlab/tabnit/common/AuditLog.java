@@ -2,17 +2,24 @@ package com.altumlab.tabnit.common;
 
 import java.sql.Date;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import javax.sql.DataSource;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.TransactionException;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * 감사 기록 (D5 7절 audit_log): 누가, 언제, 무엇을 조회하거나 바꿨는지와 그 결과를 한 곳에 남긴다.
@@ -39,8 +46,14 @@ public class AuditLog {
 
     private final JdbcTemplate jdbc;
 
+    /** 나눠 읽을 때 전체 수와 그 쪽을 한 시점의 것으로 읽는다. 줄을 남기는 일({@link #record})은 이 안에서 하지 않는다. */
+    private final TransactionTemplate snapshot;
+
     public AuditLog(DataSource dataSource) {
         this.jdbc = new JdbcTemplate(Objects.requireNonNull(dataSource, "데이터 원본은 반드시 있어야 합니다"));
+        this.snapshot = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
+        this.snapshot.setReadOnly(true);
+        this.snapshot.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
     }
 
     /**
@@ -120,21 +133,89 @@ public class AuditLog {
                     from audit_log
                     where id > ?
                     order by id
-                    """, (rs, row) -> {
-                Date asOf = rs.getDate("as_of");
-                int status = rs.getInt("http_status");
-                Integer httpStatus = rs.wasNull() ? null : status;
-                long started = rs.getLong("started_id");
-                Long startedId = rs.wasNull() ? null : started;
-                return new AuditRecord(rs.getLong("id"), rs.getObject("occurred_at", OffsetDateTime.class).toInstant(),
-                        rs.getString("actor"), rs.getString("action"), rs.getString("target"),
-                        asOf == null ? null : asOf.toLocalDate(), AuditOutcome.valueOf(rs.getString("outcome")), httpStatus,
-                        rs.getString("detail"), startedId);
-            }, id);
+                    """, AuditLog::toRecord, id);
         }
         catch (DataAccessException e) {
             throw new AuditLogException("감사 기록을 읽지 못했습니다. 저장소의 상태를 확인하세요.", e);
         }
+    }
+
+    /**
+     * 조건에 맞는 줄을 나눠 읽는다 (카드 E-22, D2 AD-414). 읽기만 한다: 줄을 더하지 않는다.
+     *
+     * <p>순서는 일련번호의 내림차순이다 (가장 최근에 남긴 것부터). 일련번호는 유일하므로 동률이 없다.
+     * 전체 수와 그 쪽을 한 시점의 것으로 읽는다 (읽기 전용, REPEATABLE READ). 부르는 쪽이 이미 트랜잭션 안이면 그
+     * 트랜잭션에 들어 그 격리 수준을 따른다.
+     *
+     * @param filter 거르는 조건. 거르지 않으려면 {@link AuditFilter#NONE}
+     * @param offset 건너뛸 수. 0 이상. 전체 수와 같거나 크면 빈 목록이다
+     * @param limit 한 번에 받을 수. 1 이상. 위쪽 한도는 부르는 쪽이 정한다
+     * @return 그 쪽의 줄과, 나누기 전의 전체 수
+     * @throws AuditLogException 읽지 못했을 때
+     * @throws IllegalArgumentException 나누는 값이 틀렸을 때
+     */
+    public AuditPage page(AuditFilter filter, int offset, int limit) {
+        Objects.requireNonNull(filter, "거르는 조건은 반드시 있어야 합니다. 거르지 않으려면 AuditFilter.NONE 을 넘깁니다");
+        if (offset < 0) {
+            throw new IllegalArgumentException("건너뛸 수는 0 이상이어야 합니다. 받은 값: " + offset + ".");
+        }
+        if (limit < 1) {
+            throw new IllegalArgumentException("한 번에 받을 수는 1 이상이어야 합니다. 받은 값: " + limit + ".");
+        }
+        // 준 조건만 붙인다. 붙이는 차례는 정해져 있다.
+        StringBuilder where = new StringBuilder();
+        List<Object> arguments = new ArrayList<>();
+        if (filter.actor() != null) {
+            where.append(" and actor = ?");
+            arguments.add(filter.actor());
+        }
+        if (filter.action() != null) {
+            where.append(" and action = ?");
+            arguments.add(filter.action());
+        }
+        if (filter.outcome() != null) {
+            where.append(" and outcome = ?");
+            arguments.add(filter.outcome().name());
+        }
+        if (filter.from() != null) {
+            where.append(" and occurred_at >= ?");
+            arguments.add(OffsetDateTime.ofInstant(filter.from(), ZoneOffset.UTC));
+        }
+        if (filter.to() != null) {
+            where.append(" and occurred_at < ?");
+            arguments.add(OffsetDateTime.ofInstant(filter.to(), ZoneOffset.UTC));
+        }
+        String count = "select count(*) from audit_log where true" + where;
+        String page = """
+                select id, occurred_at, actor, action, target, as_of, outcome, http_status, detail, started_id
+                from audit_log
+                where true""" + where + "\norder by id desc\nlimit ? offset ?";
+        List<Object> pageArguments = new ArrayList<>(arguments);
+        pageArguments.add(limit);
+        pageArguments.add(offset);
+        try {
+            // 전체 수와 그 쪽은 한 시점의 것으로 읽는다. 따로 읽으면 그 사이에 줄이 늘어 수와 목록이 어긋날 수 있다.
+            return snapshot.execute(status -> {
+                Integer total = jdbc.queryForObject(count, Integer.class, arguments.toArray());
+                List<AuditRecord> records = jdbc.query(page, AuditLog::toRecord, pageArguments.toArray());
+                return new AuditPage(records, total == null ? 0 : total);
+            });
+        }
+        catch (DataAccessException | TransactionException e) {
+            throw new AuditLogException("감사 기록을 읽지 못했습니다. 저장소의 상태를 확인하세요.", e);
+        }
+    }
+
+    private static AuditRecord toRecord(ResultSet rs, int rowNum) throws SQLException {
+        Date asOf = rs.getDate("as_of");
+        int status = rs.getInt("http_status");
+        Integer httpStatus = rs.wasNull() ? null : status;
+        long started = rs.getLong("started_id");
+        Long startedId = rs.wasNull() ? null : started;
+        return new AuditRecord(rs.getLong("id"), rs.getObject("occurred_at", OffsetDateTime.class).toInstant(),
+                rs.getString("actor"), rs.getString("action"), rs.getString("target"),
+                asOf == null ? null : asOf.toLocalDate(), AuditOutcome.valueOf(rs.getString("outcome")), httpStatus,
+                rs.getString("detail"), startedId);
     }
 
     /**

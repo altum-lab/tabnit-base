@@ -50,6 +50,8 @@ class E2eSeedData {
 			{ "guideline", "guideline-v1.csv", "2026-01-01" }, { "guideline", "guideline-v2.csv", "2026-03-01" },
 			{ "guideline", "guideline-v3.csv", "2026-05-01" } };
 
+	private static final String WIDE_PACK = "e2e-wide";
+
 	private static final Provenance SRC_1 = new Provenance("src", 1);
 
 	@Bean
@@ -108,6 +110,17 @@ class E2eSeedData {
 				processing.submit(COMPARE_PACK, edition[0], edition[1],
 						java.nio.file.Files.readAllBytes(comparePack.resolve("data/" + edition[1])),
 						java.time.LocalDate.parse(edition[2]));
+			}
+			// 전체 지도가 유형별로 묶이는 것을 보는 Pack (A-20, web/tests/pack-map.spec.ts): 시험용 Pack 의 사본에
+			// 이어진 개체가 지도의 한도(200개)를 넘도록 지어낸 개체와 관계를 넣는다 (유형은 그 Pack 의 정의에 있는 것이다). 화면 시험은 읽기만 한다.
+			PackCopies.load(dataSource, java.nio.file.Files.createTempDirectory("tabnit-e2e-pack"), WIDE_PACK, text -> text);
+			EntityRef wideHub = new EntityRef(WIDE_PACK, "전담팀", "made-hub");
+			store.saveEntity(wideHub, RECORDED_AT);
+			for (int i = 0; i < 230; i++) {
+				EntityRef leaf = new EntityRef(WIDE_PACK, "민간기관", String.format("made-leaf-%03d", i));
+				store.saveEntity(leaf, RECORDED_AT);
+				store.saveRelation(new NewRelation(wideHub, leaf, "made-of",
+						new ValidityPeriod(java.time.LocalDate.parse("2020-01-01"), null), SRC_1), RECORDED_AT);
 			}
 			// 시연 리허설(D-10, web/tests/rehearsal.spec.ts)이 화면으로 판을 올릴 두 예시 Pack. 정의만 적재한다:
 			// 판은 그 시험이 시나리오의 차례대로 화면에서 올린다.

@@ -196,6 +196,12 @@ class ApiConfiguration implements WebMvcConfigurer {
 		return new com.altumlab.tabnit.link.ChangeEvents(dataSource);
 	}
 
+	/** Pack 의 전체 지도용 조회 (카드 A-20, D2 AD-419). */
+	@Bean
+	com.altumlab.tabnit.core.PackRelationMapQuery packRelationMapQuery(DataSource dataSource) {
+		return new com.altumlab.tabnit.core.PackRelationMapQuery(dataSource);
+	}
+
 	/** 두 개체 사이의 가장 짧은 경로를 찾는 조회 (카드 A-18, D2 AD-413). */
 	@Bean
 	com.altumlab.tabnit.core.RelationPathQuery relationPathQuery(DataSource dataSource) {

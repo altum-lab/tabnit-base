@@ -30,9 +30,13 @@ type Props = {
   // 고른 개체를 다른 곳에 넣는 단추들 (경로 찾기의 출발과 도착, 카드 A-18). 없으면 "고르기" 하나다.
   extras?: { label: string; onPick: (entityId: string) => void }[];
   disabled?: boolean;
+  // 유형으로 거르기 (카드 A-20: 전체 지도의 유형 묶음을 누르면 온다). 주어지면 그 Pack 의 그 유형의 개체를 찾아 보인다.
+  // 서버는 그 유형과 그 하위 유형의 개체를 준다 (D7 4절 "개체 찾기").
+  typeFilter?: { packId: string; entityType: string; label: string } | null;
+  onClearTypeFilter?: () => void;
 };
 
-export function EntityPicker({ asOf, onPick, extras = [], disabled = false }: Props) {
+export function EntityPicker({ asOf, onPick, extras = [], disabled = false, typeFilter = null, onClearTypeFilter }: Props) {
   const [packs, setPacks] = useState<Packs>({ kind: "loading" });
   const [packId, setPackId] = useState("");
   const [text, setText] = useState("");
@@ -63,11 +67,29 @@ export function EntityPicker({ asOf, onPick, extras = [], disabled = false }: Pr
     void loadPacks();
   }, []);
 
-  async function search(offset: number) {
+  // 유형으로 거르라는 것이 오면 그 Pack 의 그 유형의 개체를 바로 찾는다. 검색어는 비운다.
+  useEffect(() => {
+    if (typeFilter) {
+      setPackId(typeFilter.packId);
+      setText("");
+      void search(0, { packId: typeFilter.packId, text: "" });
+    }
+    // 거르는 것이 바뀔 때만 다시 찾는다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typeFilter]);
+
+  async function search(offset: number, given?: { packId: string; text: string }) {
     const turn = ++latest.current;
     setFound({ kind: "loading" });
     try {
-      const query = { packId, q: text, offset, ...(asOf ? { asOf } : {}) };
+      const query = {
+        packId: given?.packId ?? packId,
+        q: given?.text ?? text,
+        offset,
+        ...(asOf ? { asOf } : {}),
+        // 거르는 유형은 그 Pack 을 볼 때만 보낸다.
+        ...(typeFilter && typeFilter.packId === (given?.packId ?? packId) ? { entityType: [typeFilter.entityType] } : {}),
+      };
       const { data, error, response } = await api.GET("/api/v1/entities", { params: { query } });
       if (turn !== latest.current) {
         return;
@@ -136,6 +158,15 @@ export function EntityPicker({ asOf, onPick, extras = [], disabled = false }: Pr
             <small>검색어를 비우면 그 Pack 의 개체를 모두 봅니다.</small>
           </p>
         </form>
+      )}
+
+      {typeFilter && (
+        <p data-testid="picker-type-filter">
+          유형 <strong>{typeFilter.label}</strong> (<code>{typeFilter.entityType}</code>) 의 개체만 찾습니다.{" "}
+          <button type="button" onClick={onClearTypeFilter}>
+            유형 거르기 풀기
+          </button>
+        </p>
       )}
 
       {found.kind === "loading" && <p role="status">개체를 찾는 중입니다…</p>}

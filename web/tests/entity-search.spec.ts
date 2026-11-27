@@ -32,8 +32,8 @@ test("검색어를 넣으면 후보가 서버가 준 순서와 수 그대로 나
   expect(answer.total).toBeGreaterThan(1);
   expect(shown.length).toBe(answer.total);
   await expect(picker.getByTestId("pager-position")).toContainText(`전체 ${shown.length}건`);
-  // id 의 글자 코드 순 그대로다. 화면이 다시 정렬하지 않는다.
-  expect(shown).toEqual([...shown].sort());
+  // 서버가 준 후보와 차례 그대로다. 화면이 다시 정렬하지 않는다 (화면의 목록을 정렬해 견주면 그것을 가리지 못한다).
+  expect(shown).toEqual((answer.entities as { entityId: string }[]).map((entity) => entity.entityId));
   // 후보는 표시 이름, 유형의 이름표, 키로 보인다.
   await expect(table.locator("tbody tr").first().getByTestId("entity-name")).not.toBeEmpty();
   await expect(picker.getByTestId("searched-as-of")).toHaveText(/^\d{4}-\d{2}-\d{2}$/);
@@ -80,4 +80,49 @@ test("찾지 못했을 때는 까닭을 알리고 다시 찾을 수 있다", asy
   await expect(picker.getByRole("alert")).toBeVisible();
   await picker.getByRole("button", { name: "찾기" }).click();
   await expect(picker.getByRole("table", { name: "찾은 개체" })).toBeVisible();
+});
+
+// ── /code-review 가 짚은 것 (A-17 의 후속 수정) ─────────────────────────────
+
+// 후보가 한 쪽(50건)을 넘는 Pack: 이어진 개체가 많은 e2e-wide.
+const WIDE = "e2e-wide";
+
+test("다음 쪽으로 넘기면 칸에 적어 둔 값이 아니라 목록을 만든 조건으로 이어 받는다", async ({ page, request }) => {
+  const answer = (await (await request.get("/api/v1/entities", { params: { packId: WIDE, asOf: "2026-03-01" } })).json()) as {
+    total: number;
+    entities: { entityId: string }[];
+  };
+  const second = (await (
+    await request.get("/api/v1/entities", { params: { packId: WIDE, asOf: "2026-03-01", offset: 50 } })
+  ).json()) as { entities: { entityId: string }[] };
+  expect(answer.total).toBeGreaterThan(50);
+
+  await page.goto("/relations");
+  await page.getByLabel("조회 시점").fill("2026-03-01");
+  const picker = page.getByRole("region", { name: "개체 찾기" });
+  await picker.getByLabel("Pack", { exact: true }).selectOption(WIDE);
+  await picker.getByRole("button", { name: "찾기" }).click();
+  await expect(picker.getByTestId("pager-position")).toContainText(`전체 ${answer.total}건`);
+
+  // 검색어 칸에 적기만 하고 찾기를 누르지 않는다. 그 값으로 둘째 쪽을 묻지 않는다.
+  await picker.getByLabel("검색어").fill("이런-개체는-없다");
+  await picker.getByTestId("pager").getByRole("button").last().click();
+
+  const rows = picker.getByRole("table", { name: "찾은 개체" }).locator("tbody tr");
+  await expect(rows.first()).toHaveAttribute("data-entity-id", second.entities[0]!.entityId);
+  await expect(picker.getByTestId("pager-position")).toContainText(`전체 ${answer.total}건`);
+});
+
+test("조회 시점을 바꾸면 찾아 둔 후보를 그 날짜로 다시 받는다", async ({ page }) => {
+  await page.goto("/relations");
+  await page.getByLabel("조회 시점").fill("2026-03-01");
+  const picker = page.getByRole("region", { name: "개체 찾기" });
+  await picker.getByLabel("Pack", { exact: true }).selectOption(WIDE);
+  await picker.getByRole("button", { name: "찾기" }).click();
+  await expect(picker.getByTestId("searched-as-of")).toHaveText("2026-03-01");
+
+  // 찾기를 다시 누르지 않는다.
+  await page.getByLabel("조회 시점").fill("2026-06-01");
+
+  await expect(picker.getByTestId("searched-as-of")).toHaveText("2026-06-01");
 });

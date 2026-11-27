@@ -164,17 +164,19 @@ class EntitySearchApiTests {
 	@Test
 	void 제조_안전_Pack_에서도_유형과_속성_값으로_거른_것이_정답_집합과_같다() throws Exception {
 		// 처음 보는 Pack 에서 한 번 더 본다. 설비의 파일 하나를 올린다 (소속 공정은 참조로 만들어진다).
-		Path pack = Path.of("../../packs/manufacturing-safety");
+		// 다른 식별자의 사본으로 적재한다: 같은 저장소를 쓰는 다른 시험이 이 Pack 을 건드려도 섞이지 않는다.
+		String packId = "es-manufacturing";
+		Path pack = copyExample("manufacturing-safety", packId);
 		new PackLoader(this.dataSource).load(pack, Instant.parse("2026-07-01T00:00:00Z"));
 		Path file = pack.resolve("data/equipment-v1.csv");
-		upload("manufacturing-safety", "equipment", "2026-01-01", file).andExpect(status().isOk());
+		upload(packId, "equipment", "2026-01-01", file).andExpect(status().isOk());
 		List<String[]> rows = rows(file);
 		// 검색어는 자료에서 고른다: 첫 행의 둘째 칸(설비의 종류)의 값.
 		String q = rows.get(0)[1];
 		TreeSet<String> expected = new TreeSet<>();
 		for (String[] cells : rows) {
 			if (cells[0].contains(q) || cells[1].contains(q) || cells[2].contains(q)) {
-				expected.add("manufacturing-safety|공정설비|" + cells[0]);
+				expected.add(packId + "|공정설비|" + cells[0]);
 			}
 		}
 		assertThat(expected).as("맞는 것과 맞지 않는 것이 함께 있어야 이 시험에 뜻이 있다").isNotEmpty()
@@ -183,7 +185,7 @@ class EntitySearchApiTests {
 		// 나눠 받아 잇는다.
 		List<String> found = new ArrayList<>();
 		for (int offset = 0; offset < expected.size(); offset += 200) {
-			String body = search("manufacturing-safety").param("q", q).param("entityType", "공정설비")
+			String body = search(packId).param("q", q).param("entityType", "공정설비")
 				.param("asOf", "2026-01-01").param("offset", String.valueOf(offset)).param("limit", "200")
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.total", is(expected.size())))
@@ -282,6 +284,47 @@ class EntitySearchApiTests {
 		assertThat(rows).extracting(AuditRecord::actor).containsOnly("es-officer");
 		assertThat(rows.get(1).target()).contains(packId).contains("방문");
 		assertThat(rows.get(1).outcome()).isEqualTo(AuditOutcome.SUCCESS);
+	}
+
+	@Test
+	void 거부된_검색도_감사_기록에_조회_시점이_남는다() throws Exception {
+		String packId = "es-audit-rejected";
+		load(packId);
+
+		// 없는 Pack (404) 과 없는 유형 (400): 날짜는 이미 읽었다. 거부의 줄에도 그 날짜가 있어야 한다.
+		long mark = this.audit.lastId();
+		search("es-no-such-pack").param("asOf", "2026-03-01").andExpect(status().isNotFound());
+		search(packId).param("entityType", "없는유형").param("asOf", "2026-04-01").andExpect(status().isBadRequest());
+
+		List<AuditRecord> rows = this.audit.after(mark);
+		assertThat(rows).hasSize(4);
+		assertThat(rows.get(1).outcome()).isNotEqualTo(AuditOutcome.SUCCESS);
+		assertThat(rows.get(1).asOf()).isEqualTo(java.time.LocalDate.parse("2026-03-01"));
+		assertThat(rows.get(3).outcome()).isNotEqualTo(AuditOutcome.SUCCESS);
+		assertThat(rows.get(3).asOf()).isEqualTo(java.time.LocalDate.parse("2026-04-01"));
+	}
+
+	/** 저장소의 예시 Pack 을 다른 식별자의 사본으로 만든다. 폴더의 이름이 Pack 의 식별자와 같아야 한다. */
+	private Path copyExample(String source, String packId) throws java.io.IOException {
+		Path from = Path.of("../../packs", source);
+		Path copy = this.temp.resolve(String.valueOf(System.nanoTime())).resolve(packId);
+		try (java.util.stream.Stream<Path> files = java.nio.file.Files.walk(from)) {
+			for (Path file : files.toList()) {
+				Path target = copy.resolve(from.relativize(file).toString());
+				if (java.nio.file.Files.isDirectory(file)) {
+					java.nio.file.Files.createDirectories(target);
+				}
+				else if (file.toString().endsWith(".ttl")) {
+					java.nio.file.Files.writeString(target,
+							java.nio.file.Files.readString(file, StandardCharsets.UTF_8).replace(source, packId),
+							StandardCharsets.UTF_8);
+				}
+				else {
+					java.nio.file.Files.copy(file, target);
+				}
+			}
+		}
+		return copy;
 	}
 
 	private MockHttpServletRequestBuilderHolder search(String packId) {

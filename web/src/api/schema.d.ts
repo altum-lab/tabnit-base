@@ -229,6 +229,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/verification-results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 적재된 Pack 의 검증 질문을 지금의 저장소에 물어 질문마다의 통과와 실패를 돌려준다
+         * @description 읽기만 한다: 자료를 바꾸지 않고 결과를 저장하지 않는다. 질문은 서버의 Pack 폴더의 그 Pack 의 questions/ 에서 읽는다 (전수 대조는 돌리지 않는다). 시나리오마다, 저장소의 그 Pack 의 판이 시나리오의 단계와 꼭 같을 때만 묻는다 (입력 자료, 판 번호, 적용일, 파일의 내용, 받은 차례). 다르면 그 시나리오는 통과와 실패를 내지 않고 matched 가 false 이며 어느 단계가 다른지를 mismatch 에 적는다. 견주는 코드는 명령줄 실행기와 같다. 두 번 물어 답이 같은지도 함께 준다. 관리자만 부를 수 있다
+         */
+        get: operations["getVerificationResults"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pack-folders": {
         parameters: {
             query?: never;
@@ -800,6 +820,50 @@ export interface components {
             loginId: string;
             /** @description 비밀번호. 서버는 이 값을 저장하거나 기록에 남기지 않는다 */
             password: string;
+        };
+        VerificationResults: {
+            packId: string;
+            /** @description 질문을 읽을 수 있었는가. 서버에 Pack 폴더가 정해져 있지 않거나, 그 Pack 의 폴더나 질문 파일이 없거나, 질문 파일을 읽지 못하면 false 이고 scenarios 는 비어 있다 */
+            available: boolean;
+            /** @description available 이 false 인 까닭과 무엇을 하면 되는지. true 이면 null */
+            unavailableReason: string | null;
+            /** @description 질문 파일마다 하나. 파일 이름의 글자 코드 순이다 */
+            scenarios: components["schemas"]["VerificationScenario"][];
+        };
+        VerificationScenario: {
+            fileName: string;
+            scenarioId: string;
+            title: string;
+            /** @description 시나리오의 단계의 수 */
+            stepCount: number;
+            questionCount: number;
+            /** @description 저장소의 그 Pack 의 판이 시나리오의 단계와 꼭 같은가. false 이면 묻지 않았고 results 는 비어 있다 */
+            matched: boolean;
+            /** @description matched 가 false 인 까닭 (어느 단계가 어떻게 다른가). true 이면 null */
+            mismatch: string | null;
+            /** @description 통과한 질문의 수. matched 가 false 이면 0 */
+            passedCount: number;
+            /** @description 두 번 물은 결과가 같은가. matched 가 false 이면 true */
+            repeatable: boolean;
+            /** @description 두 번 물은 결과가 달랐던 질문의 번호. 번호 순 */
+            differingQuestionIds: string[];
+            /** @description 질문마다의 결과. 번호의 글자 코드 순이다 */
+            results: components["schemas"]["VerificationQuestionResult"][];
+        };
+        VerificationQuestionResult: {
+            id: string;
+            kind: string;
+            /** @description 종류를 사람이 읽는 말로 (시점 조회, 변동, 영향 범위, 조치, 관계 지도, 속성 값) */
+            kindLabel: string;
+            /** @description 어느 날짜나 단계를 물었는가. 골든셋의 번호를 적은 질문이면 함께 있다 */
+            label: string;
+            passed: boolean;
+            /** @description 기대한 값을 글자로 적은 것. 견주지 못했으면 null */
+            expected: string | null;
+            /** @description 제품의 답을 글자로 적은 것. 견주지 못했으면 null */
+            actual: string | null;
+            /** @description 견주지 못한 까닭. 견줬으면 null */
+            reason: string | null;
         };
         PackFolderList: {
             /** @description 서버에 Pack 폴더(설치 설정 tabnit.packs-dir)가 정해져 있고 그 폴더가 있는가 */
@@ -1994,6 +2058,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PackDefinition"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getVerificationResults: {
+        parameters: {
+            query: {
+                packId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 시나리오마다의 결과 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerificationResults"];
                 };
             };
             400: components["responses"]["Problem"];

@@ -196,6 +196,14 @@ class ApiConfiguration implements WebMvcConfigurer {
 		return new com.altumlab.tabnit.link.ChangeEvents(dataSource);
 	}
 
+	/** 검증 질문을 지금의 저장소에 묻는다 (카드 E-23, D2 AD-422). */
+	@Bean
+	VerificationRuns verificationRuns(PackLoading packs, EditionRecords editions, RelationsController relations,
+			RelationMapController relationMaps, AttributeValuesController attributeValues, ActionsController actions,
+			EditionsController editionResults, tools.jackson.databind.ObjectMapper json) {
+		return new VerificationRuns(packs, editions, relations, relationMaps, attributeValues, actions, editionResults, json);
+	}
+
 	/** 속성 값을 조회 시점으로 읽는 조회 (A-13). 속성 값의 시점 조회 API 가 쓴다 (카드 A-19, D2 AD-420). */
 	@Bean
 	com.altumlab.tabnit.core.AttributeValueQuery attributeValueQuery(DataSource dataSource) {

@@ -74,6 +74,35 @@ class AuditTrail {
 		}
 	}
 
+	/**
+	 * 일을 하는 동안 다른 조회가 알린 대상, 세부, 기준 날짜를 이 요청의 감사 기록에 남기지 않는다: 일이 끝나면 앞의 값으로
+	 * 되돌린다. 한 요청이 서버 안에서 다른 조회를 여러 번 부를 때 쓴다 (검증 질문을 화면에서 돌리기, D2 AD-422).
+	 */
+	static <T> T keeping(java.util.function.Supplier<T> work) {
+		RequestAttributes request = RequestContextHolder.getRequestAttributes();
+		if (request == null) {
+			return work.get();
+		}
+		String[] names = { TARGET, DETAIL, AS_OF };
+		Object[] before = new Object[names.length];
+		for (int i = 0; i < names.length; i++) {
+			before[i] = request.getAttribute(names[i], RequestAttributes.SCOPE_REQUEST);
+		}
+		try {
+			return work.get();
+		}
+		finally {
+			for (int i = 0; i < names.length; i++) {
+				if (before[i] == null) {
+					request.removeAttribute(names[i], RequestAttributes.SCOPE_REQUEST);
+				}
+				else {
+					request.setAttribute(names[i], before[i], RequestAttributes.SCOPE_REQUEST);
+				}
+			}
+		}
+	}
+
 	private static void append(String attribute, String name, String value) {
 		RequestAttributes request = RequestContextHolder.getRequestAttributes();
 		if (request == null || value == null) {

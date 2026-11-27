@@ -26,6 +26,8 @@ dependencyManagement {
 dependencies {
     // 실행기는 제품을 띄워 HTTP 로만 묻는다 (D2 AD-111, AD-279). api 는 띄우려고 기댄다. 그 내부 클래스는 쓰지 않는다.
     implementation(project(":api"))
+    // 질문을 읽고 정답과 견주는 부분 (D2 AD-422). 같은 패키지다: 이 모듈에는 제품을 띄워 HTTP 로 묻는 쪽이 남는다.
+    implementation(project(":verify-core"))
     // 띄운 제품에 첫 관리자를 만들 때 common 의 공개 API 를 쓴다.
     implementation(project(":common"))
     // 영향 범위 계산만 따로 잴 때 core 의 공개 API 를 부른다 (A-07)

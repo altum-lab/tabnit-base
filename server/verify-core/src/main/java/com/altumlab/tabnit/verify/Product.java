@@ -3,7 +3,7 @@ package com.altumlab.tabnit.verify;
 import java.time.LocalDate;
 
 /** 검증 질문을 묻는 상대: 띄워 둔 제품. 실행기는 이 길로만 묻는다 (D2 AD-111, AD-279: 모두 HTTP 다). */
-interface Product {
+public interface Product {
 
     /** 어떤 날짜에 어떤 개체의 유효한 관계. */
     Reply relations(String entityId, LocalDate asOf);

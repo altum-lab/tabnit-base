@@ -519,6 +519,40 @@ paths:
           $ref: '#/components/responses/Problem'
         '500':
           $ref: '#/components/responses/Problem'
+  /api/v1/verification-results:
+    get:
+      operationId: getVerificationResults
+      summary: 적재된 Pack 의 검증 질문을 지금의 저장소에 물어 질문마다의 통과와 실패를 돌려준다
+      description: >-
+        읽기만 한다: 자료를 바꾸지 않고 결과를 저장하지 않는다. 질문은 서버의 Pack 폴더의 그 Pack 의 questions/ 에서
+        읽는다 (전수 대조는 돌리지 않는다). 시나리오마다, 저장소의 그 Pack 의 판이 시나리오의 단계와 꼭 같을 때만
+        묻는다 (입력 자료, 판 번호, 적용일, 파일의 내용, 받은 차례). 다르면 그 시나리오는 통과와 실패를 내지 않고
+        matched 가 false 이며 어느 단계가 다른지를 mismatch 에 적는다. 견주는 코드는 명령줄 실행기와 같다. 두 번
+        물어 답이 같은지도 함께 준다. 관리자만 부를 수 있다
+      parameters:
+        - name: packId
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        '200':
+          description: 시나리오마다의 결과
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationResults'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/Problem'
   /api/v1/pack-folders:
     get:
       operationId: listPackFolders
@@ -1666,6 +1700,98 @@ components:
           type: string
           minLength: 1
           description: 비밀번호. 서버는 이 값을 저장하거나 기록에 남기지 않는다
+    VerificationResults:
+      type: object
+      required: [packId, available, unavailableReason, scenarios]
+      properties:
+        packId:
+          type: string
+        available:
+          type: boolean
+          description: >-
+            질문을 읽을 수 있었는가. 서버에 Pack 폴더가 정해져 있지 않거나, 그 Pack 의 폴더나 질문 파일이 없거나, 질문
+            파일을 읽지 못하면 false 이고 scenarios 는 비어 있다
+        unavailableReason:
+          description: available 이 false 인 까닭과 무엇을 하면 되는지. true 이면 null
+          oneOf:
+            - type: string
+            - type: 'null'
+        scenarios:
+          type: array
+          description: 질문 파일마다 하나. 파일 이름의 글자 코드 순이다
+          items:
+            $ref: '#/components/schemas/VerificationScenario'
+    VerificationScenario:
+      type: object
+      required: [fileName, scenarioId, title, stepCount, questionCount, matched, mismatch, passedCount, repeatable,
+                 differingQuestionIds, results]
+      properties:
+        fileName:
+          type: string
+        scenarioId:
+          type: string
+        title:
+          type: string
+        stepCount:
+          type: integer
+          description: 시나리오의 단계의 수
+        questionCount:
+          type: integer
+        matched:
+          type: boolean
+          description: 저장소의 그 Pack 의 판이 시나리오의 단계와 꼭 같은가. false 이면 묻지 않았고 results 는 비어 있다
+        mismatch:
+          description: matched 가 false 인 까닭 (어느 단계가 어떻게 다른가). true 이면 null
+          oneOf:
+            - type: string
+            - type: 'null'
+        passedCount:
+          type: integer
+          description: 통과한 질문의 수. matched 가 false 이면 0
+        repeatable:
+          type: boolean
+          description: 두 번 물은 결과가 같은가. matched 가 false 이면 true
+        differingQuestionIds:
+          type: array
+          description: 두 번 물은 결과가 달랐던 질문의 번호. 번호 순
+          items:
+            type: string
+        results:
+          type: array
+          description: 질문마다의 결과. 번호의 글자 코드 순이다
+          items:
+            $ref: '#/components/schemas/VerificationQuestionResult'
+    VerificationQuestionResult:
+      type: object
+      required: [id, kind, kindLabel, label, passed, expected, actual, reason]
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        kindLabel:
+          type: string
+          description: 종류를 사람이 읽는 말로 (시점 조회, 변동, 영향 범위, 조치, 관계 지도, 속성 값)
+        label:
+          type: string
+          description: 어느 날짜나 단계를 물었는가. 골든셋의 번호를 적은 질문이면 함께 있다
+        passed:
+          type: boolean
+        expected:
+          description: 기대한 값을 글자로 적은 것. 견주지 못했으면 null
+          oneOf:
+            - type: string
+            - type: 'null'
+        actual:
+          description: 제품의 답을 글자로 적은 것. 견주지 못했으면 null
+          oneOf:
+            - type: string
+            - type: 'null'
+        reason:
+          description: 견주지 못한 까닭. 견줬으면 null
+          oneOf:
+            - type: string
+            - type: 'null'
     PackFolderList:
       type: object
       required: [configured, folders]

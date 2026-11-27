@@ -38,11 +38,35 @@ export function EditionComparer({ packId, editions }: { packId: string; editions
     setCompared({ kind: "none" });
   }, [packId]);
 
+  // 목록이 바뀌어 (다른 쪽으로 넘겼거나 새로 받았거나) 고른 판이 보이지 않게 되면 고른 것과 결과를 비운다:
+  // 칸에는 "고르세요"가 보이는데 보이지 않는 판을 견주게 두지 않는다.
+  useEffect(() => {
+    const listed = new Set(editions.map((edition) => edition.editionId));
+    if (fromId && !listed.has(fromId)) {
+      latest.current++;
+      setFromId("");
+      setToId("");
+      setCompared({ kind: "none" });
+    } else if (toId && !listed.has(toId)) {
+      latest.current++;
+      setToId("");
+      setCompared({ kind: "none" });
+    }
+  }, [editions, fromId, toId]);
+
   const from = editions.find((edition) => edition.editionId === fromId);
+  const to = editions.find((edition) => edition.editionId === toId);
   // 뒤의 판으로 고를 수 있는 것: 앞의 판과 같은 입력 자료의 판. 차례는 목록의 차례 그대로다.
   const candidates = from ? editions.filter((edition) => edition.inputSourceId === from.inputSourceId) : [];
 
+  // 고른 것을 바꾸면 앞의 결과를 비우고, 오고 있던 답도 버린다: 앞의 표가 새로 고른 것의 결과처럼 남지 않는다.
+  function forget() {
+    latest.current++;
+    setCompared({ kind: "none" });
+  }
+
   function chooseFrom(next: string) {
+    forget();
     setFromId(next);
     const chosen = editions.find((edition) => edition.editionId === next);
     const kept = editions.find((edition) => edition.editionId === toId);
@@ -95,7 +119,14 @@ export function EditionComparer({ packId, editions }: { packId: string; editions
         </label>{" "}
         <label>
           뒤의 판{" "}
-          <select value={toId} onChange={(event) => setToId(event.target.value)} disabled={!from}>
+          <select
+            value={toId}
+            onChange={(event) => {
+              forget();
+              setToId(event.target.value);
+            }}
+            disabled={!from}
+          >
             <option value="">{from ? "고르세요" : "기준이 될 판을 먼저 고르세요"}</option>
             {candidates.map((edition) => (
               <option key={edition.editionId} value={edition.editionId}>
@@ -104,7 +135,8 @@ export function EditionComparer({ packId, editions }: { packId: string; editions
             ))}
           </select>
         </label>{" "}
-        <button type="submit" disabled={!fromId || !toId || compared.kind === "loading"}>
+        {/* 두 판이 모두 지금 보이는 목록에 있을 때만 견준다. */}
+        <button type="submit" disabled={!from || !to || compared.kind === "loading"}>
           두 판 견주기
         </button>
       </form>
@@ -127,7 +159,7 @@ export function EditionComparer({ packId, editions }: { packId: string; editions
                   <th scope="col">항목</th>
                   <th scope="col">종류</th>
                   <th scope="col">주 개체</th>
-                  <th scope="col">바뀐 값 (앞의 판 → 뒤의 판)</th>
+                  <th scope="col">바뀐 것 (값은 앞의 판 → 뒤의 판)</th>
                 </tr>
               </thead>
               <tbody>
@@ -139,7 +171,22 @@ export function EditionComparer({ packId, editions }: { packId: string; editions
                       <EntityName entity={change.primaryEntity} />
                     </td>
                     <td>
-                      <ComparedValues values={change.changedValues} />
+                      <ComparedValues values={change.changedValues} relationsChanged={change.changedRelationTypes.length > 0} />
+                      {/* 관계가 바뀐 것도 서버가 준 그대로 보인다: 값은 그대로이고 관계만 달라진 항목이 있다. */}
+                      {change.changedRelationTypes.length > 0 && (
+                        <div data-testid="compared-relation-types">바뀐 관계 유형: {change.changedRelationTypes.join(", ")}</div>
+                      )}
+                      {change.targetEntities.length > 0 && (
+                        <div data-testid="compared-targets">
+                          변동 대상:{" "}
+                          {change.targetEntities.map((entity, index) => (
+                            <span key={entity.entityId} data-entity-id={entity.entityId}>
+                              {index > 0 && ", "}
+                              <EntityName entity={entity} />
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -153,13 +200,20 @@ export function EditionComparer({ packId, editions }: { packId: string; editions
 }
 
 // 값과 차례는 서버가 준 그대로다. 보이는 글자도 서버가 준 것이다 (참·거짓은 예, 아니오로 온다).
-function ComparedValues({ values }: { values: EditionComparison["changes"][number]["changedValues"] }) {
+function ComparedValues({
+  values,
+  relationsChanged,
+}: {
+  values: EditionComparison["changes"][number]["changedValues"];
+  // 관계가 바뀐 항목인가. 그러면 값이 그대로여도 바뀐 것이 있다: "바뀌지 않았다"고만 적지 않는다.
+  relationsChanged: boolean;
+}) {
   if (values === null) {
     // 빈 목록과 다르다: 바뀐 값이 없는 것이 아니라 서버가 값을 모른다.
     return <small>값을 알 수 없습니다. 바뀐 값을 남기기 전에 들어간 판과 견줬습니다.</small>;
   }
   if (values.length === 0) {
-    return <small>속성 값은 바뀌지 않았습니다.</small>;
+    return relationsChanged ? null : <small>속성 값은 바뀌지 않았습니다.</small>;
   }
   return (
     <ul>
@@ -168,9 +222,10 @@ function ComparedValues({ values }: { values: EditionComparison["changes"][numbe
           {value.attributeLabel}{" "}
           <small>({value.entity.displayName ?? value.entity.entityKey})</small>: <Value value={value.beforeDisplay} testId="compared-before" /> →{" "}
           <Value value={value.afterDisplay} testId="compared-after" />
-          {/* 값이 바뀌었다가 되돌아온 것: 서버는 변경으로 준다 (D2 AD-418). 값이 같아 보이는 까닭을 적는다. */}
+          {/* 앞뒤의 값이 같은 것: 서버는 유효기간만 달라진 것도 변경으로 준다 (D2 AD-418). 값이 같아 보이는 까닭을 적는다.
+              왜 달라졌는지(사이의 판에서 바뀌었다가 되돌아왔는지 따위)는 서버가 주지 않으므로 적지 않는다. */}
           {value.before !== null && value.before === value.after && (
-            <small data-testid="same-value-note"> 값은 같고 유효기간이 다릅니다 (사이의 판에서 바뀌었다가 되돌아왔습니다).</small>
+            <small data-testid="same-value-note"> 값은 같고 유효기간이 다릅니다.</small>
           )}
         </li>
       ))}

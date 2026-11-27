@@ -123,3 +123,115 @@ test("서버가 거부하면 그 문구를 보인다", async ({ page, request })
 
   await expect(comparer(page).getByRole("alert")).toContainText("뒤의 판이 없습니다");
 });
+
+// ── /code-review 가 짚은 것 (C-16 의 후속 수정) ─────────────────────────────
+
+test("관계만 바뀐 항목은 바뀐 관계 유형과 변동 대상을 보이고, 값이 바뀌지 않았다고만 하지 않는다", async ({ page, request }) => {
+  const { first, last } = await farthest(request);
+  // 서버의 답의 첫 항목을 관계만 바뀐 것으로 바꿔 준다: 화면이 서버가 준 것을 버리지 않는지를 본다.
+  await page.route("**/api/v1/edition-comparison**", async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as { changes: Record<string, unknown>[] };
+    body.changes[0] = {
+      ...body.changes[0]!,
+      kind: "CHANGED",
+      changedValues: [],
+      changedAttributes: [],
+      changedRelationTypes: ["지어낸관계", "다른관계"],
+    };
+    await route.fulfill({ response, json: body });
+  });
+
+  await open(page);
+  await comparer(page).getByLabel("앞의 판").selectOption(first.editionId);
+  await comparer(page).getByLabel("뒤의 판").selectOption(last.editionId);
+  await comparer(page).getByRole("button", { name: "두 판 견주기" }).click();
+
+  const row = comparer(page).getByTestId("comparison-result").locator("tbody tr").first();
+  await expect(row.getByTestId("compared-kind")).toHaveText("변경");
+  await expect(row.getByTestId("compared-relation-types")).toContainText("지어낸관계");
+  await expect(row.getByTestId("compared-relation-types")).toContainText("다른관계");
+  // 변동 대상도 보인다 (서버가 준 수만큼).
+  await expect(row.getByTestId("compared-targets").locator("[data-entity-id]")).not.toHaveCount(0);
+  await expect(row).not.toContainText("속성 값은 바뀌지 않았습니다");
+});
+
+test("앞뒤의 값이 같은 것은 유효기간이 다르다고만 알린다", async ({ page, request }) => {
+  const { first, last } = await farthest(request);
+  await page.route("**/api/v1/edition-comparison**", async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as { changes: { changedValues: Record<string, unknown>[] | null }[] };
+    const change = body.changes.find((candidate) => candidate.changedValues !== null && candidate.changedValues.length > 0)!;
+    const value = change.changedValues![0]!;
+    change.changedValues![0] = { ...value, before: "같은 값", after: "같은 값", beforeDisplay: "같은 값", afterDisplay: "같은 값" };
+    await route.fulfill({ response, json: body });
+  });
+
+  await open(page);
+  await comparer(page).getByLabel("앞의 판").selectOption(first.editionId);
+  await comparer(page).getByLabel("뒤의 판").selectOption(last.editionId);
+  await comparer(page).getByRole("button", { name: "두 판 견주기" }).click();
+
+  const note = comparer(page).getByTestId("same-value-note").first();
+  await expect(note).toContainText("값은 같고 유효기간이 다릅니다");
+  // 사이의 판에서 바뀌었다고 하지 않는다: 이웃한 두 판에서도 유효기간만 달라질 수 있다.
+  await expect(note).not.toContainText("되돌아왔습니다");
+});
+
+test("고른 판을 바꾸면 앞의 결과를 비운다", async ({ page, request }) => {
+  const { first, last, listed } = await farthest(request);
+  const middle = listed.editions.find(
+    (edition) => edition.inputSourceId === first.inputSourceId && edition.editionId !== first.editionId && edition.editionId !== last.editionId,
+  )!;
+
+  await open(page);
+  await comparer(page).getByLabel("앞의 판").selectOption(first.editionId);
+  await comparer(page).getByLabel("뒤의 판").selectOption(last.editionId);
+  await comparer(page).getByRole("button", { name: "두 판 견주기" }).click();
+  await expect(comparer(page).getByTestId("comparison-result")).toBeVisible();
+
+  // 뒤의 판을 바꾼다: 앞의 표가 새로 고른 것의 결과처럼 남지 않는다.
+  await comparer(page).getByLabel("뒤의 판").selectOption(middle.editionId);
+  await expect(comparer(page).getByTestId("comparison-result")).toHaveCount(0);
+
+  await comparer(page).getByRole("button", { name: "두 판 견주기" }).click();
+  await expect(comparer(page).getByTestId("comparison-result")).toHaveAttribute("data-to-edition-id", middle.editionId);
+  // 앞의 판을 바꿔도 비운다.
+  await comparer(page).getByLabel("앞의 판").selectOption(middle.editionId);
+  await expect(comparer(page).getByTestId("comparison-result")).toHaveCount(0);
+});
+
+test("목록이 바뀌어 고른 판이 보이지 않게 되면 고른 것과 결과를 비우고 단추를 잠근다", async ({ page, request }) => {
+  const { first, last } = await farthest(request);
+  // 지난 판의 목록을 두 쪽으로 만든다: 첫 쪽은 서버가 준 판, 둘째 쪽은 판이 없다 (전체 수만 한 쪽을 넘긴다).
+  await page.route("**/api/v1/editions?**", async (route) => {
+    const url = new URL(route.request().url());
+    const offset = Number(url.searchParams.get("offset") ?? "0");
+    try {
+      const response = await route.fetch();
+      const body = (await response.json()) as { total: number; offset: number; limit: number; editions: unknown[] };
+      await route.fulfill({
+        response,
+        json: offset === 0 ? { ...body, total: body.limit + 1 } : { ...body, total: body.limit + 1, offset, editions: [] },
+      });
+    } catch {
+      // 화면이 이미 버린 요청이다 (같은 목록을 잇달아 청한다). 답할 곳이 없다.
+    }
+  });
+
+  await open(page);
+  await comparer(page).getByLabel("앞의 판").selectOption(first.editionId);
+  await comparer(page).getByLabel("뒤의 판").selectOption(last.editionId);
+  await comparer(page).getByRole("button", { name: "두 판 견주기" }).click();
+  await expect(comparer(page).getByTestId("comparison-result")).toBeVisible();
+
+  // 다음 쪽으로 넘긴다: 고른 두 판이 목록에 없다.
+  await page.getByRole("region", { name: "지난 판" }).getByTestId("pager").getByRole("button").last().click();
+
+  // 비교의 칸은 판이 있는 목록 아래에만 있다: 다시 첫 쪽으로 돌아오면 고른 것이 비워져 있다.
+  await page.getByRole("region", { name: "지난 판" }).getByTestId("pager").getByRole("button").first().click();
+  await expect(comparer(page).getByLabel("앞의 판")).toHaveValue("");
+  await expect(comparer(page).getByLabel("뒤의 판")).toBeDisabled();
+  await expect(comparer(page).getByRole("button", { name: "두 판 견주기" })).toBeDisabled();
+  await expect(comparer(page).getByTestId("comparison-result")).toHaveCount(0);
+});

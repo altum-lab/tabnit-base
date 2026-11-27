@@ -6,6 +6,7 @@ import { SessionContext } from "../session";
 import { formatInstant } from "../time";
 import { EntityName } from "./EntityName";
 import { ImpactPathView } from "./ImpactPathView";
+import { ExportButtons } from "./ExportButtons";
 import { Pager } from "./Pager";
 
 // 영향 범위 화면 (D-03, D2 AD-365). 변동 하나의 저장된 영향 범위를 보여 준다.
@@ -158,6 +159,17 @@ function Scope({ scope, onMove }: { scope: ChangeImpactScope; onMove: (offset: n
           </table>
 
           <Pager total={scope.total} offset={scope.offset} limit={scope.limit} shown={scope.targets.length} onMove={onMove} />
+          {scope.total > 0 && (
+            <ExportButtons
+              label="영향 대상 내보내기"
+              request={(format) =>
+                api.GET("/api/v1/impact-target-exports", {
+                  params: { query: { changeEventId: scope.changeEventId, format } },
+                  parseAs: "blob",
+                })
+              }
+            />
+          )}
 
           {scope.targets.length === 0 ? (
             <p role="status">이 자리에는 영향 대상이 없습니다. 이전으로 돌아가세요.</p>

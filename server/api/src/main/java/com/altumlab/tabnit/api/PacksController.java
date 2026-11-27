@@ -6,7 +6,10 @@ import com.altumlab.tabnit.pack.PackDefinition;
 import com.altumlab.tabnit.pack.PackDefinitions;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -47,5 +50,22 @@ class PacksController {
 			found.add(new PackListResponse.Pack(pack.packId(), pack.label(), sources));
 		}
 		return new PackListResponse(found);
+	}
+
+	/**
+	 * 적재된 Pack 하나의 정의를 읽는다 (규격의 getPackDefinition, D7 8절 "Pack 의 정의", D2 AD-415). 읽기만 한다:
+	 * 정의를 고치는 API 는 없다. 고치려면 Pack 의 파일을 고쳐 다시 적재한다.
+	 */
+	@GetMapping("/api/v1/pack-definition")
+	@Audited(action = "getPackDefinition", params = "packId")
+	PackDefinitionResponse definition(@RequestParam(required = false) String packId) {
+		if (packId == null || packId.isEmpty()) {
+			throw new ApiProblemException(HttpStatus.BAD_REQUEST, "MISSING_PACK_ID", "packId",
+					"Pack 의 식별자가 없습니다. packId 에 Pack 의 식별자를 넣어 다시 보내세요.");
+		}
+		// NUL 이 든 식별자의 Pack 은 있을 수 없다. 저장소에 묻지 않고 없는 것으로 답한다.
+		Optional<PackDefinition> found = packId.indexOf('\u0000') >= 0 ? Optional.empty() : this.packs.find(packId);
+		return PackDefinitionResponse.of(found.orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND,
+				"PACK_NOT_FOUND", "packId", "Pack " + packId + " 이 적재되어 있지 않습니다. Pack 의 식별자를 확인하세요.")));
 	}
 }

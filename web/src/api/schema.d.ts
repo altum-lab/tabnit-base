@@ -169,6 +169,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pack-definition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 적재된 Pack 하나의 정의를 읽는다
+         * @description 개체 유형, 속성, 관계 유형과 영향 방향, 입력 자료와 매핑, 규칙, 제약을 한 번에 준다. 읽기만 한다: 정의를 고치는 API 는 없다 (고치려면 Pack 의 파일을 고쳐 다시 적재한다). 목록의 순서는 이름의 글자 코드 순이고 규칙은 번호 순, 입력 자료는 식별자 순이다. 담당자와 관리자가 부를 수 있다
+         */
+        get: operations["getPackDefinition"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pack-loads": {
         parameters: {
             query?: never;
@@ -644,6 +664,149 @@ export interface components {
             item: string;
             /** @description 무엇이 틀렸고 어떻게 고치면 되는지 */
             message: string;
+        };
+        /** @description 적재된 Pack 의 정의. Pack 의 파일에 적힌 것을 읽어 검증한 값이다 (D6) */
+        PackDefinition: {
+            packId: string;
+            /** @description Pack 의 이름 */
+            label: string;
+            /** @description 영향 범위 계산의 최대 깊이의 기본값 */
+            defaultMaxDepth: number;
+            /**
+             * Format: date-time
+             * @description 적재한 때. 협정 세계시다
+             */
+            loadedAt: string;
+            /** @description 개체 유형. 이름의 글자 코드 순 */
+            entityTypes: components["schemas"]["PackEntityType"][];
+            /** @description 속성. 이름의 글자 코드 순 */
+            attributes: components["schemas"]["PackAttribute"][];
+            /** @description 관계 유형. 이름의 글자 코드 순 */
+            relationTypes: components["schemas"]["PackRelationType"][];
+            /** @description 입력 자료와 그 매핑. 입력 자료의 식별자 순 */
+            inputSources: components["schemas"]["PackInputSource"][];
+            /** @description 규칙. 규칙 번호의 글자 코드 순 (평가하는 차례가 아니다) */
+            rules: components["schemas"]["PackRule"][];
+            /** @description 제약 파일(constraints.ttl)의 글 그대로 (SHACL). 제약이 없으면 빈 글자다 */
+            constraints: string;
+        };
+        PackEntityType: {
+            name: string;
+            /** @description 이름표 (화면에 보일 이름) */
+            label: string;
+            /** @description 상위 유형의 이름 */
+            parents: string[];
+            /** @description 표시 이름으로 쓸 속성. 이 유형이 스스로 적은 값이다. null 이면 상위 유형의 것을 받는다 */
+            displayNameAttribute: string | null;
+        };
+        PackAttribute: {
+            name: string;
+            label: string;
+            /** @description 어느 개체 유형의 속성인가 */
+            entityType: string;
+            /** @enum {string} */
+            valueFormat: "STRING" | "INTEGER" | "DECIMAL" | "DATE" | "BOOLEAN";
+        };
+        PackRelationType: {
+            name: string;
+            label: string;
+            /** @description 출발 개체의 유형 */
+            sourceType: string;
+            /** @description 도착 개체의 유형 */
+            targetType: string;
+            /**
+             * @description 영향이 퍼지는 방향. 출발에서 도착으로, 도착에서 출발로, 양쪽, 퍼지지 않음
+             * @enum {string}
+             */
+            impactDirection: "SOURCE_TO_TARGET" | "TARGET_TO_SOURCE" | "BOTH" | "NONE";
+        };
+        PackMappedEntityRef: {
+            entityType: string;
+            /** @description 입력의 키를 읽을 열 */
+            keyColumn: string;
+        };
+        PackMappedAttribute: {
+            attributeName: string;
+            /** @description 값을 읽을 열 */
+            column: string;
+            validFromColumn: string | null;
+            validToColumn: string | null;
+            datePattern: string | null;
+            groupingSeparator: string | null;
+            trueValue: string | null;
+            falseValue: string | null;
+        };
+        PackMappedEntity: {
+            entityType: string;
+            keyColumn: string;
+            attributes: components["schemas"]["PackMappedAttribute"][];
+        };
+        PackMappedRelation: {
+            relationType: string;
+            source: components["schemas"]["PackMappedEntityRef"];
+            target: components["schemas"]["PackMappedEntityRef"];
+            /** @description 유효기간의 시작일을 읽을 열. null 이면 시작일은 판의 적용일이다 */
+            validFromColumn: string | null;
+            validToColumn: string | null;
+        };
+        /** @description 입력 자료 하나와 그 매핑 (D6 7절) */
+        PackInputSource: {
+            inputSourceId: string;
+            /** @description 이름표. Pack 이 적지 않았으면 식별자다 */
+            label: string;
+            /** @enum {string} */
+            fileFormat: "CSV" | "XLSX";
+            sheetName: string | null;
+            defaultDatePattern: string | null;
+            requiredColumns: string[];
+            /** @description 항목의 키 열. 판을 비교할 때 이 열로 같은 항목을 찾는다 */
+            itemKeyColumns: string[];
+            /** @description 행의 주 개체 */
+            primaryEntity: components["schemas"]["PackMappedEntityRef"] | null;
+            /** @description 행이 만드는 개체 */
+            entities: components["schemas"]["PackMappedEntity"][];
+            /** @description 행이 만드는 관계 */
+            relations: components["schemas"]["PackMappedRelation"][];
+        };
+        /** @description 규칙의 조건 하나 (D8 3절). 유형을 보는 조건이거나 속성 값을 보는 조건이다 */
+        PackRuleCondition: {
+            /** @enum {string} */
+            subject: "CHANGE_TARGET" | "IMPACT_TARGET" | "LINKED_TARGET";
+            typeIs: string | null;
+            attributeName: string | null;
+            /** @description 속성을 보는 조건의 비교. 유형을 보는 조건이면 null */
+            operator: string | null;
+            values: string[];
+            /** @description 속성 값을 무엇과 견주는가 */
+            compareTo: string;
+            compareSubject: string | null;
+            compareAttributeName: string | null;
+            linkedBy: string | null;
+        };
+        /** @description 규칙 하나 (D8 2절) */
+        PackRule: {
+            ruleNo: string;
+            label: string;
+            /** @description 우선순위. 수가 작을수록 먼저다 */
+            priority: number;
+            /** @description 어떤 종류의 변동에 걸리는가 */
+            changeKinds: ("ADDED" | "CHANGED" | "REMOVED")[];
+            /**
+             * @description 조치의 대상이 변동 대상인가 영향 대상인가
+             * @enum {string}
+             */
+            appliesTo: "CHANGE_TARGET" | "IMPACT_TARGET";
+            /** @description 조치를 만들 대상의 개체 유형 */
+            targetType: string;
+            conditions: components["schemas"]["PackRuleCondition"][];
+            /** @description 조치에 담을 해야 할 일의 문구 */
+            actionText: string;
+            /** @description 기한까지의 일수 */
+            dueInDays: number;
+            /** @description 어느 입력 자료의 변동에 걸리는가. 비어 있으면 모든 입력 자료다 */
+            inputSources: string[];
+            changedAttributes: string[];
+            changedRelationTypes: string[];
         };
         PackList: {
             packs: components["schemas"]["PackSummary"][];
@@ -1496,6 +1659,34 @@ export interface operations {
             };
             401: components["responses"]["Problem"];
             403: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getPackDefinition: {
+        parameters: {
+            query: {
+                /** @description Pack 의 식별자 */
+                packId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 그 Pack 의 정의 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackDefinition"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
             500: components["responses"]["Problem"];
         };
     };

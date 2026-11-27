@@ -9,6 +9,7 @@ import { Brand } from "./Brand";
 import { ImpactPage } from "./pages/ImpactPage";
 import { SessionContext } from "./session";
 import { LoginPage } from "./pages/LoginPage";
+import { PackDefinitionPage } from "./pages/PackDefinitionPage";
 import { RelationsPage } from "./pages/RelationsPage";
 
 // 화면의 뼈대. 주소로 화면을 가른다 (D2 AD-257).
@@ -26,6 +27,7 @@ const SCREENS = [
   { path: "/impact", label: "영향 범위", element: <ImpactPage />, adminOnly: false },
   { path: "/actions", label: "조치", element: <ActionsPage />, adminOnly: false },
   { path: "/relations", label: "관계 지도", element: <RelationsPage />, adminOnly: false },
+  { path: "/pack-definition", label: "Pack 정의", element: <PackDefinitionPage />, adminOnly: false },
   { path: "/audit", label: "감사 기록", element: <AuditPage />, adminOnly: true },
 ];
 

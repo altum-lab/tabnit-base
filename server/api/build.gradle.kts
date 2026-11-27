@@ -24,6 +24,8 @@ dependencies {
 	implementation(project(":pack"))
 	implementation(project(":link"))
 	implementation(project(":rules"))
+	// 검증 질문을 읽고 견주는 부분. 화면에서 돌릴 때 쓴다 (카드 E-23, D2 AD-422). 제품의 모듈에 기대지 않는 모듈이다.
+	implementation(project(":verify-core"))
 	implementation("org.springframework.boot:spring-boot-starter-actuator")
 	implementation("org.springframework.boot:spring-boot-starter-flyway")
 	implementation("org.springframework.boot:spring-boot-starter-jdbc")

@@ -192,6 +192,11 @@ final class Report {
         return map;
     }
 
+    /** 종류를 사람이 읽는 말로. 모르는 종류이면 이름 그대로다. */
+    static String kindLabel(String kind) {
+        return KIND_LABELS.getOrDefault(kind, kind);
+    }
+
     private static Map<String, String> kindLabels() {
         Map<String, String> labels = new LinkedHashMap<>();
         labels.put(Evaluator.RELATIONS, "시점 조회");

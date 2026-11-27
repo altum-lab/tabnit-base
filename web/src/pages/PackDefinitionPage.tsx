@@ -3,6 +3,7 @@ import { api, type PackDefinition, type PackSummary } from "../api/client";
 import { CONNECTION_FAILED, messageOf } from "../api/problem";
 import { SessionContext } from "../session";
 import { PackLoader } from "./PackLoader";
+import { VerificationRunner } from "./VerificationRunner";
 
 // Pack 정의 화면 (카드 B-19, D7 8절 "Pack 의 정의", D2 AD-415). 적재된 Pack 의 정의를 본다.
 // 서버의 listPacks 와 getPackDefinition (docs/api/openapi.yaml) 의 값을 그대로 보여 준다.
@@ -128,6 +129,9 @@ export function PackDefinitionPage() {
       {view.kind === "loading" && <p role="status">정의를 불러오는 중입니다…</p>}
       {view.kind === "failed" && <p role="alert">{view.message}</p>}
       {view.kind === "loaded" && <Definition definition={view.definition} />}
+
+      {/* 관리자에게만 보인다 (카드 E-23). 고른 Pack 의 검증 질문을 지금의 저장소에 묻는다. */}
+      {admin && packId && <VerificationRunner packId={packId} />}
     </section>
   );
 }

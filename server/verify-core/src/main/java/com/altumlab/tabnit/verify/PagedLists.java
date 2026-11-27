@@ -13,7 +13,7 @@ import java.util.function.IntFunction;
  *
  * <p>정답과는 목록 전체를 순서까지 견주기 때문이다. 제품이 준 순서를 바꾸지 않는다.
  */
-final class PagedLists {
+public final class PagedLists {
 
     private PagedLists() {
     }
@@ -32,7 +32,7 @@ final class PagedLists {
      * @param what 오류에 적을 이름 (무엇을 받다가인지)
      * @throws IllegalStateException 받을 때마다 목록이 바뀌었을 때
      */
-    static Reply whole(IntFunction<Reply> fetch, String listKey, int pageSize, int maxAttempts, String what) {
+    public static Reply whole(IntFunction<Reply> fetch, String listKey, int pageSize, int maxAttempts, String what) {
         for (int attempt = 1;; attempt++) {
             Reply first = null;
             List<Object> joined = new ArrayList<>();

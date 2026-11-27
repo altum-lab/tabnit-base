@@ -166,6 +166,23 @@ class PackLoading {
 		}
 	}
 
+	/**
+	 * 서버의 Pack 폴더에 있는 그 Pack 의 폴더. 읽기만 하는 쪽이 쓴다 (검증 질문을 화면에서 돌리기, D2 AD-422).
+	 *
+	 * @return 폴더. Pack 폴더가 정해져 있지 않거나, 이름이 받을 수 없는 글자이거나, 그 폴더가 없으면 비어 있다
+	 */
+	java.util.Optional<Path> folderIfPresent(String packId) {
+		if (!isAcceptableName(packId) || !configured()) {
+			return java.util.Optional.empty();
+		}
+		try {
+			return java.util.Optional.of(folderOf(packId));
+		}
+		catch (ApiProblemException e) {
+			return java.util.Optional.empty();
+		}
+	}
+
 	/** 그 이름의 폴더. Pack 폴더 바로 아래에 실제로 있는 폴더여야 한다. */
 	private Path folderOf(String packId) {
 		if (this.packsDirectory.isBlank()) {

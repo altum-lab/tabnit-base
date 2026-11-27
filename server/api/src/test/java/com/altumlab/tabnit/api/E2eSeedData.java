@@ -52,6 +52,12 @@ class E2eSeedData {
 
 	private static final String WIDE_PACK = "e2e-wide";
 
+	/** 서버의 Pack 폴더에 놓이고, 제 시나리오의 판만 차례대로 올린 Pack. 검증 질문이 모두 통과한다 (E-23). */
+	static final String VERIFIED_PACK = "e2e-verified";
+
+	private static final java.util.regex.Pattern SCENARIO_STEP = java.util.regex.Pattern.compile(
+			"inputSource:\\s*([^,\\s]+)\\s*,\\s*file:\\s*([^,\\s]+)\\s*,\\s*effectiveDate:\\s*(\\d{4}-\\d{2}-\\d{2})");
+
 	private static final Provenance SRC_1 = new Provenance("src", 1);
 
 	@Bean
@@ -122,6 +128,21 @@ class E2eSeedData {
 				store.saveRelation(new NewRelation(wideHub, leaf, "made-of",
 						new ValidityPeriod(java.time.LocalDate.parse("2020-01-01"), null), SRC_1), RECORDED_AT);
 			}
+			// 검증 질문을 화면에서 돌리는 시험이 읽을 Pack (E-23, web/tests/verification.spec.ts): 서버의 Pack 폴더에 놓인
+			// 사본을 적재하고, 그 사본의 시나리오(questions/S-01.yaml 의 steps)의 판을 적힌 차례대로 올린다. 그 뒤로 판을 더
+			// 올리지 않는다: 저장소의 판이 시나리오와 꼭 같아야 질문을 묻는다 (D2 AD-422).
+			String packsDirectory = System.getProperty("tabnit.packs-dir");
+			if (packsDirectory != null && java.nio.file.Files.isDirectory(java.nio.file.Path.of(packsDirectory, VERIFIED_PACK))) {
+				java.nio.file.Path verified = java.nio.file.Path.of(packsDirectory, VERIFIED_PACK);
+				new com.altumlab.tabnit.pack.PackLoader(dataSource).load(verified, RECORDED_AT);
+				java.util.regex.Matcher step = SCENARIO_STEP.matcher(java.nio.file.Files
+					.readString(verified.resolve("questions/S-01.yaml"), java.nio.charset.StandardCharsets.UTF_8));
+				while (step.find()) {
+					java.nio.file.Path file = verified.resolve(step.group(2).trim());
+					processing.submit(VERIFIED_PACK, step.group(1).trim(), file.getFileName().toString(),
+							java.nio.file.Files.readAllBytes(file), java.time.LocalDate.parse(step.group(3)));
+				}
+			}
 			// 시연 리허설(D-10, web/tests/rehearsal.spec.ts)이 화면으로 판을 올릴 두 예시 Pack. 정의만 적재한다:
 			// 판은 그 시험이 시나리오의 차례대로 화면에서 올린다.
 			for (String example : java.util.List.of("manufacturing-safety", "retirement-pension")) {
@@ -157,6 +178,8 @@ class E2eSeedData {
 		try {
 			java.nio.file.Path directory = java.nio.file.Files.createTempDirectory("tabnit-e2e-packs-dir").toRealPath();
 			PackCopies.copyInto(directory, LOADABLE_PACK, text -> text);
+			// 검증 질문을 화면에서 돌리는 시험이 읽을 Pack (E-23). 적재와 시나리오의 판은 시험용 실행이 넣는다 (e2eSeed).
+			PackCopies.copyInto(directory, VERIFIED_PACK, text -> text);
 			// 적재는 되지만 뜻대로 걸리지 않을 수 있는 규칙 하나를 더한다: 경고가 하나 나온다 (D2 AD-323).
 			String more = """
 

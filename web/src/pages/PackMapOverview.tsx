@@ -63,13 +63,31 @@ export function PackMapOverview({ asOf, onPick, onPickType }: Props) {
     void loadPacks();
   }, []);
 
-  async function open(event: FormEvent<HTMLFormElement>) {
+  // 마지막으로 연 Pack. 조회 시점이 바뀌면 이 Pack 의 전체 보기를 그 날짜로 다시 받는다.
+  const opened = useRef<string | null>(null);
+
+  // 화면의 조회 시점이 바뀌면 열어 둔 전체 보기를 그 날짜로 다시 받는다 (단추를 다시 누르지 않는다). 그래서 전체
+  // 보기가 보이는 날짜와, 여기서 고른 개체나 유형이 열리는 날짜가 늘 같다.
+  useEffect(() => {
+    if (opened.current !== null) {
+      void fetchMap(opened.current);
+    }
+    // 조회 시점이 바뀔 때만 다시 받는다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asOf]);
+
+  function open(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    opened.current = packId;
+    void fetchMap(packId);
+  }
+
+  async function fetchMap(wanted: string) {
     const turn = ++latest.current;
     setView({ kind: "loading" });
     try {
       const { data, error, response } = await api.GET("/api/v1/pack-relation-map", {
-        params: { query: { packId, ...(asOf ? { asOf } : {}) } },
+        params: { query: { packId: wanted, ...(asOf ? { asOf } : {}) } },
       });
       if (turn !== latest.current) {
         return;
@@ -150,6 +168,14 @@ function Overview({ map, onPick, onPickType }: { map: PackRelationMap } & Pick<P
       {map.connectedEntities > 0 && (map.grouped ? <GroupDrawing map={map} /> : <NodeDrawing map={map} />)}
 
       {map.connectedEntities > 0 && (
+        <p data-testid="type-group-note">
+          <small>
+            아래의 수는 그 유형에 적힌 개체 가운데 이 조회 시점에 관계가 있는 것만 센 것입니다. "이 유형의 개체 찾기"는 그
+            유형의 하위 유형과 관계가 없는 개체까지 찾으므로 찾은 수가 더 많을 수 있습니다.
+          </small>
+        </p>
+      )}
+      {map.connectedEntities > 0 && (
         <table>
           <caption>유형마다의 이어진 개체</caption>
           <thead>
@@ -203,9 +229,14 @@ function Overview({ map, onPick, onPickType }: { map: PackRelationMap } & Pick<P
                 key={`${group.sourceEntityType}|${group.relationType}|${group.targetEntityType}`}
                 data-relation-group={`${group.sourceEntityType}|${group.relationType}|${group.targetEntityType}`}
               >
-                <td>{group.sourceEntityType}</td>
+                {/* 유형은 위의 표와 같은 이름표로 보인다. 관계 유형의 이름표는 서버가 주지 않아 이름 그대로다. */}
+                <td data-testid="relation-group-source">
+                  <TypeName map={map} entityType={group.sourceEntityType} />
+                </td>
                 <td>{group.relationType}</td>
-                <td>{group.targetEntityType}</td>
+                <td data-testid="relation-group-target">
+                  <TypeName map={map} entityType={group.targetEntityType} />
+                </td>
                 <td data-testid="relation-group-count">{group.relationCount}</td>
               </tr>
             ))}
@@ -230,6 +261,25 @@ function Overview({ map, onPick, onPickType }: { map: PackRelationMap } & Pick<P
         </ul>
       )}
     </div>
+  );
+}
+
+// 유형의 이름표. 서버가 준 유형의 묶음에서 찾는다 (관계의 묶음에 나오는 유형은 모두 거기에 있다). 없으면 이름이다.
+function labelOf(map: PackRelationMap, entityType: string): string {
+  return map.typeGroups.find((group) => group.entityType === entityType)?.entityTypeLabel ?? entityType;
+}
+
+function TypeName({ map, entityType }: { map: PackRelationMap; entityType: string }) {
+  const label = labelOf(map, entityType);
+  return (
+    <>
+      {label}{" "}
+      {label !== entityType && (
+        <small>
+          <code>{entityType}</code>
+        </small>
+      )}
+    </>
   );
 }
 
@@ -273,7 +323,29 @@ function NodeDrawing({ map }: { map: PackRelationMap }) {
   );
 }
 
-// 한도 밖: 유형마다 점 하나, 관계의 묶음마다 선 하나. 수를 함께 적는다.
+type Pair = { key: string; first: string; second: string; groups: PackRelationMap["relationGroups"] };
+
+// 관계의 묶음을 두 유형의 짝으로 모은다 (방향을 가리지 않는다). 같은 유형 안의 묶음은 뺀다: 두 끝이 같은 자리라
+// 선으로 그리지 않는다 (표에 있다). 짝의 차례는 그 짝이 서버의 묶음에 처음 나온 차례다.
+function pairs(map: PackRelationMap): Pair[] {
+  const found = new Map<string, Pair>();
+  for (const group of map.relationGroups) {
+    if (group.sourceEntityType === group.targetEntityType) {
+      continue;
+    }
+    const [first, second] =
+      group.sourceEntityType < group.targetEntityType
+        ? [group.sourceEntityType, group.targetEntityType]
+        : [group.targetEntityType, group.sourceEntityType];
+    const key = `${first}|${second}`;
+    const pair = found.get(key) ?? { key, first, second, groups: [] };
+    pair.groups = [...pair.groups, group];
+    found.set(key, pair);
+  }
+  return [...found.values()];
+}
+
+// 한도 밖: 유형마다 점 하나, 두 유형의 짝마다 선 하나. 수를 함께 적는다.
 function GroupDrawing({ map }: { map: PackRelationMap }) {
   const at = new Map(map.typeGroups.map((group, index) => [group.entityType, place(index, map.typeGroups.length)]));
   return (
@@ -285,15 +357,29 @@ function GroupDrawing({ map }: { map: PackRelationMap }) {
       role="img"
       aria-label={`유형 ${map.typeGroups.length}개로 묶은 지도`}
     >
-      {map.relationGroups.map((group) => {
-        const from = at.get(group.sourceEntityType);
-        const to = at.get(group.targetEntityType);
-        const key = `${group.sourceEntityType}|${group.relationType}|${group.targetEntityType}`;
-        // 같은 유형 안의 관계는 선으로 그리지 않는다 (두 끝이 같은 자리다). 아래의 표에 있다.
-        return from && to && group.sourceEntityType !== group.targetEntityType ? (
-          <line key={key} data-pack-map-group-edge={key} x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke="#8a8a8a">
+      {/* 같은 두 유형 사이의 묶음들(방향이 다른 것, 관계 유형이 다른 것)은 선 하나로 그리고 그 모두를 적는다:
+          따로 그리면 같은 자리에 겹쳐 하나만 보인다. 차례는 서버가 준 묶음의 차례다. */}
+      {pairs(map).map((pair) => {
+        const from = at.get(pair.first);
+        const to = at.get(pair.second);
+        return from && to ? (
+          <line
+            key={pair.key}
+            data-pack-map-pair={pair.key}
+            data-group-count={pair.groups.length}
+            x1={from.x}
+            y1={from.y}
+            x2={to.x}
+            y2={to.y}
+            stroke="#8a8a8a"
+          >
             <title>
-              {group.sourceEntityType} → {group.targetEntityType} ({group.relationType}) {group.relationCount}건
+              {pair.groups
+                .map(
+                  (group) =>
+                    `${labelOf(map, group.sourceEntityType)} → ${labelOf(map, group.targetEntityType)} (${group.relationType}) ${group.relationCount}건`,
+                )
+                .join("\n")}
             </title>
           </line>
         ) : null;

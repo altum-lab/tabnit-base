@@ -67,16 +67,37 @@ export function EntityPicker({ asOf, onPick, extras = [], disabled = false, type
     void loadPacks();
   }, []);
 
+  // 거르기를 "풀기" 단추로 풀었는가. 그때는 거르지 않은 목록으로 다시 찾는다.
+  const researchOnClear = useRef(false);
+  // 거르는 유형의 안내. 유형을 누르는 곳(전체 보기)은 화면의 맨 아래에 있다: 안내로 초점을 옮겨 화면에 보이게 한다.
+  const filterNote = useRef<HTMLParagraphElement>(null);
+
   // 유형으로 거르라는 것이 오면 그 Pack 의 그 유형의 개체를 바로 찾는다. 검색어는 비운다.
   useEffect(() => {
     if (typeFilter) {
       setPackId(typeFilter.packId);
       setText("");
       void search(0, { packId: typeFilter.packId, text: "" });
+      filterNote.current?.focus();
+      filterNote.current?.scrollIntoView({ block: "nearest" });
+    } else if (researchOnClear.current) {
+      // 풀었다: 걸러진 목록을 그대로 두지 않는다. 지금의 Pack 과 검색어로 거르지 않고 다시 찾는다.
+      researchOnClear.current = false;
+      void search(0);
     }
     // 거르는 것이 바뀔 때만 다시 찾는다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeFilter]);
+
+  // 다른 Pack 을 고르면 유형 거르기를 푼다: 거르는 유형은 그 Pack 의 것이다. 앞의 Pack 의 걸러진 목록도 비운다.
+  function choosePack(next: string) {
+    setPackId(next);
+    if (typeFilter && next !== typeFilter.packId) {
+      latest.current++;
+      setFound({ kind: "idle" });
+      onClearTypeFilter?.();
+    }
+  }
 
   async function search(offset: number, given?: { packId: string; text: string }) {
     const turn = ++latest.current;
@@ -135,7 +156,7 @@ export function EntityPicker({ asOf, onPick, extras = [], disabled = false, type
         <form onSubmit={submit}>
           <p>
             <label htmlFor="picker-pack">Pack</label>{" "}
-            <select id="picker-pack" value={packId} onChange={(e) => setPackId(e.target.value)} required>
+            <select id="picker-pack" value={packId} onChange={(e) => choosePack(e.target.value)} required>
               <option value="">Pack 을 고르세요</option>
               {packs.packs.map((candidate) => (
                 <option key={candidate.packId} value={candidate.packId}>
@@ -161,9 +182,15 @@ export function EntityPicker({ asOf, onPick, extras = [], disabled = false, type
       )}
 
       {typeFilter && (
-        <p data-testid="picker-type-filter">
+        <p data-testid="picker-type-filter" ref={filterNote} tabIndex={-1}>
           유형 <strong>{typeFilter.label}</strong> (<code>{typeFilter.entityType}</code>) 의 개체만 찾습니다.{" "}
-          <button type="button" onClick={onClearTypeFilter}>
+          <button
+            type="button"
+            onClick={() => {
+              researchOnClear.current = true;
+              onClearTypeFilter?.();
+            }}
+          >
             유형 거르기 풀기
           </button>
         </p>

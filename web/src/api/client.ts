@@ -65,3 +65,4 @@ export type PackDefinition = components["schemas"]["PackDefinition"];
 export type ChangeEventList = components["schemas"]["ChangeEventList"];
 export type EditionComparison = components["schemas"]["EditionComparison"];
 export type PackRelationMap = components["schemas"]["PackRelationMap"];
+export type AttributeValuesAsOf = components["schemas"]["AttributeValuesAsOf"];

@@ -5,6 +5,7 @@ import { CONNECTION_FAILED, messageOf } from "../api/problem";
 import { addDays } from "../time";
 import { EntityName } from "./EntityName";
 import { EntityPicker } from "./EntityPicker";
+import { EntityValues } from "./EntityValues";
 import { ExportButtons } from "./ExportButtons";
 import { PackMapOverview } from "./PackMapOverview";
 import { RelationPathFinder } from "./RelationPathFinder";
@@ -264,6 +265,7 @@ export function RelationsPage() {
             hidden={mapFilter}
             onHidden={setMapFilter}
           />
+          <EntityValues entityId={view.map.centerEntityId} asOf={view.map.asOf} />
           <Result result={view.relations} onMove={(offset) => void movePage(view.map, offset)} />
         </>
       )}

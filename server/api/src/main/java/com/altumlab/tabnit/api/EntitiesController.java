@@ -78,6 +78,8 @@ class EntitiesController {
 		}
 		PageRequest page = PageRequest.of(offset, limit);
 		LocalDate date = resolveAsOf(asOf);
+		// 날짜를 읽자마자 알린다: 그 뒤에 거부되는 요청(없는 Pack, 없는 유형)의 감사 기록에도 조회 시점이 남는다.
+		AuditTrail.asOf(date);
 		// 쓸 수 없는 글자가 든 식별자의 Pack 은 있을 수 없다. 저장소에 묻지 않고 없는 것으로 답한다.
 		Optional<PackDefinition> found = readable(packId) ? this.packs.find(packId) : Optional.empty();
 		PackDefinition pack = found.orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND, "PACK_NOT_FOUND", "packId",
@@ -85,7 +87,6 @@ class EntitiesController {
 		// 유형은 요청의 글자 그대로 읽는다: 빈 값(entityType=)을 없는 항목으로 바꿔 읽지 않는다.
 		String[] entityType = request.getParameterValues("entityType");
 		TreeSet<String> types = expand(pack, entityType == null ? List.of() : Arrays.asList(entityType));
-		AuditTrail.asOf(date);
 
 		// 찾고 나누는 일은 core 가 한다. 여기서는 값을 확인해 넘긴다.
 		EntityPage found1 = this.search.search(packId, text, types, date, page.offset(), page.limit());

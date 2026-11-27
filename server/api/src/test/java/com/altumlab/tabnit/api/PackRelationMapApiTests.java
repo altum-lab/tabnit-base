@@ -212,6 +212,13 @@ class PackRelationMapApiTests {
 		List<AuditRecord> rows = this.audit.after(mark);
 		assertThat(rows).extracting(AuditRecord::action).containsExactly("getPackRelationMap", "getPackRelationMap");
 		assertThat(rows.get(1).target()).contains(packId);
+		// 거부된 요청(없는 Pack)의 줄에도 조회 시점이 남는다.
+		long rejectedMark = this.audit.lastId();
+		this.mvc.perform(get("/api/v1/pack-relation-map").with(OFFICER).param("packId", "pm-no-such-pack").param("asOf", "2026-04-01"))
+			.andExpect(status().isNotFound());
+		List<AuditRecord> rejected = this.audit.after(rejectedMark);
+		assertThat(rejected).hasSize(2);
+		assertThat(rejected.get(1).asOf()).isEqualTo(LocalDate.parse("2026-04-01"));
 	}
 
 	private String body(String url) throws Exception {

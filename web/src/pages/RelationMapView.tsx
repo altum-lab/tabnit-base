@@ -11,6 +11,9 @@ import { buildGraph, type GraphLink, type GraphNode } from "./relationMapGraph";
 // - 화면이 정하는 것은 그리는 자리뿐이다. 처음 자리는 서버가 준 순서로 깊이마다 둥글게 놓고, 라이브러리의
 //   힘 배치를 정해진 횟수만 돌린 뒤 멈춘다. 같은 답이면 같은 그림이 나온다 (움직이는 그림이 아니다).
 //
+// 가리기 (카드 D-20): 유형과 관계 유형을 꺼서 그 노드와 간선을 그리지 않을 수 있다. 서버가 준 것에서 가리기만 한다:
+// 남은 것의 순서는 서버가 준 순서 그대로이고, 서버가 준 수(전체 수, 잘렸는지)는 바꾸지 않는다. 다시 묻지 않는다.
+//
 // 그림은 캔버스라 화면 낭독기와 화면 시험이 읽지 못한다. 같은 답으로 만든 노드 목록을 옆에 둔다:
 // 목록에서도 개체를 가운데로 옮길 수 있다.
 
@@ -21,6 +24,27 @@ const WARMUP_TICKS = 80;
 const MAX_FIT_ZOOM = 2.5;
 
 export type MapView = "2d" | "3d";
+
+// 가린 것의 이름. 켜 둔 것이 아니라 가린 것을 둔다: 다시 받은 답에 새 유형이 나오면 켜진 채로 보인다.
+export type MapFilter = { entityTypes: string[]; relationTypes: string[] };
+
+// 서버의 답에서 가린 것을 뺀다. 간선은 관계 유형이 켜져 있고 두 끝이 모두 남은 것만 남긴다. 순서는 그대로다.
+export function filterMap(map: RelationMap, hidden: MapFilter): RelationMap {
+  if (hidden.entityTypes.length === 0 && hidden.relationTypes.length === 0) {
+    return map;
+  }
+  const nodes = map.nodes.filter((node) => !hidden.entityTypes.includes(node.entity.entityType));
+  const kept = new Set(nodes.map((node) => node.entityId));
+  const edges = map.edges.filter(
+    (edge) =>
+      !hidden.relationTypes.includes(edge.relationType) && kept.has(edge.sourceEntityId) && kept.has(edge.targetEntityId),
+  );
+  return { ...map, nodes, edges };
+}
+
+function toggled(names: string[], name: string, on: boolean) {
+  return on ? names.filter((candidate) => candidate !== name) : [...names, name];
+}
 
 type Node = NodeObject<GraphNode>;
 type Link = LinkObject<GraphNode, GraphLink>;
@@ -35,7 +59,14 @@ export function RelationMapView({
   view,
   onView,
   onCenter,
-}: GraphProps & { view: MapView; onView: (view: MapView) => void }) {
+  hidden,
+  onHidden,
+}: GraphProps & {
+  view: MapView;
+  onView: (view: MapView) => void;
+  hidden: MapFilter;
+  onHidden: (hidden: MapFilter) => void;
+}) {
   // 3D 그림의 코드를 받는 일의 상태: 받는 중, 받지 못함. 받았는지는 loaded3D 로 본다 (이 상태로 보지 않는다):
   // 받는 사이에 2D 로 돌아갔다 와도, 화면이 다시 그려져도 받은 코드는 그대로 있다.
   const [loading3D, setLoading3D] = useState<"loading" | "failed">("loading");
@@ -67,6 +98,20 @@ export function RelationMapView({
 
   const Graph3D = loaded3D;
 
+  // 고를 것: 서버의 답에 나온 유형과 관계 유형. 답에 처음 나온 차례다 (화면이 정렬하지 않는다).
+  const entityTypes = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const node of map.nodes) {
+      if (!seen.has(node.entity.entityType)) {
+        seen.set(node.entity.entityType, node.entity.entityTypeLabel);
+      }
+    }
+    return [...seen].map(([name, label]) => ({ name, label }));
+  }, [map]);
+  const relationTypes = useMemo(() => [...new Set(map.edges.map((edge) => edge.relationType))], [map]);
+  const shown = useMemo(() => filterMap(map, hidden), [map, hidden]);
+  const filtered = shown !== map && (shown.nodes.length !== map.nodes.length || shown.edges.length !== map.edges.length);
+
   return (
     <section
       aria-label="지도"
@@ -75,6 +120,7 @@ export function RelationMapView({
       data-as-of={map.asOf}
       data-depth={map.depth}
       data-view={view}
+      data-shown-edges={JSON.stringify(shown.edges.map((edge) => edge.id))}
     >
       <fieldset>
         <legend>그림</legend>
@@ -86,6 +132,39 @@ export function RelationMapView({
         </label>{" "}
         <small>3D 는 마우스로 끌어 돌리고 굴려서 확대합니다.</small>
       </fieldset>
+      <p role="group" aria-label="보일 것">
+        <strong>보일 것</strong> <small>끄면 그 유형의 개체와 관계를 지도에 그리지 않습니다. 서버에 다시 묻지 않습니다.</small>
+        <br />
+        <span>유형:</span>{" "}
+        {entityTypes.map((type) => (
+          <label key={type.name}>
+            <input
+              type="checkbox"
+              data-entity-type={type.name}
+              checked={!hidden.entityTypes.includes(type.name)}
+              onChange={(e) => onHidden({ ...hidden, entityTypes: toggled(hidden.entityTypes, type.name, e.target.checked) })}
+            />{" "}
+            {type.label}{" "}
+          </label>
+        ))}
+        {relationTypes.length > 0 && (
+          <>
+            <br />
+            <span>관계 유형:</span>
+          </>
+        )}{" "}
+        {relationTypes.map((name) => (
+          <label key={name}>
+            <input
+              type="checkbox"
+              data-relation-type={name}
+              checked={!hidden.relationTypes.includes(name)}
+              onChange={(e) => onHidden({ ...hidden, relationTypes: toggled(hidden.relationTypes, name, e.target.checked) })}
+            />{" "}
+            {name}{" "}
+          </label>
+        ))}
+      </p>
       {map.truncated && map.reachedDepth < map.depth && (
         <p data-testid="map-truncated">
           이웃이 많아 깊이 {map.reachedDepth} 에서 더 따라가지 않았습니다. 거기까지 찾은 {map.totalNodes}개 가운데 가까운{" "}
@@ -98,8 +177,16 @@ export function RelationMapView({
           쪽의 개체를 가운데로 옮겨 보세요.
         </p>
       )}
-      {view === "2d" && <Graph2D map={map} onCenter={onCenter} />}
-      {view === "3d" && Graph3D && <Graph3D map={map} onCenter={onCenter} />}
+      {filtered && (
+        <p data-testid="map-filtered">
+          가린 것이 있습니다. 위의 수와 아래의 관계 목록은 가리기 전의 것 그대로입니다.
+        </p>
+      )}
+      {shown.nodes.length === 0 && (
+        <p data-testid="map-empty">켜 둔 유형의 개체가 없어 지도에 보일 것이 없습니다. "보일 것"에서 유형을 켜세요.</p>
+      )}
+      {shown.nodes.length > 0 && view === "2d" && <Graph2D map={shown} onCenter={onCenter} />}
+      {shown.nodes.length > 0 && view === "3d" && Graph3D && <Graph3D map={shown} onCenter={onCenter} />}
       {view === "3d" && !Graph3D && loading3D === "loading" && (
         <p data-testid="map-3d-loading">3D 그림을 불러오는 중입니다…</p>
       )}
@@ -115,7 +202,7 @@ export function RelationMapView({
         </small>
       </p>
       <ul aria-label="지도의 노드" style={{ maxHeight: "14rem", overflowY: "auto" }}>
-        {map.nodes.map((node) => (
+        {shown.nodes.map((node) => (
           <li key={node.entityId} data-node-id={node.entityId}>
             <span>{node.entity.displayName ?? node.entity.entityKey}</span>{" "}
             <small>

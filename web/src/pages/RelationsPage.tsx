@@ -6,7 +6,7 @@ import { addDays } from "../time";
 import { EntityName } from "./EntityName";
 import { EntityPicker } from "./EntityPicker";
 import { Pager } from "./Pager";
-import { type MapView, RelationMapView } from "./RelationMapView";
+import { type MapFilter, type MapView, RelationMapView } from "./RelationMapView";
 
 // 관계 지도 화면 (D-08). 개체 하나를 가운데 둔 지도와, 그 개체의 관계 목록을 조회 시점으로 보여 준다.
 // 지도는 관계 지도 API (docs/api/openapi.yaml 의 getRelationMap), 목록은 시점 조회 API (getRelationsAsOf) 의 값이다.
@@ -42,6 +42,8 @@ export function RelationsPage() {
   const [view, setView] = useState<View>({ kind: "idle" });
   // 지도를 2D 로 그릴지 3D 로 그릴지. 화면을 열어 둔 동안 유지한다 (다시 받아도, 가운데를 옮겨도). D2 AD-361.
   const [mapView, setMapView] = useState<MapView>("2d");
+  // 지도에서 가린 유형과 관계 유형 (카드 D-20). 화면을 열어 둔 동안 유지한다 (다시 받아도, 가운데를 옮겨도).
+  const [mapFilter, setMapFilter] = useState<MapFilter>({ entityTypes: [], relationTypes: [] });
   // 마지막으로 청한 것 (가운데 개체, 조회 시점, 깊이). 막대, 깊이, 노드로 다시 받을 때 여기서 하나만 바꿔 청한다.
   // 받은 것이 아니라 청한 것을 둔다: 청한 것이 실패했어도 화면의 입력란과 막대는 청한 값을 보이고 있으므로,
   // 그 뒤에 깊이나 막대를 바꾸면 화면에 적힌 개체와 날짜로 다시 청해야 한다 (앞서 받은 것으로 돌아가지 않는다).
@@ -235,7 +237,14 @@ export function RelationsPage() {
 
       {view.kind === "loaded" && (
         <>
-          <RelationMapView map={view.map} view={mapView} onView={setMapView} onCenter={center} />
+          <RelationMapView
+            map={view.map}
+            view={mapView}
+            onView={setMapView}
+            onCenter={center}
+            hidden={mapFilter}
+            onHidden={setMapFilter}
+          />
           <Result result={view.relations} onMove={(offset) => void movePage(view.map, offset)} />
         </>
       )}

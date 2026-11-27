@@ -168,6 +168,44 @@ paths:
           $ref: '#/components/responses/Problem'
         '500':
           $ref: '#/components/responses/Problem'
+  /api/v1/attribute-values:
+    get:
+      operationId: getAttributeValuesAsOf
+      summary: 개체 하나의 속성 값을 조회 시점으로 돌려준다
+      description: >-
+        조회 시점에 유효한 값만 준다 (시작일 포함, 종료일 제외). 그 날짜에 값이 없는 속성은 목록에 없고, 하나도 없으면
+        빈 목록이다. 순서는 속성의 이름, 시작일의 글자 코드 순이다. 나눠 주지 않는다. 담당자와 관리자가 부를 수 있다
+      parameters:
+        - name: entityId
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: asOf
+          in: query
+          required: false
+          description: 조회 시점. 없으면 오늘
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: 그 개체와 조회 시점에 유효한 속성 값
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttributeValuesAsOf'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/Problem'
   /api/v1/pack-relation-map:
     get:
       operationId: getPackRelationMap
@@ -1463,6 +1501,54 @@ components:
           type: string
           format: date-time
           description: 기록한 때 (협정 세계시)
+    AttributeValuesAsOf:
+      type: object
+      required: [asOf, entityId, entity, values]
+      properties:
+        asOf:
+          type: string
+          format: date
+          description: 답에 쓴 조회 시점
+        entityId:
+          type: string
+        entity:
+          description: 그 개체. 표시 이름은 조회 시점의 값이다
+          allOf:
+            - $ref: '#/components/schemas/EntityRef'
+        values:
+          type: array
+          description: 조회 시점에 유효한 속성 값. 속성의 이름, 시작일 순이다. 없으면 빈 목록이다
+          items:
+            $ref: '#/components/schemas/AttributeValueAsOf'
+    AttributeValueAsOf:
+      type: object
+      required: [attributeName, attributeLabel, value, valueDisplay, validFrom, validTo, provenance, recordedAt]
+      properties:
+        attributeName:
+          type: string
+        attributeLabel:
+          type: string
+          description: Pack 의 정의의 이름표. 없으면 속성의 이름이다
+        value:
+          type: string
+          description: 저장한 글자 그대로다
+        valueDisplay:
+          type: string
+          description: 화면에 보일 글자. 참·거짓 속성이면 예, 아니오다. 그 밖에는 value 와 같다
+        validFrom:
+          type: string
+          format: date
+        validTo:
+          description: 종료일. 없으면 null (계속 유효하다)
+          oneOf:
+            - type: string
+              format: date
+            - type: 'null'
+        provenance:
+          $ref: '#/components/schemas/Provenance'
+        recordedAt:
+          type: string
+          format: date-time
     Provenance:
       type: object
       description: 출처. 어느 입력 자료의 어느 판에서 왔는가

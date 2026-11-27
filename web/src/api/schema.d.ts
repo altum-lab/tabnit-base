@@ -61,6 +61,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/attribute-values": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 개체 하나의 속성 값을 조회 시점으로 돌려준다
+         * @description 조회 시점에 유효한 값만 준다 (시작일 포함, 종료일 제외). 그 날짜에 값이 없는 속성은 목록에 없고, 하나도 없으면 빈 목록이다. 순서는 속성의 이름, 시작일의 글자 코드 순이다. 나눠 주지 않는다. 담당자와 관리자가 부를 수 있다
+         */
+        get: operations["getAttributeValuesAsOf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pack-relation-map": {
         parameters: {
             query?: never;
@@ -674,6 +694,34 @@ export interface components {
              * Format: date-time
              * @description 기록한 때 (협정 세계시)
              */
+            recordedAt: string;
+        };
+        AttributeValuesAsOf: {
+            /**
+             * Format: date
+             * @description 답에 쓴 조회 시점
+             */
+            asOf: string;
+            entityId: string;
+            /** @description 그 개체. 표시 이름은 조회 시점의 값이다 */
+            entity: components["schemas"]["EntityRef"];
+            /** @description 조회 시점에 유효한 속성 값. 속성의 이름, 시작일 순이다. 없으면 빈 목록이다 */
+            values: components["schemas"]["AttributeValueAsOf"][];
+        };
+        AttributeValueAsOf: {
+            attributeName: string;
+            /** @description Pack 의 정의의 이름표. 없으면 속성의 이름이다 */
+            attributeLabel: string;
+            /** @description 저장한 글자 그대로다 */
+            value: string;
+            /** @description 화면에 보일 글자. 참·거짓 속성이면 예, 아니오다. 그 밖에는 value 와 같다 */
+            valueDisplay: string;
+            /** Format: date */
+            validFrom: string;
+            /** @description 종료일. 없으면 null (계속 유효하다) */
+            validTo: string | null;
+            provenance: components["schemas"]["Provenance"];
+            /** Format: date-time */
             recordedAt: string;
         };
         /** @description 출처. 어느 입력 자료의 어느 판에서 왔는가 */
@@ -1664,6 +1712,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntityList"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getAttributeValuesAsOf: {
+        parameters: {
+            query: {
+                entityId: string;
+                /** @description 조회 시점. 없으면 오늘 */
+                asOf?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 그 개체와 조회 시점에 유효한 속성 값 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributeValuesAsOf"];
                 };
             };
             400: components["responses"]["Problem"];

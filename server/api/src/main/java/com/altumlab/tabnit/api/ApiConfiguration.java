@@ -196,6 +196,12 @@ class ApiConfiguration implements WebMvcConfigurer {
 		return new com.altumlab.tabnit.link.ChangeEvents(dataSource);
 	}
 
+	/** 속성 값을 조회 시점으로 읽는 조회 (A-13). 속성 값의 시점 조회 API 가 쓴다 (카드 A-19, D2 AD-420). */
+	@Bean
+	com.altumlab.tabnit.core.AttributeValueQuery attributeValueQuery(DataSource dataSource) {
+		return new com.altumlab.tabnit.core.AttributeValueQuery(dataSource);
+	}
+
 	/** Pack 의 전체 지도용 조회 (카드 A-20, D2 AD-419). */
 	@Bean
 	com.altumlab.tabnit.core.PackRelationMapQuery packRelationMapQuery(DataSource dataSource) {

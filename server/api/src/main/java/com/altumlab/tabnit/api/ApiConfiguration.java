@@ -184,6 +184,12 @@ class ApiConfiguration implements WebMvcConfigurer {
 		return new PackDataQuery(dataSource);
 	}
 
+	/** 두 개체 사이의 가장 짧은 경로를 찾는 조회 (카드 A-18, D2 AD-413). */
+	@Bean
+	com.altumlab.tabnit.core.RelationPathQuery relationPathQuery(DataSource dataSource) {
+		return new com.altumlab.tabnit.core.RelationPathQuery(dataSource);
+	}
+
 	/** 개체를 글자로 찾는 조회 (카드 A-17, D2 AD-411). */
 	@Bean
 	com.altumlab.tabnit.core.EntitySearchQuery entitySearchQuery(DataSource dataSource) {

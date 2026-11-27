@@ -61,6 +61,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/relation-path": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 두 개체 사이의 가장 짧은 경로를 조회 시점에 유효한 관계로 찾는다
+         * @description 관계의 방향을 가리지 않고 잇는다 (들어오는 관계와 나가는 관계를 모두 따라간다). 영향 범위의 근거 경로와 다른 계산이다. 길이가 같은 가장 짧은 경로가 여럿이면 출발 개체 쪽부터 관계의 id 를 차례로 견줘 글자 코드 순으로 앞선 하나를 준다. 최대 길이와 훑는 개체의 수에 한도가 있다: 한도 때문에 찾지 못했으면 limitReached 가 true 다. 담당자와 관리자가 부를 수 있다
+         */
+        get: operations["getRelationPath"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/relation-map": {
         parameters: {
             query?: never;
@@ -413,6 +433,34 @@ export interface components {
             truncated: boolean;
             nodes: components["schemas"]["RelationMapNode"][];
             edges: components["schemas"]["RelationMapEdge"][];
+        };
+        RelationPath: {
+            /**
+             * Format: date
+             * @description 답에 쓴 조회 시점. 이 날짜에 유효한 관계로 찾았고, 표시 이름도 이 날짜의 값이다
+             */
+            asOf: string;
+            fromEntityId: string;
+            toEntityId: string;
+            /** @description 경로를 찾았는가 */
+            found: boolean;
+            /** @description 한도(최대 길이, 훑는 개체의 수) 때문에 멈췄는가. true 이면 경로가 없다는 뜻이 아니라 한도 안에서 찾지 못했다는 뜻이다. 찾았으면 false 다 */
+            limitReached: boolean;
+            /** @description 찾는 경로의 최대 길이. 이보다 긴 경로는 찾지 않는다 */
+            maxLength: number;
+            /** @description 경로의 길이 (관계의 수). 찾지 못했으면 null 이다. 두 개체가 같으면 0 이다 */
+            length: number | null;
+            /** @description 경로가 지나는 개체. 출발 개체에서 도착 개체까지 차례대로다. 찾지 못했으면 비어 있다 */
+            entities: components["schemas"]["EntityRef"][];
+            /** @description 걸음. 출발 개체 쪽부터 차례대로다. 찾지 못했거나 두 개체가 같으면 비어 있다 */
+            steps: components["schemas"]["RelationPathStep"][];
+        };
+        RelationPathStep: {
+            stepNo: number;
+            from: components["schemas"]["EntityRef"];
+            to: components["schemas"]["EntityRef"];
+            /** @description 건넌 관계. 관계에 적힌 방향(출발, 도착)은 저장된 그대로다. 걸어간 방향(from 에서 to)과 다를 수 있다 */
+            relation: components["schemas"]["Relation"];
         };
         RelationMapNode: {
             entityId: string;
@@ -1173,6 +1221,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntityList"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getRelationPath: {
+        parameters: {
+            query: {
+                /** @description 출발 개체의 id */
+                fromEntityId: string;
+                /** @description 도착 개체의 id. 출발 개체와 같은 Pack 의 것이어야 한다. 출발 개체와 같으면 길이 0 의 경로다 */
+                toEntityId: string;
+                /** @description 조회 시점. 없으면 설치 설정의 시간대에서의 오늘. 0001-01-01 부터 9999-12-31 까지의 날짜만 받는다 */
+                asOf?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 경로를 돌려준다. 경로가 없는 것은 오류가 아니다 (found 가 false) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelationPath"];
                 };
             };
             400: components["responses"]["Problem"];

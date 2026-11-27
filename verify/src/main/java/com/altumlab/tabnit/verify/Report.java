@@ -199,6 +199,7 @@ final class Report {
         labels.put(Evaluator.IMPACT, "영향 범위");
         labels.put(Evaluator.ACTIONS, "조치");
         labels.put(Evaluator.RELATION_MAP, "관계 지도");
+        labels.put(Evaluator.ATTRIBUTE_VALUES, "속성 값");
         return labels;
     }
 }

@@ -30,6 +30,9 @@ final class Evaluator {
     /** 관계 지도 (D2 AD-368). 물을 수 있지만 Pack 마다 반드시 있어야 하는 종류는 아니다. */
     static final String RELATION_MAP = "relation-map";
 
+    /** 속성 값의 시점 조회 (D4 3절, D2 AD-421). 최소 수가 없다. */
+    static final String ATTRIBUTE_VALUES = "attribute-values-as-of";
+
     /** 지금 물을 수 있는 종류. 보고와 최소 수의 확인에서도 이 차례로 쓴다. */
     static final List<String> KINDS = List.of(RELATIONS, CHANGES, IMPACT, ACTIONS);
 
@@ -87,6 +90,7 @@ final class Evaluator {
                     case IMPACT -> impact(question, steps);
                     case ACTIONS -> actions(question, steps);
                     case RELATION_MAP -> relationMap(question);
+                    case ATTRIBUTE_VALUES -> attributeValues(question);
                     default -> throw new Failure("아직 만들지 않은 종류입니다: " + question.kind());
                 };
                 // 묶음째로 견준다. 글자로 적은 것은 보고에만 쓴다: 값 안의 쉼표나 괄호 때문에 다른 묶음이 같은 글자가 될 수 있다.
@@ -134,6 +138,38 @@ final class Evaluator {
             row.put("target", relation.get("targetEntityId"));
             row.put("validFrom", relation.get("validFrom"));
             row.put("validTo", relation.get("validTo"));
+            actual.add(row);
+        }
+        return new Object[] { expected, actual };
+    }
+
+    /** 속성 값의 시점 조회: 그 날짜에 유효한 값(속성의 이름, 값, 시작일, 종료일)을 제품이 준 차례로 견준다. 없으면 빈 목록이다. */
+    private Object[] attributeValues(QuestionFile.Question question) {
+        LocalDate asOf = QuestionFile.date(question.body().get("asOf"), "질문 " + question.id() + " 의 asOf");
+        String entityId = Ids.entity(this.packId, question.body().get("entity"));
+        List<Object> expected = new ArrayList<>();
+        for (Object item : list(expect(question).get("values"), question, "values")) {
+            Map<?, ?> value = map(item, question, "values 의 항목");
+            if (value.get("attribute") == null || value.get("value") == null) {
+                throw new Failure("질문 " + question.id() + " 의 values 의 항목에 attribute 와 value 가 있어야 합니다.");
+            }
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("attribute", String.valueOf(value.get("attribute")));
+            row.put("value", String.valueOf(value.get("value")));
+            row.put("validFrom", QuestionFile.date(value.get("validFrom"), "질문 " + question.id() + " 의 validFrom").toString());
+            row.put("validTo", value.get("validTo") == null ? null
+                    : QuestionFile.date(value.get("validTo"), "질문 " + question.id() + " 의 validTo").toString());
+            expected.add(row);
+        }
+        Map<?, ?> body = ok(this.product.attributeValues(entityId, asOf), "속성 값의 시점 조회");
+        List<Object> actual = new ArrayList<>();
+        for (Object item : (List<?>) body.get("values")) {
+            Map<?, ?> value = (Map<?, ?>) item;
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("attribute", value.get("attributeName"));
+            row.put("value", value.get("value"));
+            row.put("validFrom", value.get("validFrom"));
+            row.put("validTo", value.get("validTo"));
             actual.add(row);
         }
         return new Object[] { expected, actual };
@@ -432,6 +468,32 @@ final class Evaluator {
 
     /** 어느 날짜나 단계를 묻는가. 보고에 적는다. */
     private static String label(QuestionFile.Question question) {
+        String golden = golden(question);
+        String where = where(question);
+        if (golden == null) {
+            return where;
+        }
+        return where.isEmpty() ? "[" + golden + "]" : where + " [" + golden + "]";
+    }
+
+    /**
+     * 질문에 적은 골든셋의 번호 (D4 3절, D2 AD-421). 보고에 함께 적기만 한다: 판정에 쓰지 않는다.
+     *
+     * @return 번호. 적지 않았으면 null
+     */
+    private static String golden(QuestionFile.Question question) {
+        Object golden = question.body().get("golden");
+        if (golden == null) {
+            return null;
+        }
+        if (!(golden instanceof String text) || text.isBlank()) {
+            throw new Failure("질문 " + question.id() + " 의 golden 은 골든셋의 번호 하나를 글자로 적어야 합니다 (예: CQ-03). 받은 값: "
+                    + golden);
+        }
+        return text;
+    }
+
+    private static String where(QuestionFile.Question question) {
         Map<String, Object> body = question.body();
         if (RELATION_MAP.equals(question.kind())) {
             return QuestionFile.date(body.get("asOf"), "질문 " + question.id() + " 의 asOf") + " 깊이 " + mapDepth(question);

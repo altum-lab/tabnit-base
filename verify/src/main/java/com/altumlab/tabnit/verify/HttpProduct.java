@@ -87,6 +87,12 @@ final class HttpProduct implements Product {
     }
 
     @Override
+    public Reply attributeValues(String entityId, LocalDate asOf) {
+        // 나눠 주지 않는 답이다 (D7 4절).
+        return send("GET", "/api/v1/attribute-values?entityId=" + encode(entityId) + "&asOf=" + asOf, null, null);
+    }
+
+    @Override
     public Reply impactScope(String changeEventId) {
         return whole("/api/v1/impact-scopes?changeEventId=" + encode(changeEventId), "targets");
     }

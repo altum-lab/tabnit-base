@@ -1139,6 +1139,142 @@ class VerifyRunnerTest {
     }
 
     /** 지어낸 제품. 정해 둔 답을 준다. */
+    // ── 속성 값의 시점 조회 (T-08, D2 AD-421) ─────────────────────────
+
+    private static final String ATTRIBUTE_VALUES_QUESTION = """
+            questions:
+              - id: Q-01
+                kind: attribute-values-as-of
+                title: 속성 값
+                asOf: 2026-02-01
+                entity: { type: TypeA, key: k-1 }
+                expect:
+                  values:
+                    - { attribute: name, value: 가, validFrom: 2026-01-01, validTo: null }
+                    - { attribute: size, value: "3", validFrom: 2026-02-01, validTo: 2026-06-01 }
+            """;
+
+    @Test
+    void 속성_값의_질문은_값과_유효기간을_제품이_준_차례_그대로_견준다() throws IOException {
+        QuestionFile file = QuestionFile.read(write("S-values.yaml", SCENARIO + ATTRIBUTE_VALUES_QUESTION));
+        FakeProduct product = new FakeProduct();
+
+        List<Evaluator.Result> results = new Evaluator(PACK, product).evaluate(file, product.steps());
+
+        assertThat(results).singleElement().satisfies(result -> {
+            assertThat(result.passed()).as(result.reason() + "\n기대: " + result.expected() + "\n실제: " + result.actual()).isTrue();
+            assertThat(result.label()).isEqualTo("2026-02-01");
+            assertThat(result.kind()).isEqualTo("attribute-values-as-of");
+        });
+        // 식별자와 날짜로 물었다.
+        assertThat(product.asked).containsExactly("attribute-values p|TypeA|k-1 2026-02-01");
+    }
+
+    @Test
+    void 속성_값의_질문은_값이나_차례나_유효기간이_다르거나_일부만_적으면_실패다() throws IOException {
+        String wrongValue = ATTRIBUTE_VALUES_QUESTION.replace("value: 가", "value: 나");
+        String wrongEnd = ATTRIBUTE_VALUES_QUESTION.replace("validTo: 2026-06-01", "validTo: 2026-07-01");
+        String swapped = ATTRIBUTE_VALUES_QUESTION.replace("""
+                    - { attribute: name, value: 가, validFrom: 2026-01-01, validTo: null }
+                    - { attribute: size, value: "3", validFrom: 2026-02-01, validTo: 2026-06-01 }
+            """.replace("            ", "                "), """
+                    - { attribute: size, value: "3", validFrom: 2026-02-01, validTo: 2026-06-01 }
+                    - { attribute: name, value: 가, validFrom: 2026-01-01, validTo: null }
+            """.replace("            ", "                "));
+        String partial = ATTRIBUTE_VALUES_QUESTION.replace(
+                "        - { attribute: size, value: \"3\", validFrom: 2026-02-01, validTo: 2026-06-01 }\n", "");
+        for (String changed : List.of(wrongValue, wrongEnd, swapped, partial)) {
+            assertThat(changed).isNotEqualTo(ATTRIBUTE_VALUES_QUESTION);
+            QuestionFile file = QuestionFile.read(write("S-values-bad.yaml", SCENARIO + changed));
+            FakeProduct product = new FakeProduct();
+
+            List<Evaluator.Result> results = new Evaluator(PACK, product).evaluate(file, product.steps());
+
+            assertThat(results).singleElement().satisfies(result -> {
+                assertThat(result.passed()).as(changed).isFalse();
+                assertThat(result.expected()).isNotEqualTo(result.actual());
+            });
+        }
+    }
+
+    @Test
+    void 속성_값의_질문은_값이_없는_날짜를_빈_목록으로_묻고_없는_개체와_빠진_항목은_실패로_알린다() throws IOException {
+        String empty = ATTRIBUTE_VALUES_QUESTION.replace("key: k-1", "key: k-empty").replace("""
+                  values:
+                    - { attribute: name, value: 가, validFrom: 2026-01-01, validTo: null }
+                    - { attribute: size, value: "3", validFrom: 2026-02-01, validTo: 2026-06-01 }
+            """.replace("            ", "                "), "      values: []\n");
+        assertThat(empty).contains("values: []");
+        FakeProduct product = new FakeProduct();
+        assertThat(new Evaluator(PACK, product)
+            .evaluate(QuestionFile.read(write("S-values-empty.yaml", SCENARIO + empty)), product.steps())).singleElement()
+            .satisfies(result -> assertThat(result.passed()).as(result.reason() + " " + result.actual()).isTrue());
+
+        // 값이 있는데 빈 목록으로 적으면 실패다.
+        String wronglyEmpty = empty.replace("key: k-empty", "key: k-1");
+        assertThat(new Evaluator(PACK, product)
+            .evaluate(QuestionFile.read(write("S-values-empty2.yaml", SCENARIO + wronglyEmpty)), product.steps()))
+            .singleElement().satisfies(result -> assertThat(result.passed()).isFalse());
+
+        // 없는 개체.
+        String missing = ATTRIBUTE_VALUES_QUESTION.replace("key: k-1", "key: k-missing");
+        assertThat(new Evaluator(PACK, product)
+            .evaluate(QuestionFile.read(write("S-values-missing.yaml", SCENARIO + missing)), product.steps())).singleElement()
+            .satisfies(result -> {
+                assertThat(result.passed()).isFalse();
+                assertThat(result.reason()).contains("404");
+            });
+
+        // 정답에 values 가 없다.
+        String noExpect = ATTRIBUTE_VALUES_QUESTION.substring(0, ATTRIBUTE_VALUES_QUESTION.indexOf("      values:")) + "      other: 1\n";
+        assertThat(new Evaluator(PACK, product)
+            .evaluate(QuestionFile.read(write("S-values-none.yaml", SCENARIO + noExpect)), product.steps())).singleElement()
+            .satisfies(result -> {
+                assertThat(result.passed()).isFalse();
+                assertThat(result.reason()).contains("values");
+            });
+    }
+
+    // ── 골든셋의 번호 (T-08, D2 AD-421) ──────────────────────────────
+
+    @Test
+    void 질문에_적은_골든셋의_번호는_보고의_이름표에_붙고_판정에는_쓰지_않는다() throws IOException {
+        String tagged = ATTRIBUTE_VALUES_QUESTION.replace("    title: 속성 값\n", "    title: 속성 값\n    golden: CQ-01\n");
+        assertThat(tagged).contains("golden: CQ-01");
+        FakeProduct product = new FakeProduct();
+
+        List<Evaluator.Result> results = new Evaluator(PACK, product)
+            .evaluate(QuestionFile.read(write("S-golden.yaml", SCENARIO + tagged)), product.steps());
+
+        assertThat(results).singleElement().satisfies(result -> {
+            assertThat(result.passed()).isTrue();
+            assertThat(result.label()).isEqualTo("2026-02-01 [CQ-01]");
+        });
+        // 보고의 줄에 번호가 보인다.
+        assertThat(Report.scenario(PACK, "S-01", results, List.of())).contains("[CQ-01]");
+
+        // 번호가 글자가 아니면 (목록 따위) 그 질문은 실패로 알린다: 조용히 넘기지 않는다.
+        String broken = ATTRIBUTE_VALUES_QUESTION.replace("    title: 속성 값\n", "    title: 속성 값\n    golden: [CQ-01, CQ-02]\n");
+        assertThat(new Evaluator(PACK, product)
+            .evaluate(QuestionFile.read(write("S-golden-bad.yaml", SCENARIO + broken)), product.steps())).singleElement()
+            .satisfies(result -> {
+                assertThat(result.passed()).isFalse();
+                assertThat(result.reason()).contains("golden");
+            });
+    }
+
+    @Test
+    void 속성_값의_질문에는_최소_수가_없다() {
+        List<QuestionFile.Question> enough = new ArrayList<>();
+        for (String kind : List.of("relations-as-of", "changes", "impact", "actions")) {
+            for (int i = 0; i < 3; i++) {
+                enough.add(question(kind + "-" + i, kind));
+            }
+        }
+        assertThat(Report.shortfalls(enough)).noneMatch(problem -> problem.contains("attribute-values"))
+            .noneMatch(problem -> problem.contains("속성 값"));
+    }
+
     private static class FakeProduct implements Product {
 
         final List<String> asked = new ArrayList<>();
@@ -1189,6 +1325,32 @@ class VerifyRunnerTest {
                     depth, "maxNodes", 200, "totalNodes", 2, "truncated", false, "nodes",
                     List.of(Map.of("entityId", "p|TypeA|k-1", "depth", 0), Map.of("entityId", "p|TypeB|k-9", "depth", 1)),
                     "edges", List.of(edge)));
+        }
+
+        @Override
+        public Reply attributeValues(String entityId, LocalDate asOf) {
+            if (entityId.endsWith("missing")) {
+                return new Reply(404, Map.of("code", "ENTITY_NOT_FOUND", "detail", "없다"));
+            }
+            this.asked.add("attribute-values " + entityId + " " + asOf);
+            if (entityId.endsWith("empty")) {
+                return new Reply(200, Map.of("asOf", asOf.toString(), "entityId", entityId, "values", List.of()));
+            }
+            Map<String, Object> name = new LinkedHashMap<>();
+            name.put("attributeName", "name");
+            name.put("attributeLabel", "이름");
+            name.put("value", "가");
+            name.put("valueDisplay", "가");
+            name.put("validFrom", "2026-01-01");
+            name.put("validTo", null);
+            Map<String, Object> size = new LinkedHashMap<>();
+            size.put("attributeName", "size");
+            size.put("attributeLabel", "크기");
+            size.put("value", "3");
+            size.put("valueDisplay", "3");
+            size.put("validFrom", "2026-02-01");
+            size.put("validTo", "2026-06-01");
+            return new Reply(200, Map.of("asOf", asOf.toString(), "entityId", entityId, "values", List.of(name, size)));
         }
 
         @Override

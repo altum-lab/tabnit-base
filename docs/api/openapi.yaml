@@ -631,6 +631,48 @@ paths:
           $ref: '#/components/responses/Problem'
         '500':
           $ref: '#/components/responses/Problem'
+  /api/v1/edition-comparison:
+    get:
+      operationId: compareEditions
+      summary: 같은 입력 자료의 두 판을 견줘 추가, 변경, 삭제된 항목과 값의 앞뒤를 돌려준다
+      description: >-
+        읽기만 한다: 견준 것을 저장하지 않고 변동 이벤트, 영향 범위, 조치를 만들지 않는다. 판마다 저장된 기록
+        (그 행이 무엇을 만들었는가)을 판을 올릴 때와 같은 계산으로 견준다. 그래서 바로 앞 판과 견준 결과는 그 판을
+        올릴 때 저장한 변동과 같다. 적힌 방향 그대로 견준다: 뒤의 판을 앞에 적으면 추가와 삭제, 값의 앞뒤가 거꾸로다.
+        값이 바뀌었다가 되돌아온 속성은 변경으로 나오고 앞뒤의 값이 같다 (끊긴 뒤 새로 만든 값이다).
+        담당자와 관리자가 부를 수 있다
+      parameters:
+        - name: fromEditionId
+          in: query
+          required: true
+          description: 앞에 적는 판의 id. 견주는 기준이다
+          schema:
+            type: string
+            minLength: 1
+        - name: toEditionId
+          in: query
+          required: true
+          description: 뒤에 적는 판의 id. 앞의 판과 같은 Pack 의 같은 입력 자료의 것이어야 한다. 앞의 판과 같으면 바뀐 것이 없다
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        '200':
+          description: 두 판과 바뀐 항목. 순서는 항목의 키의 글자 코드 순이다. 바뀐 것이 없으면 빈 목록이다
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EditionComparison'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/Problem'
   /api/v1/change-events:
     get:
       operationId: listChangeEvents
@@ -2501,6 +2543,84 @@ components:
         value:
           type: [string, 'null']
           description: 걸린 값. 없으면 null
+    EditionComparison:
+      type: object
+      required: [packId, from, to, changes]
+      properties:
+        packId:
+          type: string
+        from:
+          $ref: '#/components/schemas/ComparedEdition'
+        to:
+          $ref: '#/components/schemas/ComparedEdition'
+        changes:
+          type: array
+          description: 바뀐 항목. 항목의 키의 글자 코드 순이다
+          items:
+            $ref: '#/components/schemas/ComparedChange'
+    ComparedEdition:
+      type: object
+      required: [editionId, inputSourceId, inputSourceLabel, editionNo, effectiveDate]
+      properties:
+        editionId:
+          type: string
+        inputSourceId:
+          type: string
+        inputSourceLabel:
+          type: string
+        editionNo:
+          type: integer
+          minimum: 1
+        effectiveDate:
+          type: string
+          format: date
+    ComparedChange:
+      type: object
+      description: >-
+        두 판을 견줘 나온 바뀐 항목 하나. 판 하나의 바뀐 항목(EditionChange)과 같은 내용이고, 변동 이벤트의 id 와 처리
+        결과가 없다: 견준 것은 저장되지 않는다
+      required: [itemKey, kind, primaryEntityId, primaryEntity, targetEntityIds, targetEntities, changedAttributes,
+                 changedRelationTypes, changedValues]
+      properties:
+        itemKey:
+          type: string
+        kind:
+          type: string
+          description: from 에 없고 to 에 있으면 ADDED, 거꾸로면 REMOVED, 둘에 있고 그 행이 만든 것이 다르면 CHANGED
+          enum: [ADDED, CHANGED, REMOVED]
+        primaryEntityId:
+          type: string
+        primaryEntity:
+          description: 그 행의 주 개체. 표시 이름은 to 의 적용일의 값이다
+          allOf:
+            - $ref: '#/components/schemas/EntityRef'
+        targetEntityIds:
+          type: array
+          items:
+            type: string
+        targetEntities:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntityRef'
+        changedAttributes:
+          type: array
+          description: 그 행에서 바뀐 속성의 이름. 글자 코드 순
+          items:
+            type: string
+        changedRelationTypes:
+          type: array
+          description: 그 행에서 바뀐 관계 유형의 이름. 글자 코드 순
+          items:
+            type: string
+        changedValues:
+          description: >-
+            그 행에서 바뀐 속성 값의 앞뒤. before 는 from 의 값, after 는 to 의 값이다. 값을 남기기 전에 들어간 판과
+            견줬으면 null 이다 (모른다)
+          oneOf:
+            - type: array
+              items:
+                $ref: '#/components/schemas/ChangedValue'
+            - type: 'null'
     ChangeEventList:
       type: object
       required: [packId, status, total, offset, limit, changes]

@@ -273,6 +273,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/edition-comparison": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 같은 입력 자료의 두 판을 견줘 추가, 변경, 삭제된 항목과 값의 앞뒤를 돌려준다
+         * @description 읽기만 한다: 견준 것을 저장하지 않고 변동 이벤트, 영향 범위, 조치를 만들지 않는다. 판마다 저장된 기록 (그 행이 무엇을 만들었는가)을 판을 올릴 때와 같은 계산으로 견준다. 그래서 바로 앞 판과 견준 결과는 그 판을 올릴 때 저장한 변동과 같다. 적힌 방향 그대로 견준다: 뒤의 판을 앞에 적으면 추가와 삭제, 값의 앞뒤가 거꾸로다. 값이 바뀌었다가 되돌아온 속성은 변경으로 나오고 앞뒤의 값이 같다 (끊긴 뒤 새로 만든 값이다). 담당자와 관리자가 부를 수 있다
+         */
+        get: operations["compareEditions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/change-events": {
         parameters: {
             query?: never;
@@ -1299,6 +1319,41 @@ export interface components {
             /** @description 걸린 값. 없으면 null */
             value: string | null;
         };
+        EditionComparison: {
+            packId: string;
+            from: components["schemas"]["ComparedEdition"];
+            to: components["schemas"]["ComparedEdition"];
+            /** @description 바뀐 항목. 항목의 키의 글자 코드 순이다 */
+            changes: components["schemas"]["ComparedChange"][];
+        };
+        ComparedEdition: {
+            editionId: string;
+            inputSourceId: string;
+            inputSourceLabel: string;
+            editionNo: number;
+            /** Format: date */
+            effectiveDate: string;
+        };
+        /** @description 두 판을 견줘 나온 바뀐 항목 하나. 판 하나의 바뀐 항목(EditionChange)과 같은 내용이고, 변동 이벤트의 id 와 처리 결과가 없다: 견준 것은 저장되지 않는다 */
+        ComparedChange: {
+            itemKey: string;
+            /**
+             * @description from 에 없고 to 에 있으면 ADDED, 거꾸로면 REMOVED, 둘에 있고 그 행이 만든 것이 다르면 CHANGED
+             * @enum {string}
+             */
+            kind: "ADDED" | "CHANGED" | "REMOVED";
+            primaryEntityId: string;
+            /** @description 그 행의 주 개체. 표시 이름은 to 의 적용일의 값이다 */
+            primaryEntity: components["schemas"]["EntityRef"];
+            targetEntityIds: string[];
+            targetEntities: components["schemas"]["EntityRef"][];
+            /** @description 그 행에서 바뀐 속성의 이름. 글자 코드 순 */
+            changedAttributes: string[];
+            /** @description 그 행에서 바뀐 관계 유형의 이름. 글자 코드 순 */
+            changedRelationTypes: string[];
+            /** @description 그 행에서 바뀐 속성 값의 앞뒤. before 는 from 의 값, after 는 to 의 값이다. 값을 남기기 전에 들어간 판과 견줬으면 null 이다 (모른다) */
+            changedValues: components["schemas"]["ChangedValue"][] | null;
+        };
         ChangeEventList: {
             packId: string;
             /** @description 답에 쓴 거르는 상태. 요청에 없었으면 null 이다 */
@@ -1941,6 +1996,36 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EditionSubmission"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    compareEditions: {
+        parameters: {
+            query: {
+                /** @description 앞에 적는 판의 id. 견주는 기준이다 */
+                fromEditionId: string;
+                /** @description 뒤에 적는 판의 id. 앞의 판과 같은 Pack 의 같은 입력 자료의 것이어야 한다. 앞의 판과 같으면 바뀐 것이 없다 */
+                toEditionId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 두 판과 바뀐 항목. 순서는 항목의 키의 글자 코드 순이다. 바뀐 것이 없으면 빈 목록이다 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditionComparison"];
                 };
             };
             400: components["responses"]["Problem"];

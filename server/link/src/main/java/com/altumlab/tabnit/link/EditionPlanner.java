@@ -633,35 +633,58 @@ final class EditionPlanner {
         if (previous == null) {
             return List.of();
         }
+        // 새 판의 항목을 앞 판의 항목과 같은 꼴로 옮겨, 저장된 두 판을 견주는 것과 같은 계산에 넘긴다 (D2 AD-418).
+        List<PreviousItem> planned = new ArrayList<>();
+        for (PlannedItem item : items.values()) {
+            planned.add(new PreviousItem(item.item().itemKey(), item.item().contentHash(), item.item().primaryEntityId(),
+                    item.outputs()));
+        }
+        return compareStored(pack.packId(), List.copyOf(previous.values()), planned);
+    }
+
+    /**
+     * 두 판의 항목이 만든 것을 견줘 바뀐 항목을 낸다 (D3 6절). 판을 올릴 때의 비교와, 저장된 두 판을 견주는 조회
+     * ({@link EditionComparisons})가 함께 쓴다: 계산이 하나다 (D2 AD-418). 저장소에 닿지 않는다.
+     *
+     * @param packId 두 판의 Pack. 바뀐 값의 개체의 식별자를 만드는 데 쓴다
+     * @param beforeItems 앞의 판의 항목
+     * @param afterItems 뒤의 판의 항목
+     * @return 바뀐 항목. 항목의 키의 글자 코드 순이다. 앞에 없으면 추가, 뒤에 없으면 삭제, 둘에 있고 만든 것이 다르면 변경
+     */
+    static List<ItemChange> compareStored(String packId, List<PreviousItem> beforeItems, List<PreviousItem> afterItems) {
+        TreeMap<String, PreviousItem> befores = new TreeMap<>(LinkOrder.STRINGS);
+        beforeItems.forEach(item -> befores.put(item.itemKey(), item));
+        TreeMap<String, PreviousItem> afters = new TreeMap<>(LinkOrder.STRINGS);
+        afterItems.forEach(item -> afters.put(item.itemKey(), item));
         TreeSet<String> keys = new TreeSet<>(LinkOrder.STRINGS);
-        keys.addAll(previous.keySet());
-        keys.addAll(items.keySet());
+        keys.addAll(befores.keySet());
+        keys.addAll(afters.keySet());
         List<ItemChange> changes = new ArrayList<>();
         for (String itemKey : keys) {
-            PreviousItem before = previous.get(itemKey);
-            PlannedItem after = items.get(itemKey);
+            PreviousItem before = befores.get(itemKey);
+            PreviousItem after = afters.get(itemKey);
             if (before == null) {
-                changes.add(new ItemChange(itemKey, ChangeKind.ADDED, after.item().primaryEntityId(),
+                changes.add(new ItemChange(itemKey, ChangeKind.ADDED, after.primaryEntityId(),
                         List.copyOf(entities(after.outputs())),
                         names(after.outputs(), null, ItemOutput.Kind.ATTRIBUTE_VALUE),
                         names(after.outputs(), null, ItemOutput.Kind.RELATION),
-                        changedValues(List.of(), after.outputs())));
+                        changedValues(packId, List.of(), after.outputs())));
             }
             else if (after == null) {
                 changes.add(new ItemChange(itemKey, ChangeKind.REMOVED, before.primaryEntityId(),
                         List.copyOf(entities(before.outputs())),
                         names(before.outputs(), null, ItemOutput.Kind.ATTRIBUTE_VALUE),
                         names(before.outputs(), null, ItemOutput.Kind.RELATION),
-                        changedValues(before.outputs(), List.of())));
+                        changedValues(packId, before.outputs(), List.of())));
             }
             else if (!made(before.outputs()).equals(made(after.outputs()))) {
                 TreeSet<String> targets = entities(before.outputs());
                 targets.addAll(entities(after.outputs()));
-                changes.add(new ItemChange(itemKey, ChangeKind.CHANGED, after.item().primaryEntityId(),
+                changes.add(new ItemChange(itemKey, ChangeKind.CHANGED, after.primaryEntityId(),
                         List.copyOf(targets),
                         changedNames(before.outputs(), after.outputs(), ItemOutput.Kind.ATTRIBUTE_VALUE),
                         changedNames(before.outputs(), after.outputs(), ItemOutput.Kind.RELATION),
-                        changedValues(before.outputs(), after.outputs())));
+                        changedValues(packId, before.outputs(), after.outputs())));
             }
         }
         return changes;
@@ -703,7 +726,7 @@ final class EditionPlanner {
      *
      * @return 바뀐 값. 값을 남기지 않은 판의 것이 하나라도 끼어 있으면 null: 모른다
      */
-    private List<ValueChange> changedValues(List<OutputDetail> before, List<OutputDetail> after) {
+    private static List<ValueChange> changedValues(String packId, List<OutputDetail> before, List<OutputDetail> after) {
         TreeMap<String, List<OutputDetail>> olds = bySubject(before, made(after));
         TreeMap<String, List<OutputDetail>> news = bySubject(after, made(before));
         TreeSet<String> subjects = new TreeSet<>(LinkOrder.STRINGS);
@@ -713,7 +736,7 @@ final class EditionPlanner {
         TreeMap<String, TreeMap<String, List<ValueChange>>> ordered = new TreeMap<>(LinkOrder.STRINGS);
         for (String subject : subjects) {
             List<String> parts = LinkOrder.parts(subject);
-            String entityId = new EntityRef(pack.packId(), parts.get(1), parts.get(2)).id();
+            String entityId = new EntityRef(packId, parts.get(1), parts.get(2)).id();
             String name = parts.get(3);
             List<OutputDetail> left = olds.getOrDefault(subject, List.of());
             List<OutputDetail> right = news.getOrDefault(subject, List.of());

@@ -184,6 +184,12 @@ class ApiConfiguration implements WebMvcConfigurer {
 		return new PackDataQuery(dataSource);
 	}
 
+	/** 같은 입력 자료의 두 판을 견준다 (카드 C-16, D2 AD-418). */
+	@Bean
+	com.altumlab.tabnit.link.EditionComparisons editionComparisons(DataSource dataSource) {
+		return new com.altumlab.tabnit.link.EditionComparisons(dataSource);
+	}
+
 	/** 변동 이벤트를 읽는다. 목록의 API 가 쓴다 (카드 C-15, D2 AD-417). 판을 처리하는 쪽은 제 것을 따로 든다. */
 	@Bean
 	com.altumlab.tabnit.link.ChangeEvents changeEvents(DataSource dataSource) {

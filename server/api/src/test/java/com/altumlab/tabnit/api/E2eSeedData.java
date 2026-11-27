@@ -44,6 +44,12 @@ class E2eSeedData {
 			{ "guideline", "guideline-v2.csv", "2026-03-01" },
 			{ "guideline-program", "guideline-program-v2.csv", "2026-03-01" } };
 
+	private static final String COMPARE_PACK = "e2e-compare";
+
+	private static final String[][] COMPARE_EDITIONS = { { "program", "program-v1.csv", "2026-01-01" },
+			{ "guideline", "guideline-v1.csv", "2026-01-01" }, { "guideline", "guideline-v2.csv", "2026-03-01" },
+			{ "guideline", "guideline-v3.csv", "2026-05-01" } };
+
 	private static final Provenance SRC_1 = new Provenance("src", 1);
 
 	@Bean
@@ -92,6 +98,15 @@ class E2eSeedData {
 			for (String[] edition : ACTIONS_EDITIONS) {
 				processing.submit(ACTIONS_PACK, edition[0], edition[1],
 						java.nio.file.Files.readAllBytes(actionsPack.resolve("data/" + edition[1])),
+						java.time.LocalDate.parse(edition[2]));
+			}
+			// 두 판의 비교의 시험이 읽을 Pack (C-16, web/tests/edition-comparison.spec.ts): 같은 입력 자료의 판이 셋이다.
+			// 이웃하지 않은 두 판(첫째와 셋째)을 견줄 수 있다. 화면 시험은 읽기만 한다.
+			java.nio.file.Path comparePack = PackCopies.load(dataSource,
+					java.nio.file.Files.createTempDirectory("tabnit-e2e-pack"), COMPARE_PACK, text -> text);
+			for (String[] edition : COMPARE_EDITIONS) {
+				processing.submit(COMPARE_PACK, edition[0], edition[1],
+						java.nio.file.Files.readAllBytes(comparePack.resolve("data/" + edition[1])),
 						java.time.LocalDate.parse(edition[2]));
 			}
 			// 시연 리허설(D-10, web/tests/rehearsal.spec.ts)이 화면으로 판을 올릴 두 예시 Pack. 정의만 적재한다:

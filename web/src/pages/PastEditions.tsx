@@ -4,6 +4,7 @@ import { api, type EditionList, type EditionSubmission } from "../api/client";
 import { CONNECTION_FAILED, messageOf } from "../api/problem";
 import { SessionContext } from "../session";
 import { formatInstant } from "../time";
+import { EditionComparer } from "./EditionComparer";
 import { Pager } from "./Pager";
 
 // 지난 판의 목록과, 그 가운데 고른 판의 결과 (D-16, D7 5절 "지난 판", D2 AD-383).
@@ -203,6 +204,7 @@ export function PastEditions({ packId, refreshKey, renderResult }: Props) {
               ))}
             </tbody>
           </table>
+          <EditionComparer packId={packId} editions={list.list.editions} />
         </>
       )}
 

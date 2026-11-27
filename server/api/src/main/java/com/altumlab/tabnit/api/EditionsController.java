@@ -4,7 +4,12 @@ import com.altumlab.tabnit.pack.PackDefinition;
 import com.altumlab.tabnit.link.ChangeEvent;
 import com.altumlab.tabnit.link.ChangeEventStatus;
 import com.altumlab.tabnit.link.ChangeFailureDetail;
+import com.altumlab.tabnit.link.EditionComparison;
+import com.altumlab.tabnit.link.EditionComparisons;
 import com.altumlab.tabnit.link.EditionPage;
+import com.altumlab.tabnit.link.ItemChange;
+import java.util.ArrayList;
+import java.util.TreeSet;
 import com.altumlab.tabnit.rules.ActionRecords;
 import java.time.Instant;
 import java.util.List;
@@ -54,8 +59,11 @@ class EditionsController {
 
 	private final ActionRecords actions;
 
+	private final EditionComparisons comparisons;
+
 	EditionsController(EditionProcessing processing, EditionRecords editions, PackDefinitions packs,
-			EntityViews entityViews, ActionRecords actions) {
+			EntityViews entityViews, ActionRecords actions, EditionComparisons comparisons) {
+		this.comparisons = comparisons;
 		this.entityViews = entityViews;
 		this.actions = actions;
 		this.processing = processing;
@@ -125,6 +133,81 @@ class EditionsController {
 				events.stream().filter(event -> event.status() == ChangeEventStatus.PROCESSED).map(ChangeEvent::id).toList());
 		return EditionSubmissionResponse.stored(edition, this.editions.items(edition.id()).size(), events,
 				this.editions.notices(edition.id()), this.packs.find(edition.packId()), entities, failures, actionCounts);
+	}
+
+	/** 규격의 EditionComparison. 순서는 link 가 준 그대로다 (항목의 키의 글자 코드 순). */
+	record ComparisonResponse(String packId, ComparedEdition from, ComparedEdition to, List<ComparedChange> changes) {
+	}
+
+	/** 견준 판 하나. */
+	record ComparedEdition(String editionId, String inputSourceId, String inputSourceLabel, int editionNo,
+			LocalDate effectiveDate) {
+	}
+
+	/**
+	 * 규격의 ComparedChange. 판 하나의 바뀐 항목(EditionChange)과 같은 항목이고, 변동 이벤트와 처리 결과가 없다:
+	 * 견준 것은 저장되지 않는다.
+	 *
+	 * @param changedValues 그 행에서 바뀐 속성 값. 값을 남기기 전에 들어간 판과 견줬으면 null 이다 (D2 AD-367)
+	 */
+	record ComparedChange(String itemKey, String kind, String primaryEntityId, EntityViews.Item primaryEntity,
+			List<String> targetEntityIds, List<EntityViews.Item> targetEntities, List<String> changedAttributes,
+			List<String> changedRelationTypes, List<EditionSubmissionResponse.ChangedValue> changedValues) {
+	}
+
+	/**
+	 * 같은 입력 자료의 두 판을 견준다 (규격의 compareEditions, D7 5절 "두 판의 비교", D2 AD-418). 읽기만 한다:
+	 * 견준 것을 저장하지 않고 변동 이벤트, 영향 범위, 조치를 만들지 않는다. 견주는 일은 link 가 한다.
+	 */
+	@GetMapping("/api/v1/edition-comparison")
+	@Audited(action = "compareEditions", params = { "fromEditionId", "toEditionId" })
+	ComparisonResponse compare(@RequestParam(required = false) String fromEditionId,
+			@RequestParam(required = false) String toEditionId) {
+		require(fromEditionId, "MISSING_FROM_EDITION_ID", "fromEditionId",
+				"앞의 판의 식별자가 없습니다. fromEditionId 에 판의 식별자를 넣어 다시 보내세요.");
+		require(toEditionId, "MISSING_TO_EDITION_ID", "toEditionId",
+				"뒤의 판의 식별자가 없습니다. toEditionId 에 판의 식별자를 넣어 다시 보내세요.");
+		Edition from = comparedEdition(fromEditionId, "fromEditionId", "앞의 판");
+		Edition to = comparedEdition(toEditionId, "toEditionId", "뒤의 판");
+		if (!from.packId().equals(to.packId()) || !from.inputSourceId().equals(to.inputSourceId())) {
+			throw new ApiProblemException(HttpStatus.BAD_REQUEST, "DIFFERENT_INPUT_SOURCES", "toEditionId",
+					"두 판이 같은 입력 자료의 것이 아닙니다. 같은 Pack 의 같은 입력 자료의 두 판을 골라 다시 보내세요.");
+		}
+		EditionComparison compared = this.comparisons.compare(from.id(), to.id());
+		// 개체는 유형, 키, 표시 이름과 함께 준다. 표시 이름은 뒤에 적은 판의 적용일의 값이다.
+		TreeSet<String> ids = new TreeSet<>();
+		for (ItemChange change : compared.changes()) {
+			ids.add(change.primaryEntityId());
+			ids.addAll(change.targetEntityIds());
+			if (change.changedValues() != null) {
+				change.changedValues().forEach(value -> ids.add(value.entityId()));
+			}
+		}
+		Map<String, EntityViews.Item> entities = this.entityViews.items(ids, compared.to().effectiveDate());
+		Optional<PackDefinition> pack = this.packs.find(from.packId());
+		InputSourceLabels labels = this.entityViews.inputSourceLabels();
+		List<ComparedChange> changes = new ArrayList<>();
+		for (ItemChange change : compared.changes()) {
+			changes.add(new ComparedChange(change.itemKey(), change.kind().name(), change.primaryEntityId(),
+					EntityViews.require(entities, change.primaryEntityId(), "주 개체"), change.targetEntityIds(),
+					change.targetEntityIds().stream().map(id -> EntityViews.require(entities, id, "변동 대상")).toList(),
+					change.changedAttributes(), change.changedRelationTypes(),
+					EditionSubmissionResponse.ChangedValue.of(change.changedValues(), pack, entities)));
+		}
+		return new ComparisonResponse(from.packId(), comparedEdition(compared.from(), labels),
+				comparedEdition(compared.to(), labels), changes);
+	}
+
+	private Edition comparedEdition(String editionId, String field, String what) {
+		// NUL 이 든 식별자의 판은 있을 수 없다. 저장소에 묻지 않고 없는 것으로 답한다.
+		return (editionId.indexOf('\u0000') >= 0 ? Optional.<Edition>empty() : this.editions.findEdition(editionId))
+			.orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND, "EDITION_NOT_FOUND", field,
+					what + "이 없습니다. 판의 식별자를 확인하세요."));
+	}
+
+	private static ComparedEdition comparedEdition(Edition edition, InputSourceLabels labels) {
+		return new ComparedEdition(edition.id(), edition.inputSourceId(),
+				labels.label(edition.packId(), edition.inputSourceId()), edition.editionNo(), edition.effectiveDate());
 	}
 
 	@PostMapping(path = "/api/v1/editions", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

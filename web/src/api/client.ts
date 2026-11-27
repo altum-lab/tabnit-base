@@ -63,3 +63,4 @@ export type RelationPath = components["schemas"]["RelationPath"];
 export type AuditRecordList = components["schemas"]["AuditRecordList"];
 export type PackDefinition = components["schemas"]["PackDefinition"];
 export type ChangeEventList = components["schemas"]["ChangeEventList"];
+export type EditionComparison = components["schemas"]["EditionComparison"];

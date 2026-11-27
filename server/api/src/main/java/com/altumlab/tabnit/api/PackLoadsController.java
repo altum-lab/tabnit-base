@@ -1,8 +1,11 @@
 package com.altumlab.tabnit.api;
 
+import com.altumlab.tabnit.pack.PackDefinitions;
 import com.altumlab.tabnit.pack.PackLoadResult;
+import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -18,10 +21,42 @@ class PackLoadsController {
 
 	static final String PATH = "/api/v1/pack-loads";
 
+	static final String FOLDERS_PATH = "/api/v1/pack-folders";
+
 	private final PackLoading loading;
 
-	PackLoadsController(PackLoading loading) {
+	private final PackDefinitions packs;
+
+	PackLoadsController(PackLoading loading, PackDefinitions packs) {
 		this.loading = loading;
+		this.packs = packs;
+	}
+
+	/**
+	 * 규격의 PackFolderList.
+	 *
+	 * @param configured 서버에 Pack 폴더가 정해져 있고 그 폴더가 있는가. 거짓이면 목록은 비어 있다
+	 */
+	record FolderList(boolean configured, List<Folder> folders) {
+	}
+
+	/** @param loaded 그 이름의 Pack 이 이미 적재되어 있는가 */
+	record Folder(String packId, boolean loaded) {
+	}
+
+	/**
+	 * 서버의 Pack 폴더에 놓인 폴더를 읽는다 (규격의 listPackFolders, D7 10절, D2 AD-416). 관리자만 부른다.
+	 * 폴더 안을 읽어 검증하지 않는다: 이름과, 이미 적재됐는지만 준다. 서버의 폴더 경로를 담지 않는다.
+	 */
+	@GetMapping(FOLDERS_PATH)
+	@Audited(action = "listPackFolders")
+	FolderList folders() {
+		java.util.TreeSet<String> loaded = new java.util.TreeSet<>(this.packs.packIds());
+		List<Folder> folders = new java.util.ArrayList<>();
+		for (String name : this.loading.folders()) {
+			folders.add(new Folder(name, loaded.contains(name)));
+		}
+		return new FolderList(this.loading.configured(), folders);
 	}
 
 	@PostMapping(PATH)

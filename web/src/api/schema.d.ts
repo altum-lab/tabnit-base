@@ -189,6 +189,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pack-folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 서버의 Pack 폴더에 놓인 Pack 의 폴더를 읽는다 (관리자만)
+         * @description 적재할 수 있는 것을 고르는 데 쓴다. 폴더의 이름과 이미 적재됐는지만 준다: 폴더 안을 읽어 검증하지 않는다 (Pack 으로 맞는지는 적재할 때 안다). 적재가 받는 이름(영어 소문자, 숫자, 붙임표)의 폴더만 담는다. 파일, 숨은 폴더, 바로가기는 담지 않는다. 순서는 이름의 글자 코드 순이다. 서버의 폴더 경로를 담지 않는다. 관리자만 부를 수 있다
+         */
+        get: operations["listPackFolders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pack-loads": {
         parameters: {
             query?: never;
@@ -632,6 +652,18 @@ export interface components {
             loginId: string;
             /** @description 비밀번호. 서버는 이 값을 저장하거나 기록에 남기지 않는다 */
             password: string;
+        };
+        PackFolderList: {
+            /** @description 서버에 Pack 폴더(설치 설정 tabnit.packs-dir)가 정해져 있고 그 폴더가 있는가 */
+            configured: boolean;
+            /** @description 적재할 수 있는 이름의 폴더. 이름의 글자 코드 순 */
+            folders: components["schemas"]["PackFolder"][];
+        };
+        PackFolder: {
+            /** @description 폴더의 이름. loadPack 의 packId 로 그대로 보낸다 */
+            packId: string;
+            /** @description 그 이름의 Pack 이 이미 적재되어 있는가. true 인 것을 다시 적재하면 지금의 정의가 바뀔 수 있다 */
+            loaded: boolean;
         };
         PackLoadRequest: {
             /** @description 적재할 Pack 의 id. 서버의 Pack 폴더 바로 아래에 있는 폴더의 이름이다 */
@@ -1687,6 +1719,29 @@ export interface operations {
             401: components["responses"]["Problem"];
             403: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    listPackFolders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 폴더의 목록. 서버에 Pack 폴더가 정해져 있지 않으면 configured 가 false 이고 목록은 비어 있다 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackFolderList"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
             500: components["responses"]["Problem"];
         };
     };

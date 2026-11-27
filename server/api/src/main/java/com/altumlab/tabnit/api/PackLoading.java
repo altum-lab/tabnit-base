@@ -126,6 +126,46 @@ class PackLoading {
 		return shown;
 	}
 
+	/**
+	 * 서버의 Pack 폴더 바로 아래에 놓인, 적재할 수 있는 이름의 폴더 (D2 AD-416). 이름의 글자 코드 순이다.
+	 *
+	 * <p>폴더 안을 읽지 않는다: Pack 으로 맞는지는 적재할 때 안다. 적재가 받지 않는 이름(영어 소문자, 숫자, 붙임표가
+	 * 아닌 글자), 파일, 바로가기는 담지 않는다 (적재도 받지 않는다).
+	 *
+	 * @return 폴더의 이름. Pack 폴더가 정해져 있지 않거나 그 폴더가 없으면 비어 있다 ({@link #configured()} 로 가린다)
+	 */
+	List<String> folders() {
+		if (!configured()) {
+			return List.of();
+		}
+		try (java.util.stream.Stream<Path> children = Files.list(Path.of(this.packsDirectory).toRealPath())) {
+			java.util.TreeSet<String> names = new java.util.TreeSet<>();
+			for (Path child : children.toList()) {
+				String name = child.getFileName().toString();
+				// 바로가기는 따라가지 않는다. 따라간 곳이 Pack 폴더 밖일 수 있다.
+				if (isAcceptableName(name) && Files.isDirectory(child, LinkOption.NOFOLLOW_LINKS)) {
+					names.add(name);
+				}
+			}
+			// 받는 이름은 영어 소문자, 숫자, 붙임표뿐이라 글자의 순서가 글자 코드 순이다.
+			return List.copyOf(names);
+		}
+		catch (IOException | InvalidPathException e) {
+			// 폴더를 읽지 못했다. 서버 쪽의 문제다. 경로는 기록에만 남긴다.
+			throw new IllegalStateException("Pack 폴더를 읽지 못했습니다: " + this.packsDirectory, e);
+		}
+	}
+
+	/** 서버에 Pack 폴더가 정해져 있고 그 폴더가 있는가. */
+	boolean configured() {
+		try {
+			return !this.packsDirectory.isBlank() && Files.isDirectory(Path.of(this.packsDirectory));
+		}
+		catch (InvalidPathException e) {
+			return false;
+		}
+	}
+
 	/** 그 이름의 폴더. Pack 폴더 바로 아래에 실제로 있는 폴더여야 한다. */
 	private Path folderOf(String packId) {
 		if (this.packsDirectory.isBlank()) {

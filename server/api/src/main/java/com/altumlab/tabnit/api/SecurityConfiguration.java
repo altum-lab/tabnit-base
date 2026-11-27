@@ -101,6 +101,9 @@ class SecurityConfiguration {
 			// 관리자만 하는 일.
 			.requestMatchers(HttpMethod.POST, PackLoadsController.PATH)
 			.hasRole(ADMIN)
+			// 서버에 놓인 Pack 의 폴더를 보는 것 (D2 AD-416).
+			.requestMatchers(PackLoadsController.FOLDERS_PATH)
+			.hasRole(ADMIN)
 			.requestMatchers(HttpMethod.POST, UnprocessedChangesController.REPROCESS_PATH)
 			.hasRole(ADMIN)
 			// 감사 기록을 보는 것 (D2 AD-414). 방식을 가리지 않고 묶는다: 다른 방식의 API 는 없다.

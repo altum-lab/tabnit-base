@@ -310,6 +310,52 @@ public class ActionRecords {
         return counts;
     }
 
+    /**
+     * 여러 변동 이벤트의 저장된 영향 범위의 영향 대상의 수를 한 번에 센다 (카드 C-15, D2 AD-417). 변동마다
+     * {@link #impactScopePage(String, String, int, int)} 의 전체 수를 따로 읽은 것과 같다.
+     *
+     * @param changeEventIds 물을 변동 이벤트의 식별자. 같은 것이 여럿 있어도 된다. 수에 한도가 없다
+     * @return 영향 범위가 저장된 변동마다의 수. 식별자의 글자 코드 순이다. 영향 범위가 저장되지 않은 변동 (아직 처리되지
+     *         않았거나 어느 단계에서든 실패한 변동, 없는 변동)은 들어 있지 않다: 0 은 계산했더니 영향 대상이 없다는 뜻이다.
+     *         조치의 수를 세는 조회와 달리 Pack 으로 거르지 않는다: 변동의 식별자로만 찾는다
+     */
+    public SortedMap<String, Integer> impactTargetCounts(Collection<String> changeEventIds) {
+        Objects.requireNonNull(changeEventIds, "변동 이벤트의 식별자 목록은 반드시 있어야 합니다");
+        // 글자 코드 순이다 (D2 AD-38). 문자열의 기본 순서는 보충 문자에서 이것과 다르다.
+        SortedMap<String, Integer> counts = new TreeMap<>(RulesOrder.STRINGS);
+        // 해시로 묻고 식별자로 답한다. 찾는 데만 쓴다.
+        Map<String, String> idByHash = new TreeMap<>();
+        int position = 0;
+        for (String changeEventId : changeEventIds) {
+            position++;
+            Objects.requireNonNull(changeEventId, "변동 이벤트의 식별자 목록의 " + position + "번째 값이 없습니다");
+            ActionGenerator.requireStorable(changeEventId, "변동 이벤트의 식별자 목록의 " + position + "번째 값");
+            idByHash.put(RulesHash.sha256Hex(changeEventId), changeEventId);
+        }
+        if (idByHash.isEmpty()) {
+            return counts;
+        }
+        String[] hashes = idByHash.keySet().toArray(String[]::new);
+        try {
+            // 해시를 배열 하나로 넘긴다. 인자의 수에 한도가 없다. 문장 하나라 한 시점의 것이다.
+            jdbc.query("""
+                    select s.change_event_hash,
+                           (select count(*) from impact_target t where t.change_event_hash = s.change_event_hash) as target_count
+                      from impact_scope s
+                     where s.change_event_hash = any(?)
+                    """, (PreparedStatement statement) -> {
+                statement.setArray(1, statement.getConnection().createArrayOf("text", hashes));
+            }, (ResultSet rs) -> {
+                counts.put(idByHash.get(rs.getString("change_event_hash")), rs.getInt("target_count"));
+            });
+        }
+        catch (DataAccessException e) {
+            throw new ActionStorageException("변동 " + idByHash.size()
+                    + "개의 영향 대상의 수를 읽지 못했습니다. 저장소의 상태를 확인한 뒤 다시 시도하세요.", e);
+        }
+        return counts;
+    }
+
     private static void requirePage(int offset, int limit) {
         if (offset < 0) {
             throw new IllegalArgumentException("건너뛸 수는 0 이상이어야 합니다. 받은 값: " + offset + ".");

@@ -60,6 +60,138 @@ class ChangeEventsTest {
         assertThat(events.unprocessed("e-order-none")).isEmpty();
     }
 
+    // ── Pack 의 변동을 나눠 읽기 (카드 C-15, D2 AD-417) ───────────────────────
+
+    @Test
+    void Pack_의_변동_전부를_가장_최근에_받은_판부터_그_안에서는_항목의_키_순으로_나눠_읽는다() {
+        PackDefinition pack = pack("e-list", "alpha", "zeta");
+        put(pack, "alpha", D1, AT, "code,title\nB-1,하나\nB-2,둘\n");
+        put(pack, "zeta", D1, AT, "code,title\nZ-1,하나\n");
+        put(pack, "zeta", D2, AT.plusSeconds(10), "code,title\nZ-1,고침\nZ-0,새 행\n");
+        put(pack, "alpha", D2, AT.plusSeconds(20), "code,title\nB-2,고침\nB-1,고침\n");
+
+        ChangeEventPage page = events.packChangeEvents("e-list", null, 0, 50);
+
+        // 첫 판은 변동을 만들지 않는다. 나중에 받은 alpha 의 둘째 판이 먼저다.
+        assertThat(page.total()).isEqualTo(4);
+        assertThat(page.events()).extracting(ChangeEventSummary::editionId, ChangeEventSummary::itemKey)
+            .containsExactly(tuple("e-list|alpha|2", "B-1"), tuple("e-list|alpha|2", "B-2"), tuple("e-list|zeta|2", "Z-0"),
+                    tuple("e-list|zeta|2", "Z-1"));
+        // 줄마다 그 판과 변동의 내용이 담긴다. 처리되지 않은 변동을 읽은 것과 같은 값이다.
+        ChangeEventSummary first = page.events().get(0);
+        ChangeEvent same = events.find(first.id()).orElseThrow();
+        assertThat(first.inputSourceId()).isEqualTo("alpha");
+        assertThat(first.editionNo()).isEqualTo(2);
+        assertThat(first.effectiveDate()).isEqualTo(D2);
+        assertThat(first.kind()).isEqualTo(same.kind());
+        assertThat(first.primaryEntityId()).isEqualTo(same.primaryEntityId());
+        assertThat(first.status()).isEqualTo(ChangeEventStatus.PENDING);
+        assertThat(first.failedStage()).isNull();
+        assertThat(page.events().get(2).kind()).isEqualTo(ChangeKind.ADDED);
+        // 두 번 읽어도 같다. 다른 Pack 의 것은 섞이지 않고, 변동이 없는 Pack 은 비어 있다.
+        assertThat(events.packChangeEvents("e-list", null, 0, 50)).isEqualTo(page);
+        assertThat(events.packChangeEvents("e-list-none", null, 0, 50)).isEqualTo(new ChangeEventPage(List.of(), 0));
+    }
+
+    @Test
+    void 상태로_거르고_나눠_받은_것을_이으면_한_번에_받은_것과_순서까지_같다() {
+        PackDefinition pack = pack("e-list-page", "src");
+        StringBuilder first = new StringBuilder("code,title\n");
+        StringBuilder second = new StringBuilder("code,title\n");
+        for (int i = 0; i < 25; i++) {
+            first.append("K-").append(String.format("%02d", i)).append(",하나\n");
+            second.append("K-").append(String.format("%02d", i)).append(",고침\n");
+        }
+        put(pack, "src", D1, AT, first.toString());
+        put(pack, "src", D2, AT.plusSeconds(1), second.toString());
+        List<ChangeEventSummary> whole = events.packChangeEvents("e-list-page", null, 0, 200).events();
+        assertThat(whole).hasSize(25);
+        // 셋은 처리됨, 둘은 실패로 표시한다.
+        for (int i = 0; i < 3; i++) {
+            events.markProcessed(whole.get(i).id());
+        }
+        events.markFailed(whole.get(10).id(), ChangeFailedStage.RULES, "RULE_FAILED");
+        events.markFailed(whole.get(11).id(), ChangeFailedStage.IMPACT, "IMPACT_FAILED");
+
+        assertThat(events.packChangeEvents("e-list-page", ChangeEventStatus.PROCESSED, 0, 50).events())
+            .extracting(ChangeEventSummary::id)
+            .containsExactly(whole.get(0).id(), whole.get(1).id(), whole.get(2).id());
+        ChangeEventPage failed = events.packChangeEvents("e-list-page", ChangeEventStatus.FAILED, 0, 50);
+        assertThat(failed.total()).isEqualTo(2);
+        assertThat(failed.events()).extracting(ChangeEventSummary::failedStage, ChangeEventSummary::failureCode)
+            .containsExactly(tuple("RULES", "RULE_FAILED"), tuple("IMPACT", "IMPACT_FAILED"));
+        assertThat(events.packChangeEvents("e-list-page", ChangeEventStatus.PENDING, 0, 50).total()).isEqualTo(20);
+        // 상태로 거른 채 나눠 받는다: 전체 수는 거른 수이고, 이으면 거른 것 전부다.
+        List<String> pending = new ArrayList<>();
+        for (int offset = 0; offset < 20; offset += 7) {
+            ChangeEventPage page = events.packChangeEvents("e-list-page", ChangeEventStatus.PENDING, offset, 7);
+            assertThat(page.total()).isEqualTo(20);
+            page.events().forEach(event -> pending.add(event.id()));
+        }
+        assertThat(pending).containsExactlyElementsOf(whole.stream().map(ChangeEventSummary::id)
+            .filter(id -> !List.of(whole.get(0).id(), whole.get(1).id(), whole.get(2).id(), whole.get(10).id(),
+                    whole.get(11).id()).contains(id))
+            .toList());
+
+        List<String> joined = new ArrayList<>();
+        for (int offset = 0; offset < 25; offset += 7) {
+            ChangeEventPage page = events.packChangeEvents("e-list-page", null, offset, 7);
+            assertThat(page.total()).isEqualTo(25);
+            page.events().forEach(event -> joined.add(event.id()));
+        }
+        assertThat(joined).containsExactlyElementsOf(whole.stream().map(ChangeEventSummary::id).toList());
+        // 끝을 넘으면 빈 목록이고 전체 수는 그대로다.
+        assertThat(events.packChangeEvents("e-list-page", null, 25, 7)).isEqualTo(new ChangeEventPage(List.of(), 25));
+    }
+
+    @Test
+    void 받은_때가_같은_판의_변동은_입력_자료의_식별자_순이고_다른_Pack_의_변동은_섞이지_않는다() {
+        PackDefinition pack = pack("e-list-same", "alpha", "zeta");
+        put(pack, "alpha", D1, AT, "code,title\na-1,하나\nB-1,하나\n");
+        put(pack, "zeta", D1, AT, "code,title\nZ-1,하나\n");
+        // 둘째 판 둘을 같은 때에 받는다. zeta 를 먼저 넣는다: 넣은 차례가 아니라 식별자의 순이어야 한다.
+        put(pack, "zeta", D2, AT.plusSeconds(10), "code,title\nZ-1,고침\n");
+        put(pack, "alpha", D2, AT.plusSeconds(10), "code,title\na-1,고침\nB-1,고침\n");
+        // 다른 Pack 에도 변동을 만든다.
+        PackDefinition other = pack("e-list-same-other", "alpha");
+        put(other, "alpha", D1, AT, "code,title\nB-1,하나\n");
+        put(other, "alpha", D2, AT.plusSeconds(10), "code,title\nB-1,고침\n");
+
+        ChangeEventPage page = events.packChangeEvents("e-list-same", null, 0, 50);
+
+        // 한 판 안에서는 항목의 키의 글자 코드 순이다: 대문자 B 가 소문자 a 보다 앞선다.
+        assertThat(page.events()).extracting(ChangeEventSummary::editionId, ChangeEventSummary::itemKey)
+            .containsExactly(tuple("e-list-same|alpha|2", "B-1"), tuple("e-list-same|alpha|2", "a-1"),
+                    tuple("e-list-same|zeta|2", "Z-1"));
+        assertThat(page.total()).isEqualTo(3);
+        assertThat(events.packChangeEvents("e-list-same-other", null, 0, 50).events())
+            .extracting(ChangeEventSummary::editionId)
+            .containsExactly("e-list-same-other|alpha|2");
+    }
+
+    @Test
+    void 받은_때가_같은_판의_변동은_판_번호가_큰_것부터_수로_견줘_나온다() {
+        PackDefinition pack = pack("e-list-ten", "src");
+        for (int no = 1; no <= 12; no++) {
+            put(pack, "src", D1.plusDays(no), AT, "code,title\nB-1,값 " + no + "\n");
+        }
+
+        // 글자로 견주면 9번째 판이 12번째 판보다 뒤선다. 판 번호가 큰 것부터 나와야 한다.
+        assertThat(events.packChangeEvents("e-list-ten", null, 0, 50).events()).extracting(ChangeEventSummary::editionNo)
+            .containsExactly(12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2);
+    }
+
+    @Test
+    void 나눠_읽는_값이_틀리면_거부한다() {
+        assertThatThrownBy(() -> events.packChangeEvents(null, null, 0, 50)).isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> events.packChangeEvents("e-list-bad", null, -1, 50))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("건너뛸 수");
+        assertThatThrownBy(() -> events.packChangeEvents("e-list-bad", null, 0, 0))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("한 번에 줄 수");
+    }
+
     @Test
     void 받은_때가_같은_판은_판_번호를_수로_견준다() {
         PackDefinition pack = pack("e-ten", "src");

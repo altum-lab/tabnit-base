@@ -848,6 +848,44 @@ class ActionGeneratorTest {
     }
 
     @Test
+    void 여러_변동의_영향_대상의_수를_한_번에_읽으면_하나씩_읽은_것과_같고_영향_범위가_없는_변동은_들어_있지_않다() {
+        String p = "a-target-counts";
+        EntityRef many = entity(p, "Base", "B-many");
+        EntityRef one = entity(p, "Base", "B-one");
+        EntityRef none = entity(p, "Base", "B-none");
+        for (int i = 0; i < 4; i++) {
+            link(many, entity(p, "Other", "O-many-" + i));
+        }
+        link(one, entity(p, "Other", "O-one"));
+        PackDefinition pack = pack(p, rule("0001", 1, IMPACT, "Other", 30));
+        generator.generate(pack, change("ev-t-many", many), EDITION, scope(many), 3, NOW);
+        generator.generate(pack, change("ev-t-one", one), EDITION, scope(one), 3, NOW);
+        // 영향 대상이 없는 변동: 영향 범위는 저장되고 수는 0 이다.
+        generator.generate(pack, change("ev-t-none", none), EDITION, scope(none), 3, NOW);
+
+        // 묻는 차례를 섞고 같은 것을 두 번 넣는다. 저장된 적이 없는 변동도 묻는다.
+        List<String> asked = List.of("ev-t-one", "ev-t-없는-변동", "ev-t-many", "ev-t-none", "ev-t-one");
+        Map<String, Integer> counts = records.impactTargetCounts(asked);
+
+        // 영향 범위가 저장된 변동만, 식별자의 글자 코드 순으로 들어 있다. 저장된 적이 없는 변동은 0 이 아니라 없다:
+        // 0 은 계산했더니 영향 대상이 없다는 뜻이다.
+        assertThat(counts.keySet()).containsExactly("ev-t-many", "ev-t-none", "ev-t-one");
+        for (String id : counts.keySet()) {
+            assertThat(counts.get(id)).as(id).isEqualTo(records.impactScopePage(id, null, 0, 1).orElseThrow().total());
+        }
+        assertThat(counts.get("ev-t-many")).isEqualTo(4);
+        assertThat(counts.get("ev-t-one")).isEqualTo(1);
+        assertThat(counts.get("ev-t-none")).isZero();
+        // 두 번 물어도 같다. 물은 것이 없으면 빈 결과다.
+        assertThat(records.impactTargetCounts(asked)).isEqualTo(counts);
+        assertThat(records.impactTargetCounts(List.of())).isEmpty();
+        assertThatThrownBy(() -> records.impactTargetCounts(null)).isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> records.impactTargetCounts(java.util.Arrays.asList("ev-t-one", null)))
+            .isInstanceOf(NullPointerException.class)
+            .hasMessageContaining("2번째");
+    }
+
+    @Test
     void 조치가_있는_변동이_많아도_변동마다의_수가_맞고_순서는_글자_코드_순이다() {
         String p = "a-counts-many";
         PackDefinition pack = pack(p, rule("0001", 1, IMPACT, "Other", 30));

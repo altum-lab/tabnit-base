@@ -3,6 +3,7 @@ import { type FormEvent, useCallback, useEffect, useRef, useState } from "react"
 import { Link, useSearchParams } from "react-router";
 import { api, type ChangeProcessing, type EditionChange, type EditionSubmission, type PackSummary } from "../api/client";
 import { CONNECTION_FAILED, messageOf } from "../api/problem";
+import { ChangeEventsList } from "./ChangeEventsList";
 import { ConstraintViolations } from "./ConstraintViolations";
 import { PastEditions } from "./PastEditions";
 import { UnprocessedChanges } from "./UnprocessedChanges";
@@ -257,6 +258,9 @@ export function ChangesPage() {
           renderResult={(result) => <Result result={result} label="지난 판의 결과" />}
         />
       )}
+
+      {/* 고른 Pack 의 변동 이벤트를 판을 거치지 않고 본다 (카드 C-15). 판을 올릴 때마다 다시 받는다. 맨 아래에 둔다. */}
+      {pack && <ChangeEventsList key={`events-${pack.packId}`} packId={pack.packId} refreshKey={uploadCount} />}
     </section>
   );
 }

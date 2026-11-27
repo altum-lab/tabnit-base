@@ -11,6 +11,9 @@ interface Product {
     /** 어떤 날짜에 어떤 개체를 가운데 둔 관계 지도 (D7 4절 "관계 지도"). */
     Reply relationMap(String entityId, LocalDate asOf, int depth);
 
+    /** 어떤 날짜에 어떤 개체의 유효한 속성 값 (D7 4절 "속성 값의 시점 조회"). */
+    Reply attributeValues(String entityId, LocalDate asOf);
+
     /** 변동 이벤트 하나의 저장된 영향 범위. */
     Reply impactScope(String changeEventId);
 

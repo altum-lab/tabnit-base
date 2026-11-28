@@ -12,6 +12,7 @@
 #   compose.yaml, install.sh                          설치 구성과 스크립트 (deploy/install 의 것)
 #   packs/                                            저장소의 Pack 들 (가상 데이터)
 #   COMPONENTS.md, components.csv, bom.json           배포물에 든 구성요소의 이름, 버전, 라이선스 (tools/components.sh)
+#   NOTICE.md                                         다른 곳의 구성요소의 고지문 (E-21. 법률 검토가 아니다)
 #   VERSION, ARCH, SHA256SUMS                         버전, CPU, 파일의 지문 (packs/ 는 뺀다)
 #
 # 설치하는 법: 그 폴더를 통째로 서버에 복사한 뒤, 그 폴더에서 bash install.sh
@@ -89,7 +90,7 @@ for arch in "$@"; do
 
   echo "3) 설치 구성과 Pack 을 담습니다."
   cp "$top/deploy/install/compose.yaml" "$top/deploy/install/install.sh" "$out/"
-  cp "$components/COMPONENTS.md" "$components/components.csv" "$components/bom.json" "$out/"
+  cp "$components/COMPONENTS.md" "$components/components.csv" "$components/bom.json" "$components/NOTICE.md" "$out/"
   chmod +x "$out/install.sh"
   cp -R "$top/packs" "$out/packs"
   # 지침 파일은 설치하는 쪽에 필요 없다.

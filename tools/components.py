@@ -439,6 +439,53 @@ def markdown(rows, version, decisions=None):
     return "\n".join(lines) + "\n"
 
 
+def notice(rows, version, decisions):
+    """배포물에 담는 고지문 (E-21, D2 AD-430). 남의 구성요소를 라이선스마다 묶어 적고, 소스를 얻는 길을 적는다.
+
+    라이선스의 본문은 담지 않는다. 의무를 다했다는 글이 아니다: 무엇이 들었는지를 받는 쪽에 알리는 글이다.
+    """
+    lines = ["# Tabnit Base 에 든 다른 곳의 구성요소 (고지문)", "",
+             f"제품의 버전: {version}", "",
+             "이 배포물(컨테이너 이미지 둘)에는 아래의 다른 곳의 구성요소가 들어 있다. 저마다의 라이선스로 배포된다. "
+             "`bash tools/components.sh` 가 만든다. 손으로 고치지 않는다.", "",
+             "**법률 검토가 아니다.** 이 파일을 담았다고 라이선스의 의무를 다했다는 뜻이 아니다: 라이선스의 본문은 담지 않았고, "
+             "바탕 이미지 안의 운영체제 꾸러미는 하나하나 적지 않았다. 배포하기 전에 라이선스를 아는 사람이 확인한다.", "",
+             "이름, 버전, 라이선스의 전체 표는 `COMPONENTS.md` 에, 표준 형식으로는 `bom.json` 에 있다.", "",
+             "## 라이선스마다의 구성요소", ""]
+    groups = {}
+    for row in rows:
+        if row.kind == "제품":
+            continue
+        decision = _decision(row, decisions) if row.review else None
+        chosen = (decision or {}).get("chosen")
+        if not row.license:
+            key, note = "라이선스를 읽지 못한 것", ""
+        elif chosen:
+            key, note = chosen, f" ({row.license} 가운데 고른 것)"
+        else:
+            key, note = row.license, ""
+        groups.setdefault(key, []).append(f"- {_cell(row.name)} {_cell(row.version)}{note} [{row.kind}]")
+    # 라이선스의 이름의 글자 코드 순. 읽지 못한 것은 맨 뒤에 둔다.
+    for key in sorted(groups, key=lambda one: (one == "라이선스를 읽지 못한 것", one)):
+        lines += [f"### {key}", ""] + groups[key] + [""]
+    if not groups:
+        lines += ["다른 곳의 구성요소가 없습니다.", ""]
+    lines += ["## 소스를 얻는 길", "",
+              "고치지 않은 것을 그대로 담았다. 소스는 그것을 내는 곳에서 얻는다.", "",
+              "- 서버의 라이브러리: 아래의 좌표(묶음:이름:버전)로 Maven Central 에서 얻는다. 소스의 묶음이 함께 올라와 있다.",
+              "- 화면의 꾸러미: 아래의 이름과 버전으로 npm 의 저장소에서 얻는다.",
+              "- 바탕 이미지: 아래의 이름의 공식 이미지를 고치지 않고 쓴다. 그 안의 실행 환경과 운영체제 꾸러미의 소스는 "
+              "그 이미지를 만든 곳과 바탕 배포판이 낸다. **어디서 어떻게 얻는지를 받는 쪽에 알리는 일은 아직 하지 않았다.**", ""]
+    for kind, form in (("서버", "{name}:{version}"), ("화면", "{name}@{version}")):
+        listed = [form.format(name=row.name, version=row.version) for row in rows if row.kind == kind]
+        if listed:
+            lines += [f"### {kind}", ""] + [f"- {_cell(one)}" for one in listed] + [""]
+    images = sorted({row.source for row in rows if row.kind == "바탕 이미지"})
+    if images:
+        lines += ["### 바탕 이미지", ""] + [f"- {_cell(one)}" for one in images] + [""]
+    return "\n".join(lines).rstrip("\n") + "\n"
+
+
 def _csv(rows, decisions=None):
     out = io.StringIO()
     writer = csv.writer(out, lineterminator="\n")
@@ -506,6 +553,9 @@ def _merged_bom(rows, bom, version, shipped):
 def write(rows, bom, version, out, shipped=None, decisions=None):
     os.makedirs(out, exist_ok=True)
     shipped = None if shipped is None else set(shipped)
+    if decisions is not None:
+        with open(os.path.join(out, "NOTICE.md"), "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(notice(rows, version, decisions))
     for name, text in (("COMPONENTS.md", markdown(rows, version, decisions)), ("components.csv", _csv(rows, decisions)),
                        ("bom.json", _merged_bom(rows, bom, version, shipped))):
         with open(os.path.join(out, name), "w", encoding="utf-8", newline="\n") as handle:
@@ -558,6 +608,7 @@ def main(arguments):
     for one in unused(rows, decisions):
         print(f"[낡음] 쓰이지 않은 판단: {one['name']} ({one['license']}). deploy/license-decisions.json 에서 고치거나 지우세요.")
     print(f"[확인] {os.path.join(out, 'COMPONENTS.md')}")
+    print(f"[확인] {os.path.join(out, 'NOTICE.md')} (고지문. 법률 검토가 아니다)")
     blocked = restricted(rows, decisions)
     if blocked:
         for row, why in blocked:

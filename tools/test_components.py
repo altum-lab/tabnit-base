@@ -334,6 +334,50 @@ class ComponentsTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             components.decisions_of({})
 
+    def test_고지문에는_라이선스마다의_구성요소와_받는_곳과_고른_라이선스가_적히고_의무를_다했다고_적지_않는다(self):
+        # E-21 (D2 AD-430): 배포물에 담는 고지문. 지어낸 구성요소로 본다.
+        bom = server_bom(("org.b", "zeta", "2.0", ["MIT"]), ("org.a", "alpha", "1.0", ["Apache-2.0"]),
+                         ("g", "dual", "1", ["EPL-2.0", "LGPL-2.1-only"]), ("g", "unknown", "3", []),
+                         ("com.example.own", "mine", "0.1", []))
+        lock = web_lock(("node_modules/widget", "3.1.0", "MIT", False), ("node_modules/@scope/font", "5.0.0", "OFL-1.1", False),
+                        ("node_modules/devtool", "1", "MIT", True))
+        rows = self.collect(bom, lock, base=BASE)
+        decisions = components.decisions_of({"decisions": [
+            {"kind": "서버", "name": "g:dual", "license": "EPL-2.0 / LGPL-2.1-only", "accepted": True, "chosen": "EPL-2.0",
+             "why": "둘 가운데 고른다", "decided": "2026-01-01 지어낸 사람"}]})
+
+        text = components.notice(rows, "9.9.9", decisions)
+
+        self.assertIn("9.9.9", text)
+        # 라이선스마다 묶는다. 고른 라이선스가 있으면 그 라이선스의 묶음에 든다.
+        mit = text.split("### MIT")[1].split("###")[0]
+        self.assertIn("org.b:zeta 2.0", mit)
+        self.assertIn("widget 3.1.0", mit)
+        self.assertNotIn("devtool", text)
+        epl = text.split("### EPL-2.0")[1].split("###")[0]
+        self.assertIn("g:dual 1", epl)
+        self.assertIn("EPL-2.0 / LGPL-2.1-only 가운데 고른 것", epl)
+        self.assertIn("### OFL-1.1", text)
+        self.assertIn("### GPL-2.0-with-classpath-exception", text)
+        # 라이선스를 읽지 못한 것도 숨기지 않는다.
+        self.assertIn("g:unknown 3", text.split("### 라이선스를 읽지 못한 것")[1].split("###")[0])
+        # 제품 자신의 모듈은 남의 것이 아니다.
+        self.assertNotIn("com.example.own:mine", text)
+        # 받는 곳: 서버는 좌표, 화면은 꾸러미의 이름과 버전, 바탕 이미지는 이미지의 이름.
+        sources = text.split("## 소스를 얻는 길")[1]
+        self.assertIn("org.a:alpha:1.0", sources)
+        self.assertIn("@scope/font@5.0.0", sources)
+        self.assertIn("runtime:1", sources)
+        # 의무를 다했다고 적지 않는다.
+        self.assertIn("법률 검토가 아니다", text)
+        self.assertNotIn("의무를 다했다", text.replace("의무를 다했다는 뜻이 아니다", ""))
+        # 같은 입력이면 글자까지 같고, 파일로도 나온다.
+        self.assertEqual(text, components.notice(rows, "9.9.9", decisions))
+        with tempfile.TemporaryDirectory() as out:
+            components.write(rows, bom, "9.9.9", out, None, decisions)
+            with open(os.path.join(out, "NOTICE.md"), encoding="utf-8") as written:
+                self.assertEqual(written.read(), text)
+
     def test_빈_입력에서도_목록이_나오고_확인할_것이_없다고_적는다(self):
         rows = self.collect(server_bom(), web_lock(), base=[])
 

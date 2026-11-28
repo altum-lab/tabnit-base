@@ -12,7 +12,9 @@
   - components.csv  같은 내용의 표
   - bom.json        표준 형식(CycloneDX)의 명세. 서버의 것에 화면과 바탕 이미지를 더한 것이다
 
-확인이 필요한 것: 라이선스를 읽지 못한 것과, 흔한 허용형이 아닌 것. 어느 라이선스를 받아들일지는 여기서 정하지 않는다.
+확인이 필요한 것: 라이선스를 읽지 못한 것과, 흔한 허용형이 아닌 것. 어느 라이선스를 받아들일지는 여기서 정하지 않는다:
+deploy/license-decisions.json 에 사람이 적은 판단을 읽어 함께 적는다 (E-21, D2 AD-428). 판단이 없으면 미정이다.
+배포를 제약하는 라이선스의 실행용 의존이 서버나 화면에 있으면 실패로 끝난다.
 """
 
 import csv
@@ -92,7 +94,7 @@ def _shipped_components(bom, shipped):
     return matched
 
 
-def _server_rows(bom, own_group, shipped, extra):
+def _server_rows(bom, own_group, shipped, extra, own_modules=()):
     rows = []
     # 명세에는 빌드에서만 쓰이는 것(묶음 표시용, 개발용)도 있다. 실제로 서버 파일에 든 것만 담는다.
     matched = None if shipped is None else _shipped_components(bom, shipped)
@@ -110,7 +112,12 @@ def _server_rows(bom, own_group, shipped, extra):
     # 따로 적어 둔 것(deploy/base-components.json 의 extra)에서 읽고, 거기에도 없으면 숨기지 않고 적는다.
     for file_name in sorted(set(shipped or ()) - set(matched or ())):
         known = next((one for one in extra if file_name.startswith(one["file"] + "-")), None)
-        if known:
+        own = next((one for one in sorted(own_modules, key=len, reverse=True) if file_name.startswith(one + "-")), None)
+        if own:
+            # 제품 자신의 모듈인데 빌드 도구의 명세에 빠진 것. 모듈의 폴더 이름으로 알아본다.
+            rows.append(Row("제품", f"{own_group}:{own}" if own_group else own, file_name[len(own) + 1:], OWN_LICENSE, "",
+                            "서버 파일 (제품의 모듈)"))
+        elif known:
             version = file_name[len(known["file"]) + 1:]
             rows.append(Row("서버", known["name"], version, known["license"], _review([known["license"]]),
                             "따로 적어 둔 것: " + known["why"]))
@@ -148,15 +155,113 @@ def _base_rows(base):
     return rows
 
 
-def collect(bom, lock, base, own_group, shipped=None, extra=()):
+def collect(bom, lock, base, own_group, shipped=None, extra=(), own_modules=()):
     """구성요소를 모아 정해진 차례로 돌려준다: 구분, 이름, 버전 (글자 코드 순).
 
     shipped: 서버 파일 안의 라이브러리의 이름들 (이름-버전). 없으면 명세의 것을 모두 담는다.
     extra: 서버 파일에는 들었는데 명세에 없는 것의 이름과 라이선스.
+    own_modules: 제품 자신의 모듈의 이름들. 명세에 빠졌어도 서버 파일에 있으면 제품으로 담는다.
     """
     shipped = None if shipped is None else set(shipped)
-    rows = _base_rows(base) + _server_rows(bom, own_group, shipped, list(extra)) + _web_rows(lock)
+    rows = _base_rows(base) + _server_rows(bom, own_group, shipped, list(extra), list(own_modules)) + _web_rows(lock)
     return sorted(rows, key=lambda row: (KINDS.index(row.kind), row.name, row.version))
+
+
+# ── 받아들이는지의 판단과 배포를 제약하는 라이선스 (E-21, D2 AD-428) ─────────────────────────
+
+# 배포를 제약하는 라이선스. 이런 것이 서버나 화면의 실행용 의존에 들어오면 목록을 만드는 명령이 실패로 알린다.
+# 강한 카피레프트(예외 없는 GPL, AGPL), 소스 공개를 서비스에까지 요구하는 것(SSPL), 쓰임을 막는 것(BUSL, Commons Clause),
+# CC 의 비상업과 변경 금지. LGPL, EPL, MPL 과 예외가 붙은 GPL 은 여기 들지 않는다: 확인이 필요한 것으로만 표시한다.
+_RESTRICTING = (
+    (re.compile(r"^AGPL", re.I), "AGPL"),
+    (re.compile(r"^GPL(?!.*(exception|-with-))", re.I), "예외 없는 GPL"),
+    (re.compile(r"^SSPL|server side public license", re.I), "SSPL"),
+    (re.compile(r"^BUSL|business source license", re.I), "BUSL"),
+    (re.compile(r"commons[- ]clause", re.I), "Commons Clause"),
+    (re.compile(r"^CC-BY(-[A-Z]+)*-(NC|ND)\b", re.I), "CC 의 비상업 또는 변경 금지"),
+)
+
+
+def _restricting(license_):
+    """그 라이선스가 배포를 제약하는 것이면 어느 갈래인지, 아니면 빈 글자."""
+    return next((label for pattern, label in _RESTRICTING if pattern.search(license_.strip())), "")
+
+
+def _alternatives(text):
+    """화면의 꾸러미의 라이선스 식 하나를 "가운데 하나"로 고를 수 있는 것들로 나눈다. 각각은 "모두 따르는" 것들의 묶음이다."""
+    inner = text.strip()
+    while inner.startswith("(") and inner.endswith(")"):
+        inner = inner[1:-1].strip()
+    return [[part.strip(" ()") for part in re.split(r"\s+AND\s+", choice)] for choice in re.split(r"\s+OR\s+", inner)]
+
+
+def decisions_of(data):
+    """deploy/license-decisions.json 의 내용을 확인해 판단의 목록을 돌려준다."""
+    where = "deploy/license-decisions.json"
+    if not isinstance(data, dict) or not isinstance(data.get("decisions"), list):
+        _fail(f"{where} 의 맨 위에 decisions 목록이 없습니다. 파일을 고쳐 다시 실행하세요.")
+    for one in data["decisions"]:
+        for key in ("kind", "name", "license", "accepted", "why", "decided"):
+            if not isinstance(one, dict) or key not in one:
+                _fail(f"{where} 의 decisions 의 항목에 {key} 가 없습니다. 파일을 고쳐 다시 실행하세요.")
+        if not isinstance(one["accepted"], bool):
+            _fail(f"{where} 의 {one['name']} 의 accepted 는 true 나 false 여야 합니다.")
+    return list(data["decisions"])
+
+
+def _decision(row, decisions):
+    """그 구성요소의 판단. 구분, 이름, 라이선스가 모두 같아야 한다: 라이선스가 달라지면 옛 판단을 쓰지 않는다. 버전은 보지 않는다."""
+    return next((one for one in decisions
+                 if (one["kind"], one["name"], one["license"]) == (row.kind, row.name, row.license)), None)
+
+
+def undecided(rows, decisions):
+    """확인이 필요한데 판단이 없는 것."""
+    return [row for row in rows if row.review and _decision(row, decisions) is None]
+
+
+def unused(rows, decisions):
+    """어느 구성요소에도 쓰이지 않은 판단. 구성요소가 빠졌거나 라이선스가 달라졌다."""
+    used = {id(one) for one in (_decision(row, decisions) for row in rows if row.review) if one is not None}
+    return [one for one in decisions if id(one) not in used]
+
+
+def restricted(rows, decisions):
+    """배포를 제약하는 라이선스의 실행용 의존. (구성요소, 까닭) 의 목록이다. 바탕 이미지와 제품 자신은 보지 않는다."""
+    found = []
+    for row in rows:
+        if row.kind not in ("서버", "화면") or not row.license:
+            continue
+        decision = _decision(row, decisions)
+        chosen = (decision or {}).get("chosen") or ""
+        if row.kind == "화면":
+            # 식이 "가운데 하나"(OR)인지 "모두"(AND)인지를 적는다. 제약하지 않는 갈래가 하나라도 있으면 고를 수 있다.
+            blocked = [[_restricting(one) for one in choice] for choice in _alternatives(row.license)]
+            if all(any(choice) for choice in blocked):
+                found.append((row, "배포를 제약하는 라이선스다: " + row.license))
+            continue
+        listed = [one.strip() for one in row.license.split(" / ")]
+        hits = [one for one in listed if _restricting(one)]
+        if not hits:
+            continue
+        if len(listed) == 1 or len(hits) == len(listed):
+            found.append((row, "배포를 제약하는 라이선스다: " + ", ".join(hits)))
+        elif chosen not in listed or _restricting(chosen):
+            # 서버의 명세는 여러 라이선스가 "가운데 하나"인지 "모두"인지 알려 주지 않는다.
+            found.append((row, "배포를 제약하는 라이선스가 섞여 있다: " + ", ".join(hits)
+                          + ". 가운데 하나를 고를 수 있는 것이면 판단의 표에 고른 라이선스(chosen)를 적는다"))
+    return found
+
+
+def _judgement(row, decisions):
+    """확인이 필요한 것의 표에 적을 판단의 글."""
+    decision = _decision(row, decisions)
+    if decision is None:
+        return "미정", ""
+    verdict = "받아들인다" if decision["accepted"] else "받아들이지 않는다"
+    if decision.get("chosen"):
+        verdict += f" ({decision['chosen']} 을 고른다)"
+    return verdict, f"{decision['why']} ({decision['decided']})"
 
 
 def described(data):
@@ -202,7 +307,7 @@ def _cell(text):
     return str(text).replace("|", "/").replace("\n", " ").strip()
 
 
-def markdown(rows, version):
+def markdown(rows, version, decisions=None):
     lines = ["# Tabnit Base 에 든 구성요소", "",
              f"제품의 버전: {version}", "",
              "배포물(컨테이너 이미지 둘)에 든 것의 이름, 버전, 라이선스다. `bash tools/components.sh` 가 만든다. 손으로 고치지 않는다.",
@@ -217,12 +322,37 @@ def markdown(rows, version):
     review = [row for row in rows if row.review]
     if review:
         lines += ["라이선스를 읽지 못했거나 흔한 허용형(MIT, Apache-2.0, BSD, ISC 등)이 아닌 것이다. "
-                  "받아들일 수 없다는 뜻이 아니다: 사람이 보고 정한다.", "",
-                  "| 구분 | 이름 | 버전 | 라이선스 | 까닭 |", "|---|---|---|---|---|"]
-        lines += [f"| {_cell(row.kind)} | {_cell(row.name)} | {_cell(row.version)} | {_cell(row.license) or '(없음)'} | {_cell(row.review)} |"
-                  for row in review]
+                  "받아들일 수 없다는 뜻이 아니다: 사람이 보고 정한다.", ""]
+        if decisions is None:
+            lines += ["| 구분 | 이름 | 버전 | 라이선스 | 까닭 |", "|---|---|---|---|---|"]
+            lines += [f"| {_cell(row.kind)} | {_cell(row.name)} | {_cell(row.version)} | {_cell(row.license) or '(없음)'} | {_cell(row.review)} |"
+                      for row in review]
+        else:
+            lines += ["받아들이는지는 `deploy/license-decisions.json` 에 적은 것이다 (구분, 이름, 라이선스가 같은 것에 쓴다). "
+                      "**법률 검토가 아니다**: 제출 전에 라이선스를 아는 사람이 확인한다.", "",
+                      "| 구분 | 이름 | 버전 | 라이선스 | 까닭 | 받아들이는가 | 판단의 까닭 |", "|---|---|---|---|---|---|---|"]
+            for row in review:
+                verdict, why = _judgement(row, decisions)
+                lines.append(f"| {_cell(row.kind)} | {_cell(row.name)} | {_cell(row.version)} | {_cell(row.license) or '(없음)'} "
+                             f"| {_cell(row.review)} | {_cell(verdict)} | {_cell(why)} |")
     else:
         lines.append("확인이 필요한 것은 없습니다.")
+    if decisions is not None:
+        lines += ["", "## 배포를 제약하는 라이선스", "",
+                  "서버와 화면의 실행용 의존 가운데 배포를 제약하는 라이선스의 것이다: 예외 없는 GPL, AGPL, SSPL, BUSL, "
+                  "Commons Clause, CC 의 비상업·변경 금지. 있으면 이 목록을 만드는 명령이 실패로 끝난다. "
+                  "바탕 이미지는 여기서 보지 않는다 (위의 판단으로 다룬다).", ""]
+        blocked = restricted(rows, decisions)
+        if blocked:
+            lines += ["| 구분 | 이름 | 버전 | 라이선스 | 까닭 |", "|---|---|---|---|---|"]
+            lines += [f"| {_cell(row.kind)} | {_cell(row.name)} | {_cell(row.version)} | {_cell(row.license)} | {_cell(why)} |"
+                      for row, why in blocked]
+        else:
+            lines.append("서버와 화면의 실행용 의존에 배포를 제약하는 라이선스가 없습니다.")
+        stale = unused(rows, decisions)
+        if stale:
+            lines += ["", "쓰이지 않은 판단 (구성요소가 빠졌거나 라이선스가 달라졌다. 표를 고친다): "
+                      + ", ".join(_cell(f"{one['name']} ({one['license']})") for one in stale)]
     lines += ["", "## 모두", ""]
     for kind in KINDS:
         count = sum(1 for row in rows if row.kind == kind)
@@ -233,12 +363,18 @@ def markdown(rows, version):
     return "\n".join(lines) + "\n"
 
 
-def _csv(rows):
+def _csv(rows, decisions=None):
     out = io.StringIO()
     writer = csv.writer(out, lineterminator="\n")
-    writer.writerow(["구분", "이름", "버전", "라이선스", "확인이 필요한 까닭", "읽은 곳"])
+    if decisions is None:
+        writer.writerow(["구분", "이름", "버전", "라이선스", "확인이 필요한 까닭", "읽은 곳"])
+        for row in rows:
+            writer.writerow([row.kind, row.name, row.version, row.license, row.review, row.source])
+        return out.getvalue()
+    writer.writerow(["구분", "이름", "버전", "라이선스", "확인이 필요한 까닭", "읽은 곳", "받아들이는가", "판단의 까닭"])
     for row in rows:
-        writer.writerow([row.kind, row.name, row.version, row.license, row.review, row.source])
+        verdict, why = _judgement(row, decisions) if row.review else ("", "")
+        writer.writerow([row.kind, row.name, row.version, row.license, row.review, row.source, verdict, why])
     return out.getvalue()
 
 
@@ -291,10 +427,10 @@ def _merged_bom(rows, bom, version, shipped):
     return json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
 
 
-def write(rows, bom, version, out, shipped=None):
+def write(rows, bom, version, out, shipped=None, decisions=None):
     os.makedirs(out, exist_ok=True)
     shipped = None if shipped is None else set(shipped)
-    for name, text in (("COMPONENTS.md", markdown(rows, version)), ("components.csv", _csv(rows)),
+    for name, text in (("COMPONENTS.md", markdown(rows, version, decisions)), ("components.csv", _csv(rows, decisions)),
                        ("bom.json", _merged_bom(rows, bom, version, shipped))):
         with open(os.path.join(out, name), "w", encoding="utf-8", newline="\n") as handle:
             handle.write(text)
@@ -311,6 +447,12 @@ def main(arguments):
             lock = json.load(handle)
         with open(os.path.join(top, "deploy", "base-components.json"), encoding="utf-8") as handle:
             written = json.load(handle)
+        with open(os.path.join(top, "deploy", "license-decisions.json"), encoding="utf-8") as handle:
+            decisions = decisions_of(json.load(handle))
+        # 제품 자신의 모듈: 서버의 빌드에 든 폴더들이다.
+        server = os.path.join(top, "server")
+        own_modules = sorted(name for name in os.listdir(server)
+                             if os.path.isfile(os.path.join(server, name, "build.gradle.kts")))
         # 서버 파일 안의 라이브러리: 실제로 배포되는 것이다.
         with zipfile.ZipFile(jar_path) as jar:
             shipped = sorted(name.rsplit("/", 1)[-1][:-4] for name in jar.namelist()
@@ -321,13 +463,25 @@ def main(arguments):
     require_base_matches(base, top)
     if not shipped:
         _fail(f"서버 파일({jar_path})에 라이브러리가 하나도 없습니다. 서버 파일이 맞는지 확인하세요.")
-    rows = collect(bom, lock, base, own_group, shipped, extra)
-    write(rows, bom, version, out, shipped)
+    rows = collect(bom, lock, base, own_group, shipped, extra, own_modules)
+    write(rows, bom, version, out, shipped, decisions)
     review = sum(1 for row in rows if row.review)
+    waiting = undecided(rows, decisions)
     print(f"구성요소 {len(rows)}개 ("
           + ", ".join(f"{kind} {sum(1 for row in rows if row.kind == kind)}" for kind in KINDS)
-          + f"). 확인이 필요한 것 {review}개.")
+          + f"). 확인이 필요한 것 {review}개 (받아들이는지가 미정인 것 {len(waiting)}개).")
+    for row in waiting:
+        print(f"[미정] {row.kind} {row.name} {row.version}: {row.license or '(없음)'}. "
+              "받아들이는지를 deploy/license-decisions.json 에 적으세요.")
+    for one in unused(rows, decisions):
+        print(f"[낡음] 쓰이지 않은 판단: {one['name']} ({one['license']}). deploy/license-decisions.json 에서 고치거나 지우세요.")
     print(f"[확인] {os.path.join(out, 'COMPONENTS.md')}")
+    blocked = restricted(rows, decisions)
+    if blocked:
+        for row, why in blocked:
+            print(f"[실패] {row.kind} {row.name} {row.version}: {why}", file=sys.stderr)
+        _fail(f"배포를 제약하는 라이선스의 실행용 의존이 {len(blocked)}개 있습니다. 그 의존을 빼거나 다른 것으로 바꾸세요. "
+              "여러 라이선스 가운데 고를 수 있는 것이면 deploy/license-decisions.json 에 고른 라이선스(chosen)를 적으세요.")
 
 
 if __name__ == "__main__":

@@ -176,6 +176,101 @@ class ComponentsTest(unittest.TestCase):
         # 제품 자신의 모듈은 확인할 것이 아니다.
         self.assertEqual(by_name["com.example.own:mine"].review, "")
 
+    # ── E-21: 제품 자신의 모듈, 받아들이는지의 판단, 배포를 제약하는 라이선스 (D2 AD-428) ──
+
+    def test_서버_파일에만_있는_제품_자신의_모듈은_제품으로_담고_확인할_것으로_적지_않는다(self):
+        bom = server_bom(("org.a", "alpha", "1.0", ["Apache-2.0"]))
+        # 명세에는 없는데 서버 파일에 든 둘: 하나는 제품의 모듈의 이름이고 하나는 모르는 것이다.
+        shipped = ["alpha-1.0", "own-part-0.1.0-SNAPSHOT", "mystery-9"]
+
+        rows = components.collect(bom, web_lock(), [], "com.example.own", shipped, [], own_modules=["own-part", "other"])
+
+        by_name = {row.name: row for row in rows}
+        self.assertEqual((by_name["com.example.own:own-part"].kind, by_name["com.example.own:own-part"].version,
+                          by_name["com.example.own:own-part"].license, by_name["com.example.own:own-part"].review),
+                         ("제품", "0.1.0-SNAPSHOT", "제품 자신", ""))
+        self.assertIn("명세에 없다", by_name["mystery"].review)
+
+    def test_확인이_필요한_것마다_받아들이는지와_까닭이_적히고_판단이_없는_것은_미정이다(self):
+        rows = self.collect(server_bom(("g", "dual", "1", ["EPL-2.0", "LGPL-2.1-only"]), ("g", "odd", "2", ["LGPL-2.1-only"]),
+                                       ("g", "fine", "1", ["MIT"])), web_lock(), base=BASE)
+        decisions = components.decisions_of({"decisions": [
+            {"kind": "서버", "name": "g:dual", "license": "EPL-2.0 / LGPL-2.1-only", "accepted": True, "chosen": "EPL-2.0",
+             "why": "둘 가운데 고른다", "decided": "2026-01-01 지어낸 사람"},
+            {"kind": "바탕 이미지", "name": "실행 환경", "license": "GPL-2.0-with-classpath-exception", "accepted": True,
+             "why": "예외가 있다", "decided": "2026-01-01 지어낸 사람"},
+            # 라이선스가 달라진 것의 옛 판단: 그 구성요소에 쓰지 않는다.
+            {"kind": "서버", "name": "g:odd", "license": "MIT", "accepted": True, "why": "옛 판단", "decided": "2025-01-01 누구"},
+        ]})
+
+        text = components.markdown(rows, "1", decisions)
+        review = text.split("## 확인이 필요한 것")[1].split("## 배포를 제약하는 라이선스")[0]
+
+        dual = next(line for line in review.splitlines() if "g:dual" in line)
+        self.assertIn("받아들인다", dual)
+        self.assertIn("EPL-2.0 을 고른다", dual)
+        self.assertIn("둘 가운데 고른다", dual)
+        self.assertIn("2026-01-01 지어낸 사람", dual)
+        self.assertIn("받아들인다", next(line for line in review.splitlines() if "실행 환경" in line))
+        # 판단이 없는 것은 미정이다. 라이선스가 달라졌으면 옛 판단을 쓰지 않는다.
+        odd = next(line for line in review.splitlines() if "g:odd" in line)
+        self.assertIn("미정", odd)
+        self.assertNotIn("옛 판단", odd)
+        self.assertEqual([row.name for row in components.undecided(rows, decisions)], ["g:odd"])
+        # 쓰이지 않은 판단은 알린다: 표가 낡았다.
+        self.assertEqual([one["name"] for one in components.unused(rows, decisions)], ["g:odd"])
+        # 받아들이지 않는다고 적은 것도 그대로 보인다.
+        refused = components.decisions_of({"decisions": [
+            {"kind": "서버", "name": "g:odd", "license": "LGPL-2.1-only", "accepted": False, "why": "쓰지 않기로 했다",
+             "decided": "2026-01-02 지어낸 사람"}]})
+        self.assertIn("받아들이지 않는다", next(line for line in components.markdown(rows, "1", refused).splitlines()
+                                               if "g:odd" in line))
+
+    def test_배포를_제약하는_라이선스의_실행용_의존이_들어오면_알린다(self):
+        rows = self.collect(
+            server_bom(("g", "strong", "1", ["GPL-3.0-only"]), ("g", "network", "1", ["AGPL-3.0-or-later"]),
+                       ("g", "exception", "1", ["GPL-2.0-with-classpath-exception"]), ("g", "weak", "1", ["LGPL-2.1-only"]),
+                       ("g", "dual", "1", ["EPL-2.0", "GPL-2.0-only"]), ("g", "source", "1", ["이름:Server Side Public License"]),
+                       ("g", "fine", "1", ["Apache-2.0"]), ("com.example.own", "mine", "1", [])),
+            web_lock(("node_modules/either", "1", "(MIT OR GPL-3.0-only)", False),
+                     ("node_modules/both", "1", "(MIT AND GPL-3.0-only)", False),
+                     ("node_modules/noncommercial", "1", "CC-BY-NC-4.0", False),
+                     ("node_modules/business", "1", "BUSL-1.1", False),
+                     ("node_modules/devonly", "1", "GPL-3.0-only", True)),
+            base=[{"image": "os:1", "where": "어딘가", "components": [{"name": "바탕", "version": "1", "license": "GPL-3.0-only"}]}])
+
+        found = {row.name: why for row, why in components.restricted(rows, components.decisions_of({"decisions": []}))}
+
+        # 예외가 붙은 GPL, LGPL, 둘 가운데 고를 수 있는 것(OR), 개발에만 쓰는 것, 바탕 이미지는 걸리지 않는다.
+        self.assertEqual(set(found), {"g:strong", "g:network", "g:dual", "g:source", "both", "noncommercial", "business"})
+        self.assertIn("GPL-3.0-only", found["g:strong"])
+        # 서버의 명세는 여러 라이선스가 "가운데 하나"인지 "모두"인지 알려 주지 않는다: 고른 것을 적어야 풀린다.
+        self.assertIn("고른 라이선스", found["g:dual"])
+        chosen = components.decisions_of({"decisions": [
+            {"kind": "서버", "name": "g:dual", "license": "EPL-2.0 / GPL-2.0-only", "accepted": True, "chosen": "EPL-2.0",
+             "why": "둘 가운데 고른다", "decided": "2026-01-01 지어낸 사람"},
+            # 제약하는 라이선스를 받아들인다고 적어도 풀리지 않는다: 그런 것은 빼야 한다.
+            {"kind": "서버", "name": "g:strong", "license": "GPL-3.0-only", "accepted": True, "why": "그냥", "decided": "2026-01-01 누구"},
+        ]})
+        after = {row.name for row, why in components.restricted(rows, chosen)}
+        self.assertNotIn("g:dual", after)
+        self.assertIn("g:strong", after)
+        # 목록의 글에도 적힌다.
+        text = components.markdown(rows, "1", chosen)
+        section = text.split("## 배포를 제약하는 라이선스")[1].split("## 모두")[0]
+        self.assertIn("g:strong", section)
+        self.assertNotIn("g:fine", section)
+        clean = self.collect(server_bom(("g", "fine", "1", ["Apache-2.0"])), web_lock(), base=BASE)
+        self.assertIn("서버와 화면의 실행용 의존에 배포를 제약하는 라이선스가 없습니다",
+                      components.markdown(clean, "1", components.decisions_of({"decisions": []})))
+
+    def test_판단의_표가_잘못_적혀_있으면_어느_항목이_없는지_알린다(self):
+        with self.assertRaises(SystemExit) as stopped:
+            components.decisions_of({"decisions": [{"kind": "서버", "name": "g:x", "license": "LGPL-2.1-only", "accepted": True}]})
+        self.assertIn("why", str(stopped.exception))
+        with self.assertRaises(SystemExit):
+            components.decisions_of({})
+
     def test_빈_입력에서도_목록이_나오고_확인할_것이_없다고_적는다(self):
         rows = self.collect(server_bom(), web_lock(), base=[])
 

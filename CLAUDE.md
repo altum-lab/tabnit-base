@@ -26,7 +26,7 @@ Tabnit Base v1.0. 문서나 규정이 바뀌면(변동) 그 영향이 닿는 대
 ```
 docs/      설계 문서 D1~D9, API 규격 (docs/api/openapi.yaml)
 packs/     Pack (제조 안전, 퇴직연금, 시험용). 가상 데이터만
-server/    Gradle 다중 모듈: common, core, pack, link, rules, api
+server/    Gradle 다중 모듈: common, core, pack, link, rules, api, verify-core
 web/       관리 화면 (Vite, React, TypeScript)
 verify/    검증 질문 실행기
 deploy/    컨테이너, 설치 스크립트
@@ -67,9 +67,10 @@ tools/     점검 스크립트, 개발 보드
 | core | 관계 저장, 시점 조회, 영향 범위 | A, F | common |
 | link | 파일 커넥터, 매핑 실행, 판 비교, 변동 이벤트 | C, H | common, pack, core |
 | rules | 규칙 실행, 조치 생성, 확정 이력 | G | common, pack, core |
-| api | 화면과 외부가 부르는 API | I | 전부 |
+| api | 화면과 외부가 부르는 API | I | 전부 (verify-core 포함) |
 | web | 관리 화면 | D, I | api (HTTP로만) |
-| verify | 일반 시험, 검증 질문 실행 | J | api 또는 각 모듈의 공개 API |
+| verify-core | 검증 질문 파일을 읽고 정답과 견준다 (AD-422) | J | 없음 |
+| verify | 일반 시험, 검증 질문 실행 | J | verify-core, api 또는 각 모듈의 공개 API |
 
 - 주인은 사람이 아니라 개발 보드의 **자리**(A~J)다. 지금 누가 그 자리인지는 보드의 "자리와 사람"에서 본다. 담당자가 바뀌어도 이 파일은 고치지 않는다.
 - **core는 link와 rules를 모른다.** 반대 방향 의존이 필요해 보이면 설계가 틀린 것이다. 멈추고 묻는다.
@@ -90,7 +91,7 @@ tools/     점검 스크립트, 개발 보드
 | link | D6, D5 |
 | api, web | D7 |
 | common | D2, D9 개발 규약 |
-| verify | D4 검증 질문 세트 |
+| verify, verify-core | D4 검증 질문 세트 |
 
 4. 그 모듈 폴더의 지침 파일.
 

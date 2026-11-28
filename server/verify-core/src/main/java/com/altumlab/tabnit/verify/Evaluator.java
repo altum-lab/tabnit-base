@@ -488,14 +488,17 @@ final class Evaluator {
      *
      * @return 번호. 적지 않았으면 null
      */
+    private static final java.util.regex.Pattern GOLDEN = java.util.regex.Pattern.compile("CQ-[0-9]{2}");
+
     private static String golden(QuestionFile.Question question) {
         Object golden = question.body().get("golden");
         if (golden == null) {
             return null;
         }
-        if (!(golden instanceof String text) || text.isBlank()) {
-            throw new Failure("질문 " + question.id() + " 의 golden 은 골든셋의 번호 하나를 글자로 적어야 합니다 (예: CQ-03). 받은 값: "
-                    + golden);
+        // 꼴은 CQ- 뒤에 숫자 둘이다 (D4 3절, D2 AD-426). 오타(CQ-3)나 여럿을 한 글자로 적은 것(CQ-01, CQ-02)을 받지 않는다.
+        if (!(golden instanceof String text) || !GOLDEN.matcher(text).matches()) {
+            throw new Failure("질문 " + question.id() + " 의 golden 은 골든셋의 번호 하나를 CQ- 뒤에 숫자 둘로 적어야 합니다"
+                    + " (예: CQ-03). 받은 값: " + golden);
         }
         return text;
     }

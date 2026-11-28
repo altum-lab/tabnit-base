@@ -1288,6 +1288,26 @@ class VerifyRunnerTest {
     }
 
     @Test
+    void 골든셋의_번호는_정해진_꼴이어야_한다() throws IOException {
+        // D4 3절 (D2 AD-426): CQ- 뒤에 숫자 둘이다. 오타나 여럿을 한 글자로 적은 것을 조용히 받지 않는다.
+        FakeProduct product = new FakeProduct();
+        for (String wrong : List.of("CQ-3", "\"CQ-01, CQ-02\"", "cq-03", "CQ-003", "CQ03", "\" CQ-03\"")) {
+            String tagged = ATTRIBUTE_VALUES_QUESTION.replace("    title: 속성 값\n", "    title: 속성 값\n    golden: " + wrong + "\n");
+            assertThat(new Evaluator(PACK, product)
+                .evaluate(QuestionFile.read(write("S-golden-form.yaml", SCENARIO + tagged)), product.steps())).singleElement()
+                .satisfies(result -> {
+                    assertThat(result.passed()).as(wrong).isFalse();
+                    assertThat(result.reason()).as(wrong).contains("golden").contains("CQ-03");
+                });
+        }
+        // 맞는 꼴은 받는다.
+        String right = ATTRIBUTE_VALUES_QUESTION.replace("    title: 속성 값\n", "    title: 속성 값\n    golden: CQ-10\n");
+        assertThat(new Evaluator(PACK, product)
+            .evaluate(QuestionFile.read(write("S-golden-form-ok.yaml", SCENARIO + right)), product.steps())).singleElement()
+            .satisfies(result -> assertThat(result.label()).isEqualTo("2026-02-01 [CQ-10]"));
+    }
+
+    @Test
     void 골든셋의_번호가_틀려도_보고의_이름표에_날짜는_남는다() throws IOException {
         FakeProduct product = new FakeProduct();
         String broken = ATTRIBUTE_VALUES_QUESTION.replace("    title: 속성 값\n", "    title: 속성 값\n    golden: [CQ-01, CQ-02]\n");

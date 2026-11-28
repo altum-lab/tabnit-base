@@ -135,9 +135,39 @@ class PackLoading {
 	 * @return 폴더의 이름. Pack 폴더가 정해져 있지 않거나 그 폴더가 없으면 비어 있다 ({@link #configured()} 로 가린다)
 	 */
 	List<String> folders() {
+		return snapshot().folders();
+	}
+
+	/**
+	 * Pack 폴더를 쓸 수 있는지와 거기에 놓인 폴더의 이름. 한 번 봐서 함께 준다: 따로 물으면 그 사이에 폴더가 생기거나
+	 * 사라져 둘이 어긋날 수 있다.
+	 *
+	 * @param configured Pack 폴더가 정해져 있고, 있으며, 읽을 수 있는가
+	 * @param folders 폴더의 이름. configured 가 거짓이면 비어 있다
+	 */
+	record Folders(boolean configured, List<String> folders) {
+	}
+
+	Folders snapshot() {
 		if (!configured()) {
-			return List.of();
+			return new Folders(false, List.of());
 		}
+		try {
+			return new Folders(true, list());
+		}
+		catch (java.nio.file.NoSuchFileException | java.nio.file.NotDirectoryException
+				| java.nio.file.AccessDeniedException e) {
+			// 보는 사이에 폴더가 사라졌거나, 폴더는 있는데 서버가 읽을 권한이 없다. 쓸 수 없는 폴더다: 오류가 아니라
+			// 정해져 있지 않은 것과 같이 답한다 (화면이 설치 설정을 확인하라고 알린다).
+			return new Folders(false, List.of());
+		}
+		catch (IOException | InvalidPathException e) {
+			// 그 밖의 까닭으로 읽지 못했다. 서버 쪽의 문제다. 경로는 기록에만 남긴다.
+			throw new IllegalStateException("Pack 폴더를 읽지 못했습니다: " + this.packsDirectory, e);
+		}
+	}
+
+	private List<String> list() throws IOException {
 		try (java.util.stream.Stream<Path> children = Files.list(Path.of(this.packsDirectory).toRealPath())) {
 			java.util.TreeSet<String> names = new java.util.TreeSet<>();
 			for (Path child : children.toList()) {
@@ -149,10 +179,6 @@ class PackLoading {
 			}
 			// 받는 이름은 영어 소문자, 숫자, 붙임표뿐이라 글자의 순서가 글자 코드 순이다.
 			return List.copyOf(names);
-		}
-		catch (IOException | InvalidPathException e) {
-			// 폴더를 읽지 못했다. 서버 쪽의 문제다. 경로는 기록에만 남긴다.
-			throw new IllegalStateException("Pack 폴더를 읽지 못했습니다: " + this.packsDirectory, e);
 		}
 	}
 

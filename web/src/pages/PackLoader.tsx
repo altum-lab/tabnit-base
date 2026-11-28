@@ -44,6 +44,9 @@ export function PackLoader({ onLoaded }: Props) {
   const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<Result>({ kind: "none" });
   const latest = useRef(0);
+  // 이 화면에서 방금 적재한 Pack. 폴더의 목록을 다시 받기 전이거나 받은 것이 옛것이어도, 다시 적재할 때 확인을 받는다
+  // (D2 AD-416).
+  const justLoaded = useRef(new Set<string>());
 
   async function loadFolders() {
     const turn = ++latest.current;
@@ -57,6 +60,10 @@ export function PackLoader({ onLoaded }: Props) {
           ? { kind: "loaded", configured: data.configured, folders: data.folders }
           : { kind: "failed", message: messageOf(error, response.status) },
       );
+      // 고른 폴더가 서버에서 사라졌으면 고른 것을 푼다: 고르는 칸은 비어 보이는데 단추만 켜져 있지 않게 한다.
+      if (data) {
+        setChosen((current) => (current && !data.folders.some((folder) => folder.packId === current) ? "" : current));
+      }
     } catch {
       if (turn === latest.current) {
         setFolders({ kind: "failed", message: CONNECTION_FAILED });
@@ -71,11 +78,13 @@ export function PackLoader({ onLoaded }: Props) {
   function choose(next: string) {
     setChosen(next);
     setConfirming(false);
+    // 앞에 고른 Pack 의 결과를 새로 고른 Pack 옆에 남기지 않는다. 적재하는 중이면 그 결과를 기다린다.
+    setResult((current) => (current.kind === "loading" ? current : { kind: "none" }));
   }
 
   function press() {
     const folder = folders.kind === "loaded" ? folders.folders.find((candidate) => candidate.packId === chosen) : undefined;
-    if (folder?.loaded) {
+    if (folder?.loaded || justLoaded.current.has(chosen)) {
       // 정의가 바뀌면 그 뒤의 계산에 바로 닿는다. 한 번 확인을 받는다.
       setConfirming(true);
       return;
@@ -90,6 +99,7 @@ export function PackLoader({ onLoaded }: Props) {
     try {
       const { data, error, response } = await api.POST("/api/v1/pack-loads", { body: { packId } });
       if (data) {
+        justLoaded.current.add(data.packId);
         setResult({ kind: "loaded", packId: data.packId, outcome: data.outcome, warnings: data.warnings });
         onLoaded(data.packId);
       } else {

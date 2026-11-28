@@ -136,6 +136,22 @@ class PackFoldersApiTests {
 		assertThat(rows).extracting(AuditRecord::actor).containsOnly("pf-admin");
 	}
 
+	@Test
+	void Pack_폴더를_읽을_수_없으면_500_이_아니라_쓸_수_없는_폴더로_답한다() throws Exception {
+		// 폴더는 있는데 서버가 읽을 권한이 없다 (/code-review 125).
+		java.io.File directory = PACKS.toFile();
+		org.junit.jupiter.api.Assumptions.assumeTrue(directory.setReadable(false) && !Files.isReadable(PACKS),
+				"이 환경에서는 폴더를 읽지 못하게 만들 수 없다 (관리자 권한으로 도는 시험)");
+		try {
+			this.mvc.perform(get("/api/v1/pack-folders").with(ADMIN)).andExpect(status().isOk())
+				.andExpect(jsonPath("$.configured", is(false)))
+				.andExpect(jsonPath("$.folders.length()", is(0)));
+		}
+		finally {
+			directory.setReadable(true);
+		}
+	}
+
 	private String folders() throws Exception {
 		return this.mvc.perform(get("/api/v1/pack-folders").with(ADMIN)).andExpect(status().isOk()).andReturn().getResponse()
 			.getContentAsString(StandardCharsets.UTF_8);

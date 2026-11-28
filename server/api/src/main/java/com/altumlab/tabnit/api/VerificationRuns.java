@@ -194,7 +194,10 @@ class VerificationRuns {
 			Path data = folder.resolve(step.file()).normalize();
 			byte[] expected;
 			try {
-				if (!data.startsWith(folder) || !Files.isRegularFile(data)) {
+				// 바로가기(심볼릭 링크)는 따라가지 않는다: 이름은 폴더 안이어도 가리키는 곳이 Pack 폴더 밖일 수 있다.
+				// 파일 자신이 바로가기가 아니어야 하고, 중간의 폴더가 바로가기여도 실제 자리가 Pack 의 폴더 안이어야 한다.
+				if (!data.startsWith(folder) || !Files.isRegularFile(data, java.nio.file.LinkOption.NOFOLLOW_LINKS)
+						|| !data.toRealPath().startsWith(folder.toRealPath())) {
 					return "시나리오의 " + step.step() + "단계의 파일이 서버의 Pack 폴더에 없습니다: " + step.file();
 				}
 				expected = Files.readAllBytes(data);

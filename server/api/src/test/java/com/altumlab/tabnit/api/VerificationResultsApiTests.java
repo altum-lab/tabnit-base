@@ -349,6 +349,32 @@ class VerificationResultsApiTests {
 			.andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
 	}
 
+	@Test
+	void 단계의_파일이_Pack_폴더_밖을_가리키는_바로가기이면_따라가지_않는다() throws Exception {
+		// /security-review 가 짚은 것: 이름은 폴더 안인데 바로가기(심볼릭 링크)가 밖의 파일을 가리킨다.
+		String packId = "vr-link";
+		Path pack = prepare(packId);
+		uploadScenario(packId, pack, Integer.MAX_VALUE);
+		// 판이 시나리오와 같다: 여기까지는 돌릴 수 있다.
+		assertThat(JsonPath.<Boolean>read(results(packId), "$.scenarios[0].matched")).isTrue();
+
+		// 첫 단계의 파일을 Pack 폴더 밖의 같은 내용의 파일을 가리키는 바로가기로 바꾼다.
+		String[] first = steps(pack).get(0);
+		Path inside = pack.resolve(first[1]);
+		Path outside = Files.createTempFile("tabnit-vr-outside", ".csv");
+		Files.write(outside, Files.readAllBytes(inside));
+		Files.delete(inside);
+		Files.createSymbolicLink(inside, outside);
+
+		String body = results(packId);
+
+		// 내용이 같아도 밖의 파일은 읽지 않는다: 그 단계의 파일이 없는 것으로 보고 묻지 않는다.
+		assertThat(JsonPath.<Boolean>read(body, "$.scenarios[0].matched")).as(body).isFalse();
+		assertThat(JsonPath.<String>read(body, "$.scenarios[0].mismatch")).contains("서버의 Pack 폴더에 없습니다");
+		assertThat(JsonPath.<List<Object>>read(body, "$.scenarios[0].results")).isEmpty();
+		assertThat(body).doesNotContain(outside.toString());
+	}
+
 	/** 서버의 Pack 폴더에 사본을 두고 API 로 적재한다. */
 	private Path prepare(String packId) throws Exception {
 		Path pack = PackCopies.copyInto(PACKS, packId, text -> text);

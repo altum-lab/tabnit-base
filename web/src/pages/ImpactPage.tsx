@@ -4,6 +4,7 @@ import { api, type ChangeImpactScope } from "../api/client";
 import { CONNECTION_FAILED, messageOf } from "../api/problem";
 import { SessionContext } from "../session";
 import { formatInstant } from "../time";
+import { EntityImpactAsker } from "./EntityImpactAsker";
 import { EntityName } from "./EntityName";
 import { ImpactPathView } from "./ImpactPathView";
 import { ExportButtons } from "./ExportButtons";
@@ -77,7 +78,7 @@ export function ImpactPage() {
         <p data-testid="impact-guide">
           변동 하나의 영향 범위를 보는 화면입니다. <Link to="/changes">변동 감지</Link> 화면에서 판을 올린 뒤 바뀐 항목의
           "영향 범위 보기"로, 또는 <Link to="/actions">조치</Link> 화면에서 변동 하나의 조치를 볼 때 "이 변동의 영향
-          범위"로 들어오세요.
+          범위"로 들어오세요. 변동 없이 개체 하나로 묻는 것은 아래의 "개체로 영향 묻기"에서 합니다.
         </p>
       )}
 
@@ -93,6 +94,9 @@ export function ImpactPage() {
       )}
 
       {changeEventId && view.kind === "loaded" && <Scope scope={view.scope} onMove={move} />}
+
+      {/* 변동이 없어도 개체 하나로 물을 수 있다 (카드 D-23). 위의 저장된 영향 범위와 따로 논다. */}
+      <EntityImpactAsker />
     </section>
   );
 }

@@ -802,11 +802,13 @@ GET /api/v1/impact?entityId={출발 개체의 id}&asOf={조회 시점}&includePr
 | 상황 | HTTP 상태 | `code` |
 |---|---|---|
 | `entityId` 가 없다 | 400 | `MISSING_ENTITY_ID` |
+| `entityId` 에 쓸 수 없는 글자(NUL, 짝 없는 대리 문자)가 있다 | 400 | `INVALID_ENTITY_ID` |
 | 조회 시점의 형식이 틀렸거나, 전날을 함께 보라고 했는데 조회 시점이 0001-01-01 이다 | 400 | `INVALID_AS_OF` |
 | `includePreviousDay` 가 true 나 false 가 아니다 | 400 | `INVALID_INCLUDE_PREVIOUS_DAY` |
-| `maxDepth` 가 1 부터 그 Pack 의 기본값까지의 정수가 아니다 | 400 | `INVALID_MAX_DEPTH` |
+| `maxDepth` 가 1 부터 그 Pack 의 기본값까지의 정수가 아니다 (숫자 0 ~ 9 만 받는다) | 400 | `INVALID_MAX_DEPTH` |
+| `offset` 이나 `limit` 이 틀렸다 (2절 "나눠 주기") | 400 | `INVALID_OFFSET`, `INVALID_LIMIT` |
 | 그 개체가 없다 | 404 | `ENTITY_NOT_FOUND` |
-| 따라가야 할 관계의 유형이 지금의 Pack 의 정의에 없다 | 422 | `UNKNOWN_IMPACT_DIRECTION` |
+| 따라가야 할 관계의 유형이 지금의 Pack 의 정의에 없다 (문구에 그 관계 유형이 적힌다) | 422 | `UNKNOWN_IMPACT_DIRECTION` |
 
 화면은 아직 이 API 를 부르지 않는다.
 

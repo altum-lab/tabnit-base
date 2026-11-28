@@ -1,4 +1,4 @@
-import { type FormEvent, useRef, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { api, type RelationPath } from "../api/client";
 import { CONNECTION_FAILED, messageOf } from "../api/problem";
 import { EntityName } from "./EntityName";
@@ -31,12 +31,38 @@ export function RelationPathFinder({ from, to, onFrom, onTo, asOf }: Props) {
   // 늦게 온 답이 새 답을 덮지 않게 한다.
   const latest = useRef(0);
 
-  async function search(event: FormEvent<HTMLFormElement>) {
+  // 마지막으로 찾은 두 개체. 조회 시점이 바뀌면 이 둘의 경로를 그 날짜로 다시 받는다.
+  const asked = useRef<{ from: string; to: string } | null>(null);
+
+  // 화면의 조회 시점이 바뀌면 찾아 둔 경로를 그 날짜로 다시 받는다: 지도와 경로가 다른 날짜를 보이지 않는다.
+  useEffect(() => {
+    if (asked.current !== null) {
+      void fetchPath(asked.current.from, asked.current.to);
+    }
+    // 조회 시점이 바뀔 때만 다시 받는다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asOf]);
+
+  // 출발이나 도착을 고치면 앞의 결과를 비운다: 적힌 두 개체의 것이 아닌 결과가 남지 않는다.
+  useEffect(() => {
+    if (asked.current !== null && (asked.current.from !== from || asked.current.to !== to)) {
+      asked.current = null;
+      latest.current++;
+      setFound({ kind: "idle" });
+    }
+  }, [from, to]);
+
+  function search(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    asked.current = { from, to };
+    void fetchPath(from, to);
+  }
+
+  async function fetchPath(fromEntityId: string, toEntityId: string) {
     const turn = ++latest.current;
     setFound({ kind: "loading" });
     try {
-      const query = { fromEntityId: from, toEntityId: to, ...(asOf ? { asOf } : {}) };
+      const query = { fromEntityId, toEntityId, ...(asOf ? { asOf } : {}) };
       const { data, error, response } = await api.GET("/api/v1/relation-path", { params: { query } });
       if (turn !== latest.current) {
         return;
@@ -82,7 +108,9 @@ function PathResult({ path }: { path: RelationPath }) {
   if (!path.found) {
     return path.limitReached ? (
       <p role="status">
-        조회 시점 {asOf} 에 길이 {path.maxLength} 까지의 한도 안에서 찾지 못했습니다. 더 긴 경로가 있을 수 있습니다.
+        {/* 한도는 둘이다: 경로의 길이와 찾은 개체의 수. 어느 쪽에서 멈췄는지는 서버가 알려 주지 않는다. */}
+        조회 시점 {asOf} 에 한도 안에서 찾지 못했습니다. 길이 {path.maxLength} 을 넘는 경로는 찾지 않고, 이어진 개체가
+        많으면 그보다 일찍 멈춥니다. 찾지 못한 경로가 있을 수 있습니다.
       </p>
     ) : (
       <p role="status">조회 시점 {asOf} 에 유효한 경로가 없습니다. 두 개체는 이 날짜에 이어져 있지 않습니다.</p>

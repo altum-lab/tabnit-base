@@ -52,6 +52,27 @@ class ListExportsTest {
 	}
 
 	@Test
+	void 앞의_빈칸과_줄바꿈을_건너뛴_첫_글자가_수식의_글자여도_막는다() {
+		// 앞의 빈칸을 잘라 읽는 프로그램에서는 수식으로 읽힌다 (D2 AD-425).
+		byte[] file = ListExports.csv(List.of("값"), List.of(List.of(" =1+1"), List.of("  @합계"), List.of("\u00A0-5"),
+				List.of("\u3000+82"), List.of(" 가=나"), List.of("   ")));
+
+		assertThat(text(file)).isEqualTo("값\r\n' =1+1\r\n'  @합계\r\n'\u00A0-5\r\n'\u3000+82\r\n 가=나\r\n   \r\n");
+		// 줄바꿈 뒤의 것도 막는다 (그런 칸은 따옴표로도 싼다).
+		assertThat(text(ListExports.csv(List.of("값"), List.of(List.of("\n=1+1"))))).isEqualTo("값\r\n\"'\n=1+1\"\r\n");
+	}
+
+	@Test
+	void 전각의_수식_글자로_시작하는_칸도_막는다() {
+		// 한글 입력기의 전각 글자다. 표 계산 프로그램에 따라 반각으로 바꿔 수식으로 읽는다.
+		byte[] file = ListExports.csv(List.of("값"), List.of(List.of("\uFF1D1+1"), List.of("\uFF0B82"), List.of("\uFF0D5"),
+				List.of("\uFF20합계"), List.of(" \uFF1D1"), List.of("가\uFF1D나")));
+
+		assertThat(text(file)).isEqualTo(
+				"값\r\n'\uFF1D1+1\r\n'\uFF0B82\r\n'\uFF0D5\r\n'\uFF20합계\r\n' \uFF1D1\r\n가\uFF1D나\r\n");
+	}
+
+	@Test
 	void 수식을_막는_글자와_따옴표가_함께_필요한_값() {
 		assertThat(text(ListExports.csv(List.of("값"), List.of(List.of("=A1,\"B\""))))).isEqualTo("값\r\n\"'=A1,\"\"B\"\"\"\r\n");
 	}

@@ -129,13 +129,38 @@ class ListExports {
 		return text.toString().getBytes(StandardCharsets.UTF_8);
 	}
 
+	/** 수식을 여는 글자. 반각과 전각 (전각은 표 계산 프로그램에 따라 반각으로 바꿔 읽는다). */
+	private static final String FORMULA_STARTS = "=+-@\uFF1D\uFF0B\uFF0D\uFF20";
+
+	/**
+	 * 표 계산 프로그램이 수식으로 읽을 수 있는 칸인가 (D7 "수식으로 읽히는 값", D2 AD-425).
+	 * 탭이나 CR 로 시작하거나, 앞의 빈칸과 제어 문자를 건너뛴 첫 글자가 수식을 여는 글자인 칸이다.
+	 * 앞의 빈칸을 잘라 읽는 프로그램에서는 그 뒤의 글자가 칸의 첫 글자가 된다.
+	 */
+	private static boolean startsLikeFormula(String cell) {
+		if (cell.isEmpty()) {
+			return false;
+		}
+		if (cell.charAt(0) == '\t' || cell.charAt(0) == '\r') {
+			return true;
+		}
+		for (int i = 0; i < cell.length();) {
+			int codePoint = cell.codePointAt(i);
+			if (!Character.isWhitespace(codePoint) && !Character.isSpaceChar(codePoint) && !Character.isISOControl(codePoint)) {
+				return FORMULA_STARTS.indexOf(codePoint) >= 0;
+			}
+			i += Character.charCount(codePoint);
+		}
+		return false;
+	}
+
 	private static void line(StringBuilder text, List<String> cells, boolean guard) {
 		for (int i = 0; i < cells.size(); i++) {
 			if (i > 0) {
 				text.append(',');
 			}
 			String cell = cells.get(i) == null ? "" : cells.get(i);
-			if (guard && !cell.isEmpty() && "=+-@\t\r".indexOf(cell.charAt(0)) >= 0) {
+			if (guard && startsLikeFormula(cell)) {
 				cell = "'" + cell;
 			}
 			if (cell.indexOf(',') >= 0 || cell.indexOf('"') >= 0 || cell.indexOf('\n') >= 0 || cell.indexOf('\r') >= 0) {

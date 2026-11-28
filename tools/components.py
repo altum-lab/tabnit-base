@@ -94,7 +94,8 @@ def _shipped_components(bom, shipped):
     return matched
 
 
-def _server_rows(bom, own_group, shipped, extra, own_modules=()):
+def _server_rows(bom, own_group, shipped, extra, own_modules=None):
+    own_modules = own_modules or {}
     rows = []
     # 명세에는 빌드에서만 쓰이는 것(묶음 표시용, 개발용)도 있다. 실제로 서버 파일에 든 것만 담는다.
     matched = None if shipped is None else _shipped_components(bom, shipped)
@@ -112,10 +113,12 @@ def _server_rows(bom, own_group, shipped, extra, own_modules=()):
     # 따로 적어 둔 것(deploy/base-components.json 의 extra)에서 읽고, 거기에도 없으면 숨기지 않고 적는다.
     for file_name in sorted(set(shipped or ()) - set(matched or ())):
         known = next((one for one in extra if file_name.startswith(one["file"] + "-")), None)
-        own = next((one for one in sorted(own_modules, key=len, reverse=True) if file_name.startswith(one + "-")), None)
+        # 제품 자신의 모듈인데 빌드 도구의 명세에 빠진 것. 모듈의 이름과 버전이 꼭 같은 것만이다:
+        # 남의 라이브러리의 이름이 모듈의 이름으로 시작할 수 있다 (core-3.5.3).
+        own = next((name for name, module_version in sorted(dict(own_modules).items())
+                    if file_name == f"{name}-{module_version}"), None)
         if own:
-            # 제품 자신의 모듈인데 빌드 도구의 명세에 빠진 것. 모듈의 폴더 이름으로 알아본다.
-            rows.append(Row("제품", f"{own_group}:{own}" if own_group else own, file_name[len(own) + 1:], OWN_LICENSE, "",
+            rows.append(Row("제품", f"{own_group}:{own}" if own_group else own, dict(own_modules)[own], OWN_LICENSE, "",
                             "서버 파일 (제품의 모듈)"))
         elif known:
             version = file_name[len(known["file"]) + 1:]
@@ -155,15 +158,15 @@ def _base_rows(base):
     return rows
 
 
-def collect(bom, lock, base, own_group, shipped=None, extra=(), own_modules=()):
+def collect(bom, lock, base, own_group, shipped=None, extra=(), own_modules=None):
     """구성요소를 모아 정해진 차례로 돌려준다: 구분, 이름, 버전 (글자 코드 순).
 
     shipped: 서버 파일 안의 라이브러리의 이름들 (이름-버전). 없으면 명세의 것을 모두 담는다.
     extra: 서버 파일에는 들었는데 명세에 없는 것의 이름과 라이선스.
-    own_modules: 제품 자신의 모듈의 이름들. 명세에 빠졌어도 서버 파일에 있으면 제품으로 담는다.
+    own_modules: 제품 자신의 모듈의 이름마다 그 버전. 명세에 빠졌어도 그 이름과 버전의 파일이 서버 파일에 있으면 제품으로 담는다.
     """
     shipped = None if shipped is None else set(shipped)
-    rows = _base_rows(base) + _server_rows(bom, own_group, shipped, list(extra), list(own_modules)) + _web_rows(lock)
+    rows = _base_rows(base) + _server_rows(bom, own_group, shipped, list(extra), dict(own_modules or {})) + _web_rows(lock)
     return sorted(rows, key=lambda row: (KINDS.index(row.kind), row.name, row.version))
 
 
@@ -173,26 +176,95 @@ def collect(bom, lock, base, own_group, shipped=None, extra=(), own_modules=()):
 # 강한 카피레프트(예외 없는 GPL, AGPL), 소스 공개를 서비스에까지 요구하는 것(SSPL), 쓰임을 막는 것(BUSL, Commons Clause),
 # CC 의 비상업과 변경 금지. LGPL, EPL, MPL 과 예외가 붙은 GPL 은 여기 들지 않는다: 확인이 필요한 것으로만 표시한다.
 _RESTRICTING = (
-    (re.compile(r"^AGPL", re.I), "AGPL"),
-    (re.compile(r"^GPL(?!.*(exception|-with-))", re.I), "예외 없는 GPL"),
-    (re.compile(r"^SSPL|server side public license", re.I), "SSPL"),
-    (re.compile(r"^BUSL|business source license", re.I), "BUSL"),
+    (re.compile(r"(?<![A-Za-z])AGPL|affero", re.I), "AGPL"),
+    (re.compile(r"(?<![A-Za-z])SSPL|server side public license", re.I), "SSPL"),
+    (re.compile(r"(?<![A-Za-z])BUSL|business source license", re.I), "BUSL"),
     (re.compile(r"commons[- ]clause", re.I), "Commons Clause"),
     (re.compile(r"^CC-BY(-[A-Z]+)*-(NC|ND)\b", re.I), "CC 의 비상업 또는 변경 금지"),
 )
 
+# GPL: 식별자(GPL-3.0-only, GPLv3)와 이름(GNU General Public License, GNU GPL). 앞에 글자가 붙은 것(LGPL)과
+# "Lesser", "Library" 가 낀 이름은 맞지 않는다. 예외가 붙은 것은 제약으로 보지 않는다.
+_GPL = re.compile(r"(?<![A-Za-z])GPL|GNU General Public", re.I)
+_GPL_EXCEPTION = re.compile(r"exception|classpath|(?<![A-Za-z])CPE(?![A-Za-z])|-with-", re.I)
+
 
 def _restricting(license_):
-    """그 라이선스가 배포를 제약하는 것이면 어느 갈래인지, 아니면 빈 글자."""
-    return next((label for pattern, label in _RESTRICTING if pattern.search(license_.strip())), "")
+    """그 라이선스가 배포를 제약하는 것이면 어느 갈래인지, 아니면 빈 글자. 식별자와 이름을 모두 알아본다."""
+    text = license_.strip()
+    found = next((label for pattern, label in _RESTRICTING if pattern.search(text)), "")
+    if found:
+        return found
+    if _GPL.search(text) and not _GPL_EXCEPTION.search(text):
+        return "예외 없는 GPL"
+    return ""
 
 
-def _alternatives(text):
-    """화면의 꾸러미의 라이선스 식 하나를 "가운데 하나"로 고를 수 있는 것들로 나눈다. 각각은 "모두 따르는" 것들의 묶음이다."""
-    inner = text.strip()
-    while inner.startswith("(") and inner.endswith(")"):
-        inner = inner[1:-1].strip()
-    return [[part.strip(" ()") for part in re.split(r"\s+AND\s+", choice)] for choice in re.split(r"\s+OR\s+", inner)]
+class _Unreadable(Exception):
+    """라이선스의 식을 읽지 못했다."""
+
+
+def _expression_restricts(text):
+    """화면의 꾸러미의 라이선스 식(SPDX)이 배포를 제약하는가.
+
+    "가운데 하나"(OR)는 제약하지 않는 갈래가 하나라도 있으면 고를 수 있고, "모두"(AND)는 하나라도 제약하면 제약한다.
+    괄호를 지키고, AND 가 OR 보다 먼저 묶인다. "X WITH 예외"는 예외가 붙은 하나의 라이선스다.
+    읽지 못하는 식은 넘기지 않는다: 제약하는 이름이 들어 있으면 제약하는 것으로 본다.
+    """
+    tokens = re.findall(r"\(|\)|[^\s()]+", text)
+    position = 0
+
+    def peek():
+        return tokens[position] if position < len(tokens) else None
+
+    def take():
+        nonlocal position
+        position += 1
+        return tokens[position - 1]
+
+    def unit():
+        if peek() is None:
+            raise _Unreadable()
+        if peek() == "(":
+            take()
+            value = either()
+            if peek() != ")":
+                raise _Unreadable()
+            take()
+            return value
+        name = take()
+        if name in (")", "AND", "OR", "WITH"):
+            raise _Unreadable()
+        if peek() == "WITH":
+            take()
+            if peek() in (None, "(", ")", "AND", "OR", "WITH"):
+                raise _Unreadable()
+            name += " WITH " + take()
+            # 예외가 붙은 것은 제약으로 보지 않는다 (예외의 이름이 무엇이든).
+            return bool(_restricting(name.split(" WITH ")[0])) and not _GPL.search(name.split(" WITH ")[0])
+        return bool(_restricting(name))
+
+    def every():
+        value = unit()
+        while peek() == "AND":
+            take()
+            value = unit() or value
+        return value
+
+    def either():
+        value = every()
+        while peek() == "OR":
+            take()
+            value = every() and value
+        return value
+
+    try:
+        result = either()
+        if position != len(tokens):
+            raise _Unreadable()
+        return result
+    except _Unreadable:
+        return any(_restricting(token) for token in tokens if token not in ("(", ")", "AND", "OR", "WITH"))
 
 
 def decisions_of(data):
@@ -235,12 +307,16 @@ def restricted(rows, decisions):
         decision = _decision(row, decisions)
         chosen = (decision or {}).get("chosen") or ""
         if row.kind == "화면":
-            # 식이 "가운데 하나"(OR)인지 "모두"(AND)인지를 적는다. 제약하지 않는 갈래가 하나라도 있으면 고를 수 있다.
-            blocked = [[_restricting(one) for one in choice] for choice in _alternatives(row.license)]
-            if all(any(choice) for choice in blocked):
+            # 화면의 꾸러미는 식이 "가운데 하나"(OR)인지 "모두"(AND)인지를 적는다. 괄호를 지켜 읽는다.
+            if _expression_restricts(row.license):
                 found.append((row, "배포를 제약하는 라이선스다: " + row.license))
             continue
         listed = [one.strip() for one in row.license.split(" / ")]
+        if len(listed) == 1 and re.search(r"\(|\s(OR|AND|WITH)\s", listed[0]):
+            # 명세가 라이선스를 식 하나로 적었다: 화면의 꾸러미와 같이 식으로 읽는다.
+            if _expression_restricts(listed[0]):
+                found.append((row, "배포를 제약하는 라이선스다: " + listed[0]))
+            continue
         hits = [one for one in listed if _restricting(one)]
         if not hits:
             continue
@@ -451,8 +527,14 @@ def main(arguments):
             decisions = decisions_of(json.load(handle))
         # 제품 자신의 모듈: 서버의 빌드에 든 폴더들이다.
         server = os.path.join(top, "server")
-        own_modules = sorted(name for name in os.listdir(server)
-                             if os.path.isfile(os.path.join(server, name, "build.gradle.kts")))
+        own_modules = {}
+        for name in sorted(os.listdir(server)):
+            build = os.path.join(server, name, "build.gradle.kts")
+            if os.path.isfile(build):
+                with open(build, encoding="utf-8") as handle:
+                    declared = re.search(r'^version = "(.*)"$', handle.read(), re.M)
+                if declared:
+                    own_modules[name] = declared.group(1)
         # 서버 파일 안의 라이브러리: 실제로 배포되는 것이다.
         with zipfile.ZipFile(jar_path) as jar:
             shipped = sorted(name.rsplit("/", 1)[-1][:-4] for name in jar.namelist()

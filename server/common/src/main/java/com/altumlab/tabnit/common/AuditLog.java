@@ -167,11 +167,13 @@ public class AuditLog {
         List<Object> arguments = new ArrayList<>();
         if (filter.actor() != null) {
             where.append(" and actor = ?");
-            arguments.add(filter.actor());
+            // 남길 때와 같은 법으로 다듬어 견준다 (제어 문자는 빈칸, 긴 값은 자른다). 그대로 견주면 다듬어 남긴 줄을
+            // 영영 찾지 못한다.
+            arguments.add(clean(filter.actor(), MAX_ACTOR_LENGTH));
         }
         if (filter.action() != null) {
             where.append(" and action = ?");
-            arguments.add(filter.action());
+            arguments.add(clean(filter.action(), MAX_ACTION_LENGTH));
         }
         if (filter.outcome() != null) {
             where.append(" and outcome = ?");
@@ -184,6 +186,10 @@ public class AuditLog {
         if (filter.to() != null) {
             where.append(" and occurred_at < ?");
             arguments.add(OffsetDateTime.ofInstant(filter.to(), ZoneOffset.UTC));
+        }
+        if (filter.maxId() != null) {
+            where.append(" and id <= ?");
+            arguments.add(filter.maxId());
         }
         String count = "select count(*) from audit_log where true" + where;
         String page = """

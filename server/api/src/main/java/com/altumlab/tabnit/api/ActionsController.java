@@ -168,14 +168,15 @@ class ActionsController {
 			rows.add(Arrays.asList(all.changeEventId(), all.asOfPrevious().toString(), all.asOfEffective().toString(),
 					target.entityId(), target.entity().entityTypeLabel(), target.entity().entityKey(),
 					target.entity().displayName(), String.valueOf(target.depth()), target.path().startEntityId(),
-					target.path().asOf().toString(), pathText(target.path())));
+					target.path().asOf().toString(), pathText(target.path()), String.valueOf(all.maxDepth()),
+					all.truncated() ? "예" : "아니오"));
 		}
 		return ListExports.csv(name, IMPACT_TARGET_COLUMNS, rows);
 	}
 
 	/** 영향 대상의 CSV 의 머리 행. 영향 범위는 판의 적용일 전날과 적용일 두 날짜로 본 것이다 (D8). */
 	private static final List<String> IMPACT_TARGET_COLUMNS = List.of("변동 이벤트 id", "적용일 전날", "적용일", "영향 대상 id",
-			"유형", "키", "이름", "깊이", "경로가 시작한 개체 id", "경로의 날짜", "근거 경로");
+			"유형", "키", "이름", "깊이", "경로가 시작한 개체 id", "경로의 날짜", "근거 경로", "최대 깊이", "최대 깊이에서 잘림");
 
 	/** 근거 경로를 한 칸의 글로 적는다: 단계마다 "출발 id -[관계 유형]-> 도착 id" 를 단계의 차례대로 잇는다. */
 	private static String pathText(ChangeImpactScopeResponse.Path path) {

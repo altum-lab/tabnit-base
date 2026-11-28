@@ -421,6 +421,16 @@ details > summary {
   max-width: 100%;
 }
 
+/* 강제 색 모드(고대비)에서는 브라우저가 그림자를 그리지 않아 위의 테두리가 사라진다. 외곽선으로 그린다.
+   (보통 때에 외곽선을 쓰지 않는 까닭은 위에 적었다: 그림에 바로 붙은 선이 그림의 가장자리에 겹친다.) */
+@media (forced-colors: active) {
+  [role="img"][aria-label^="관계 지도 그림"],
+  [role="img"][aria-label^="Pack 전체 지도 그림"] {
+    outline: 1px solid CanvasText;
+    outline-offset: 1px;
+  }
+}
+
 /* 로그인 화면: 가운데의 좁은 카드. */
 .login {
   max-width: 380px;

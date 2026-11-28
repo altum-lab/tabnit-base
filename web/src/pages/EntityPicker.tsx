@@ -206,7 +206,15 @@ export function EntityPicker({ asOf, onPick, extras = [], disabled = false, type
 
       {typeFilter && (
         <p data-testid="picker-type-filter" ref={filterNote} tabIndex={-1}>
-          유형 <strong>{typeFilter.label}</strong> (<code>{typeFilter.entityType}</code>) 의 개체만 찾습니다.{" "}
+          {/* 이름표와 이름이 같으면 한 번만 적는다. */}
+          유형 <strong>{typeFilter.label}</strong>
+          {typeFilter.label !== typeFilter.entityType && (
+            <>
+              {" "}
+              (<code>{typeFilter.entityType}</code>)
+            </>
+          )}
+          의 개체만 찾습니다.{" "}
           <button
             type="button"
             onClick={() => {

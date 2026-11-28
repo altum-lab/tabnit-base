@@ -1030,7 +1030,7 @@ TABNIT_NEW_USER_PASSWORD='…' java -jar tabnit-api.jar --tabnit.change-password
 관리자가 감사 기록을 누가, 언제, 무엇으로 걸러 본다. common 의 `AuditLog.page` 를 연다. [AD-409] [AD-414]
 
 ```
-GET /api/v1/audit-records?actor={누가}&action={무엇을}&outcome={결과}&from={시작 날짜}&to={끝 날짜}&offset=&limit=
+GET /api/v1/audit-records?actor={누가}&action={무엇을}&outcome={결과}&from={시작 날짜}&to={끝 날짜}&maxId={일련번호의 위쪽 끝}&offset=&limit=
 ```
 
 - **관리자만 부른다.** 담당자가 부르면 403 (`FORBIDDEN`)이고 그 거부도 감사 기록에 남는다.
@@ -1038,14 +1038,16 @@ GET /api/v1/audit-records?actor={누가}&action={무엇을}&outcome={결과}&fro
 - **순서.** `id` (일련번호)의 내림차순이다: 가장 최근에 남긴 것부터다. 나눠 준다 (2절 "나눠 주기").
 - **거르는 조건.** 모두 적지 않아도 된다. 여럿을 적으면 모두 맞는 줄이다.
   - `actor`: 아이디가 글자 그대로 같은 줄. 일부로 찾지 않는다. 200자까지.
-  - `action`: 기능의 이름이 글자 그대로 같은 줄 (`listPacks`, `decideAction` 따위. 규격의 operationId 와 같다). 100자까지.
+  - `action`: 기능의 이름이 글자 그대로 같은 줄 (`listPacks`, `decideAction` 따위. 규격의 operationId 와 같다). 100자까지. **역할이 모자라 막힌 시도(403)는 그 기능의 이름으로 남지 않는다**: 기능 이름은 `accessDenied` 이고, 어느 주소였는지는 줄의 대상(`target`)에 있다. 누가 어떤 기능을 하려다 막혔는지는 `action=accessDenied` 로 찾아 대상을 본다. 대상으로 거르는 조건은 없다.
+  - `actor` 와 `action` 의 값은 남길 때와 같은 법으로 다듬어 견준다 (제어 문자는 빈칸으로). 화면은 앞뒤 빈칸을 떼고 보낸다.
   - `outcome`: `STARTED`, `SUCCESS`, `DENIED`, `FAILED` 가운데 하나.
   - `from`, `to`: 날짜다. **설치 설정의 시간대의 하루**로 읽는다 [AD-40]: `from` 의 첫 순간부터 `to` 의 끝까지다. **끝 날짜를 포함한다** (같은 날짜를 둘에 적으면 그 하루다). 유효기간의 "종료일 제외"와 다른 규칙이다: 조회 시점이 아니라 사람이 고르는 날짜의 범위다.
 - 대상(`target`)의 글자로 찾는 것은 없다.
 - **보는 것도 남는다.** 이 API 의 요청도 두 줄로 남는다 (기능 이름 `listAuditRecords`, 대상에 거르는 조건). 그래서 답의 맨 위에 이 요청의 시작의 줄이 들어 있을 수 있고, 볼 때마다 전체 수가 는다.
+- **나눠 받는 동안 목록을 붙든다 (`maxId`).** [AD-424] 가장 최근 것부터 주는 목록이라, 쪽을 넘기는 사이에 줄이 늘면 (이 API 의 요청만으로도 두 줄씩 는다) 목록이 그만큼 밀려 앞 쪽의 줄이 다음 쪽에 다시 나온다. `maxId` 를 주면 `id` 가 그 번호 이하인 줄만 세고 준다 (그 번호를 포함한다). 첫 쪽은 `maxId` 없이 받고, 그 답의 맨 위 줄의 `id` 를 다음 쪽부터 `maxId` 로 보낸다: `total` 과 쪽의 자리가 처음 받았을 때와 같다. 그 뒤에 남은 줄을 보려면 `maxId` 없이 다시 받는다. 다른 조건과 함께 쓴다. 대상에 남기는 거르는 조건에는 넣지 않는다.
 - 감사 기록을 고치거나 지우거나 더하는 API 는 없다. 데이터베이스도 고치기와 지우기를 막는다 (D5 7절).
 
-응답 (200): 답에 쓴 조건(`actor`, `action`, `outcome`, `from`, `to`. 없었으면 null), `total`, `offset`, `limit`, `records`. 줄 하나는 `id`, `occurredAt` (협정 세계시), `actor`, `action`, `target`, `asOf`, `outcome`, `httpStatus`, `detail`, `startedId` 다. 화면은 시각을 설치 설정의 시간대로 바꿔 보인다 ("내 정보"의 `timeZone`).
+응답 (200): 답에 쓴 조건(`actor`, `action`, `outcome`, `from`, `to`, `maxId`. 없었으면 null), `total`, `offset`, `limit`, `records`. 줄 하나는 `id`, `occurredAt` (협정 세계시), `actor`, `action`, `target`, `asOf`, `outcome`, `httpStatus`, `detail`, `startedId` 다. 화면은 시각을 설치 설정의 시간대로 바꿔 보인다 ("내 정보"의 `timeZone`).
 
 | 상황 | HTTP 상태 | `code` |
 |---|---|---|
@@ -1053,6 +1055,7 @@ GET /api/v1/audit-records?actor={누가}&action={무엇을}&outcome={결과}&fro
 | `outcome` 이 넷 가운데 하나가 아니다 | 400 | `INVALID_OUTCOME` |
 | 날짜의 형식이 틀렸다 | 400 | `INVALID_FROM`, `INVALID_TO` |
 | 끝 날짜가 시작 날짜보다 앞선다 | 400 | `INVALID_TO` |
+| `maxId` 가 1 이상의 정수가 아니다 | 400 | `INVALID_MAX_ID` |
 | 관리자가 아니다 | 403 | `FORBIDDEN` |
 
 ### 명령의 감사 기록

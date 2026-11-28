@@ -42,7 +42,7 @@ class AuditRecordsController {
 	}
 
 	/** 규격의 AuditRecordList. 거르는 조건은 답에 쓴 값이다 (없었으면 null). */
-	record ListResponse(String actor, String action, String outcome, String from, String to, int total, int offset,
+	record ListResponse(String actor, String action, String outcome, String from, String to, Long maxId, int total, int offset,
 			int limit, List<Item> records) {
 	}
 
@@ -61,7 +61,8 @@ class AuditRecordsController {
 	@Audited(action = "listAuditRecords", params = { "actor", "action", "outcome", "from", "to" })
 	ListResponse list(@RequestParam(required = false) String actor, @RequestParam(required = false) String action,
 			@RequestParam(required = false) String outcome, @RequestParam(required = false) String from,
-			@RequestParam(required = false) String to, @RequestParam(required = false) String offset,
+			@RequestParam(required = false) String to, @RequestParam(required = false) String maxId,
+			@RequestParam(required = false) String offset,
 			@RequestParam(required = false) String limit) {
 		requireText(actor, MAX_ACTOR_LENGTH, "INVALID_ACTOR", "actor", "누가(actor)");
 		requireText(action, MAX_ACTION_LENGTH, "INVALID_ACTION", "action", "무엇을(action)");
@@ -72,16 +73,17 @@ class AuditRecordsController {
 			throw new ApiProblemException(HttpStatus.BAD_REQUEST, "INVALID_TO", "to",
 					"끝 날짜가 시작 날짜보다 앞섭니다. 끝 날짜를 시작 날짜와 같거나 뒤의 날짜로 넣어 다시 보내세요.");
 		}
+		Long upTo = maxId == null ? null : maxId(maxId);
 		PageRequest page = PageRequest.of(offset, limit);
 		// 날짜는 설치 설정의 시간대의 하루다 (D2 AD-40). 시작 날짜의 첫 순간부터, 끝 날짜의 다음 날의 첫 순간 앞까지다:
 		// 끝 날짜의 하루를 모두 담는다.
 		Instant fromInstant = fromDate == null ? null : fromDate.atStartOfDay(this.installationZone).toInstant();
 		Instant toInstant = toDate == null ? null : toDate.plusDays(1).atStartOfDay(this.installationZone).toInstant();
 		// 거르고 나누는 일은 common 이 한다.
-		AuditPage found = this.audit.page(new AuditFilter(actor, action, wanted, fromInstant, toInstant), page.offset(),
+		AuditPage found = this.audit.page(new AuditFilter(actor, action, wanted, fromInstant, toInstant, upTo), page.offset(),
 				page.limit());
 		return new ListResponse(actor, action, wanted == null ? null : wanted.name(),
-				fromDate == null ? null : fromDate.toString(), toDate == null ? null : toDate.toString(), found.total(),
+				fromDate == null ? null : fromDate.toString(), toDate == null ? null : toDate.toString(), upTo, found.total(),
 				page.offset(), page.limit(), found.records().stream().map(Item::of).toList());
 	}
 
@@ -94,6 +96,21 @@ class AuditRecordsController {
 			throw new ApiProblemException(HttpStatus.BAD_REQUEST, code, field, what + "의 값이 비었거나 너무 길거나 쓸 수 없는 글자가"
 					+ " 있습니다. " + maxLength + "자까지의 값을 넣거나 그 항목을 빼고 다시 보내세요.");
 		}
+	}
+
+	/** 일련번호의 위쪽 끝 (D2 AD-424). 1 이상의 정수다. */
+	private static long maxId(String value) {
+		try {
+			long parsed = Long.parseLong(value);
+			if (parsed >= 1) {
+				return parsed;
+			}
+		}
+		catch (NumberFormatException e) {
+			// 아래에서 틀린 값으로 알린다.
+		}
+		throw new ApiProblemException(HttpStatus.BAD_REQUEST, "INVALID_MAX_ID", "maxId",
+				"일련번호의 위쪽 끝(maxId)의 값이 틀렸습니다. 첫 쪽의 맨 위 줄의 id 를 그대로 넣거나 그 항목을 빼고 다시 보내세요.");
 	}
 
 	private static AuditOutcome outcome(String value) {

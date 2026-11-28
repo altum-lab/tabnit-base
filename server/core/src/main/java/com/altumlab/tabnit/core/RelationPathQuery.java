@@ -101,10 +101,15 @@ public class RelationPathQuery {
     }
 
     private RelationPath find(String from, String to, LocalDate asOf, int maxLength, int maxEntities) {
-        requireEntity(from);
-        requireEntity(to);
+        String fromPack = requirePackOf(from);
+        String toPack = requirePackOf(to);
         if (from.equals(to)) {
             return new RelationPath(true, false, List.of(), List.of(from));
+        }
+        if (!fromPack.equals(toPack)) {
+            // 관계는 한 Pack 안에만 있다: 다른 Pack 의 개체에는 닿을 수 없다. 넓혀 보지 않고 없다고 답한다.
+            // 넓혀 보면 출발 쪽의 Pack 이 깊거나 넓을 때 한도에서 멈춰 "있을 수도 있다"로 답하게 된다.
+            return new RelationPath(false, false, List.of(), List.of());
         }
         // 개체마다 출발 개체에서의 가장 짧은 거리. 단계를 가까운 것부터 밟으므로 처음 찾은 거리가 가장 작다.
         TreeMap<String, Integer> distance = new TreeMap<>(CodePointOrder.STRINGS);
@@ -207,10 +212,12 @@ public class RelationPathQuery {
         return new RelationPath(true, false, relations, entityIds);
     }
 
-    private void requireEntity(String entityId) {
-        Integer found = jdbc.queryForObject("select count(*) from entity where id = ?", Integer.class, entityId);
-        if (found == null || found == 0) {
+    /** 개체가 있는지 보고 그 개체의 Pack 을 돌려준다. 식별자는 기본 키라 많아야 한 줄이다. */
+    private String requirePackOf(String entityId) {
+        List<String> packs = jdbc.queryForList("select pack_id from entity where id = ?", String.class, entityId);
+        if (packs.isEmpty()) {
             throw new EntityNotFoundException(entityId);
         }
+        return packs.get(0);
     }
 }

@@ -351,6 +351,33 @@ class RelationPathQueryTest {
     }
 
     @Test
+    void 다른_Pack_의_두_개체는_없다고_답한다_한도에서_멈췄다고_하지_않는다() {
+        // 관계는 한 Pack 안에만 있다: 다른 Pack 의 개체에는 닿을 수 없다 (D5 "두 개체 사이의 경로").
+        // 출발 쪽의 Pack 이 최대 길이보다 깊어도, 찾은 개체가 한도를 넘어도 "없다"다.
+        String p = "rp-other-pack-a";
+        List<EntityRef> chain = new ArrayList<>();
+        for (int i = 0; i < 6; i++) {
+            chain.add(entity(p, "T", "n" + i));
+        }
+        for (int i = 0; i < 5; i++) {
+            relation(chain.get(i), chain.get(i + 1), "R", "2026-01-01", null);
+        }
+        EntityRef other = entity("rp-other-pack-b", "T", "x");
+
+        RelationPath byLength = query.shortestPath(chain.get(0).id(), other.id(), DAY, 2, 1000);
+        assertThat(byLength.found()).isFalse();
+        assertThat(byLength.limitReached()).isFalse();
+        RelationPath byEntities = query.shortestPath(chain.get(0).id(), other.id(), DAY, 6, 1);
+        assertThat(byEntities.found()).isFalse();
+        assertThat(byEntities.limitReached()).isFalse();
+        // 거꾸로 물어도 같다.
+        assertThat(query.shortestPath(other.id(), chain.get(0).id(), DAY, 2, 1000).limitReached()).isFalse();
+        // 없는 개체는 여전히 없다고 알린다.
+        assertThatThrownBy(() -> query.shortestPath(chain.get(0).id(), "rp-other-pack-b|T|none", DAY, 2, 1000))
+            .isInstanceOf(EntityNotFoundException.class);
+    }
+
+    @Test
     void 훑은_개체가_한도를_넘으면_멈추고_그렇다고_답한다() {
         String p = "rp-entities";
         EntityRef a = entity(p, "T", "a");

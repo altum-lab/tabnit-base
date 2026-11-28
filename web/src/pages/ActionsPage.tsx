@@ -254,7 +254,8 @@ export function ActionsPage() {
           </p>
           {changedSinceLoad && (
             <p data-testid="list-outdated">
-              목록을 받은 뒤에 상태가 바뀐 조치가 있습니다. 위의 수와 거르는 상태는 받았을 때의 것입니다.{" "}
+              목록을 받은 뒤에 상태가 바뀐 조치가 있습니다. 위의 수와 거르는 상태는 받았을 때의 것입니다. 파일로 받으려면
+              목록을 다시 받으세요.{" "}
               <button type="button" onClick={() => void loadList()}>
                 목록 다시 받기
               </button>
@@ -266,6 +267,9 @@ export function ActionsPage() {
           {list.total > 0 && (
             <ExportButtons
               label="조치 목록 내보내기"
+              // 파일은 서버의 지금 것을 담는다. 받은 뒤에 상태를 바꿨으면 위의 전체 건수와 파일의 행의 수가 다를 수 있다:
+              // 목록을 다시 받은 뒤에 내보내게 한다.
+              disabled={changedSinceLoad}
               request={(format) =>
                 api.GET("/api/v1/action-exports", {
                   // 목록을 받을 때와 같은 거르는 조건으로 받는다.

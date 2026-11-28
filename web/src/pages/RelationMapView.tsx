@@ -109,6 +109,10 @@ export function RelationMapView({
     return [...seen].map(([name, label]) => ({ name, label }));
   }, [map]);
   const relationTypes = useMemo(() => [...new Set(map.edges.map((edge) => edge.relationType))], [map]);
+  // 가려 두었는데 이 답에는 없는 것. 칸을 남겨 둔다: 칸이 없으면 다시 켤 길이 없고, 그 유형이 있는 지도에서 말없이
+  // 다시 가려진다. 이름표는 답에 없어 알 수 없으니 이름 그대로다.
+  const absentEntityTypes = hidden.entityTypes.filter((name) => !entityTypes.some((type) => type.name === name));
+  const absentRelationTypes = hidden.relationTypes.filter((name) => !relationTypes.includes(name));
   const shown = useMemo(() => filterMap(map, hidden), [map, hidden]);
   const filtered = shown !== map && (shown.nodes.length !== map.nodes.length || shown.edges.length !== map.edges.length);
 
@@ -164,6 +168,35 @@ export function RelationMapView({
             {name}{" "}
           </label>
         ))}
+        {absentEntityTypes.length + absentRelationTypes.length > 0 && (
+          <span data-testid="hidden-absent">
+            <br />
+            <span>이 지도에 없는, 가려 둔 것:</span>{" "}
+            {absentEntityTypes.map((name) => (
+              <label key={`type ${name}`}>
+                <input
+                  type="checkbox"
+                  data-entity-type={name}
+                  checked={false}
+                  onChange={() => onHidden({ ...hidden, entityTypes: toggled(hidden.entityTypes, name, true) })}
+                />{" "}
+                유형 {name}{" "}
+              </label>
+            ))}
+            {absentRelationTypes.map((name) => (
+              <label key={`relation ${name}`}>
+                <input
+                  type="checkbox"
+                  data-relation-type={name}
+                  checked={false}
+                  onChange={() => onHidden({ ...hidden, relationTypes: toggled(hidden.relationTypes, name, true) })}
+                />{" "}
+                관계 유형 {name}{" "}
+              </label>
+            ))}
+            <small>켜면 그 유형이 있는 지도에서 다시 보입니다.</small>
+          </span>
+        )}
       </p>
       {map.truncated && map.reachedDepth < map.depth && (
         <p data-testid="map-truncated">
@@ -179,7 +212,9 @@ export function RelationMapView({
       )}
       {filtered && (
         <p data-testid="map-filtered">
-          가린 것이 있습니다. 위의 수와 아래의 관계 목록은 가리기 전의 것 그대로입니다.
+          {/* 위의 수는 지도가 잘렸을 때만 보인다. */}
+          가린 것이 있습니다. {map.truncated ? "위의 수와 아래의 관계 목록은" : "아래의 관계 목록은"} 가리기 전의 것
+          그대로입니다.
         </p>
       )}
       {shown.nodes.length === 0 && (
@@ -187,10 +222,11 @@ export function RelationMapView({
       )}
       {shown.nodes.length > 0 && view === "2d" && <Graph2D map={shown} onCenter={onCenter} />}
       {shown.nodes.length > 0 && view === "3d" && Graph3D && <Graph3D map={shown} onCenter={onCenter} />}
-      {view === "3d" && !Graph3D && loading3D === "loading" && (
+      {/* 그릴 것이 없으면 그림의 코드를 받는 중인지, 받지 못했는지를 알리지 않는다: 받아도 그릴 것이 없다. */}
+      {shown.nodes.length > 0 && view === "3d" && !Graph3D && loading3D === "loading" && (
         <p data-testid="map-3d-loading">3D 그림을 불러오는 중입니다…</p>
       )}
-      {view === "3d" && !Graph3D && loading3D === "failed" && (
+      {shown.nodes.length > 0 && view === "3d" && !Graph3D && loading3D === "failed" && (
         <p data-testid="map-3d-failed" role="alert">
           3D 그림을 불러오지 못했습니다. 연결을 확인하고 3D 를 다시 고르거나, 2D 로 보세요.
         </p>

@@ -183,13 +183,76 @@ class ComponentsTest(unittest.TestCase):
         # 명세에는 없는데 서버 파일에 든 둘: 하나는 제품의 모듈의 이름이고 하나는 모르는 것이다.
         shipped = ["alpha-1.0", "own-part-0.1.0-SNAPSHOT", "mystery-9"]
 
-        rows = components.collect(bom, web_lock(), [], "com.example.own", shipped, [], own_modules=["own-part", "other"])
+        rows = components.collect(bom, web_lock(), [], "com.example.own", shipped, [],
+                                  own_modules={"own-part": "0.1.0-SNAPSHOT", "other": "0.1.0-SNAPSHOT"})
 
         by_name = {row.name: row for row in rows}
         self.assertEqual((by_name["com.example.own:own-part"].kind, by_name["com.example.own:own-part"].version,
                           by_name["com.example.own:own-part"].license, by_name["com.example.own:own-part"].review),
                          ("제품", "0.1.0-SNAPSHOT", "제품 자신", ""))
         self.assertIn("명세에 없다", by_name["mystery"].review)
+
+    def test_이름이_제품의_모듈로_시작해도_버전이_다르면_제품_자신으로_보지_않는다(self):
+        # /code-review 155: 남의 라이브러리의 파일 이름이 제품의 모듈의 이름으로 시작할 수 있다 (core-3.5.3).
+        bom = server_bom(("org.a", "alpha", "1.0", ["Apache-2.0"]))
+        shipped = ["alpha-1.0", "core-3.5.3", "core-0.1.0-SNAPSHOT", "core-extras-0.1.0-SNAPSHOT"]
+
+        rows = components.collect(bom, web_lock(), [], "com.example.own", shipped, [], own_modules={"core": "0.1.0-SNAPSHOT"})
+
+        kinds = {(row.name, row.version): row for row in rows}
+        self.assertEqual(kinds[("com.example.own:core", "0.1.0-SNAPSHOT")].kind, "제품")
+        # 이름과 버전이 꼭 같은 것만 제품이다. 나머지는 숨기지 않고 확인이 필요하다고 적는다.
+        self.assertEqual(kinds[("core", "3.5.3")].kind, "서버")
+        self.assertIn("명세에 없다", kinds[("core", "3.5.3")].review)
+        self.assertEqual(kinds[("core-extras", "0.1.0-SNAPSHOT")].kind, "서버")
+        self.assertIn("명세에 없다", kinds[("core-extras", "0.1.0-SNAPSHOT")].review)
+
+    def test_라이선스의_식은_괄호와_차례를_지켜_읽는다(self):
+        # /code-review 155: "(MIT OR Apache-2.0) AND GPL-3.0-only" 는 GPL 을 반드시 따라야 한다.
+        blocked = ["(MIT OR Apache-2.0) AND GPL-3.0-only", "GPL-3.0-only AND (MIT OR Apache-2.0)",
+                   "MIT AND GPL-3.0-only OR AGPL-3.0-only", "(GPL-2.0-only OR GPL-3.0-only)",
+                   "((MIT OR ISC) AND (GPL-3.0-only OR AGPL-3.0-only))", "GPL-3.0-only"]
+        allowed = ["MIT OR GPL-3.0-only", "(MIT OR GPL-3.0-only)", "MIT AND (GPL-3.0-only OR Apache-2.0)",
+                   "MIT AND GPL-3.0-only OR Apache-2.0", "GPL-2.0-only WITH Classpath-exception-2.0",
+                   "(GPL-2.0-only WITH Classpath-exception-2.0) AND MIT", "MIT", "LGPL-2.1-only AND MIT"]
+        rows = self.collect(server_bom(), web_lock(
+            *[(f"node_modules/blocked{i}", "1", text, False) for i, text in enumerate(blocked)],
+            *[(f"node_modules/allowed{i}", "1", text, False) for i, text in enumerate(allowed)]), base=[])
+
+        found = {row.name for row, why in components.restricted(rows, components.decisions_of({"decisions": []}))}
+
+        self.assertEqual(found, {f"blocked{i}" for i in range(len(blocked))})
+        # 읽지 못하는 식은 조용히 넘기지 않는다: 제약하는 이름이 들어 있으면 걸린다.
+        odd = self.collect(server_bom(), web_lock(("node_modules/odd", "1", "(MIT OR GPL-3.0-only", False),
+                                                  ("node_modules/fine", "1", "MIT OR", False)), base=[])
+        self.assertEqual({row.name for row, why in components.restricted(odd, [])}, {"odd"})
+
+    def test_이름으로_적은_GPL_과_AGPL_도_배포를_제약하는_것으로_알아본다(self):
+        # /code-review 155: 서버의 명세에는 식별자 없이 이름만 적힌 라이선스가 있다.
+        rows = self.collect(server_bom(
+            ("g", "by-name", "1", ["이름:GNU General Public License v3.0"]),
+            ("g", "by-short", "1", ["이름:GNU GPL v2"]),
+            ("g", "affero", "1", ["이름:GNU Affero General Public License"]),
+            ("g", "version", "1", ["이름:GPLv3"]),
+            ("g", "lesser", "1", ["이름:GNU Lesser General Public License v2.1"]),
+            ("g", "library", "1", ["이름:GNU Library General Public License"]),
+            ("g", "lgpl", "1", ["이름:LGPL 2.1"]),
+            ("g", "exception", "1", ["이름:GNU General Public License, version 2 with the GNU Classpath Exception"]),
+            ("g", "short-exception", "1", ["이름:GPL2 w/ CPE"]),
+            ("g", "fine", "1", ["이름:The Apache Software License, Version 2.0"])), web_lock(), base=[])
+
+        found = {row.name for row, why in components.restricted(rows, [])}
+
+        self.assertEqual(found, {"g:by-name", "g:by-short", "g:affero", "g:version"})
+        # 서버의 명세가 식 하나로 적은 것은 식으로 읽는다: 고를 수 있으면 걸리지 않는다.
+        expressions = self.collect(server_bom(("g", "either", "1", ["이름:(EPL-2.0 OR GPL-2.0-only)"]),
+                                              ("g", "both", "1", ["이름:EPL-2.0 AND GPL-2.0-only"]),
+                                              ("g", "with", "1", ["이름:GPL-2.0-only WITH Classpath-exception-2.0"])),
+                                   web_lock(), base=[])
+        self.assertEqual({row.name for row, why in components.restricted(expressions, [])}, {"g:both"})
+        # 걸리지 않은 것도 확인이 필요한 것으로는 나온다 (흔한 허용형이 아니다).
+        flagged = {row.name for row in rows if row.review}
+        self.assertTrue({"g:lesser", "g:exception", "g:short-exception"} <= flagged)
 
     def test_확인이_필요한_것마다_받아들이는지와_까닭이_적히고_판단이_없는_것은_미정이다(self):
         rows = self.collect(server_bom(("g", "dual", "1", ["EPL-2.0", "LGPL-2.1-only"]), ("g", "odd", "2", ["LGPL-2.1-only"]),
@@ -270,6 +333,50 @@ class ComponentsTest(unittest.TestCase):
         self.assertIn("why", str(stopped.exception))
         with self.assertRaises(SystemExit):
             components.decisions_of({})
+
+    def test_고지문에는_라이선스마다의_구성요소와_받는_곳과_고른_라이선스가_적히고_의무를_다했다고_적지_않는다(self):
+        # E-21 (D2 AD-430): 배포물에 담는 고지문. 지어낸 구성요소로 본다.
+        bom = server_bom(("org.b", "zeta", "2.0", ["MIT"]), ("org.a", "alpha", "1.0", ["Apache-2.0"]),
+                         ("g", "dual", "1", ["EPL-2.0", "LGPL-2.1-only"]), ("g", "unknown", "3", []),
+                         ("com.example.own", "mine", "0.1", []))
+        lock = web_lock(("node_modules/widget", "3.1.0", "MIT", False), ("node_modules/@scope/font", "5.0.0", "OFL-1.1", False),
+                        ("node_modules/devtool", "1", "MIT", True))
+        rows = self.collect(bom, lock, base=BASE)
+        decisions = components.decisions_of({"decisions": [
+            {"kind": "서버", "name": "g:dual", "license": "EPL-2.0 / LGPL-2.1-only", "accepted": True, "chosen": "EPL-2.0",
+             "why": "둘 가운데 고른다", "decided": "2026-01-01 지어낸 사람"}]})
+
+        text = components.notice(rows, "9.9.9", decisions)
+
+        self.assertIn("9.9.9", text)
+        # 라이선스마다 묶는다. 고른 라이선스가 있으면 그 라이선스의 묶음에 든다.
+        mit = text.split("### MIT")[1].split("###")[0]
+        self.assertIn("org.b:zeta 2.0", mit)
+        self.assertIn("widget 3.1.0", mit)
+        self.assertNotIn("devtool", text)
+        epl = text.split("### EPL-2.0")[1].split("###")[0]
+        self.assertIn("g:dual 1", epl)
+        self.assertIn("EPL-2.0 / LGPL-2.1-only 가운데 고른 것", epl)
+        self.assertIn("### OFL-1.1", text)
+        self.assertIn("### GPL-2.0-with-classpath-exception", text)
+        # 라이선스를 읽지 못한 것도 숨기지 않는다.
+        self.assertIn("g:unknown 3", text.split("### 라이선스를 읽지 못한 것")[1].split("###")[0])
+        # 제품 자신의 모듈은 남의 것이 아니다.
+        self.assertNotIn("com.example.own:mine", text)
+        # 받는 곳: 서버는 좌표, 화면은 꾸러미의 이름과 버전, 바탕 이미지는 이미지의 이름.
+        sources = text.split("## 소스를 얻는 길")[1]
+        self.assertIn("org.a:alpha:1.0", sources)
+        self.assertIn("@scope/font@5.0.0", sources)
+        self.assertIn("runtime:1", sources)
+        # 의무를 다했다고 적지 않는다.
+        self.assertIn("법률 검토가 아니다", text)
+        self.assertNotIn("의무를 다했다", text.replace("의무를 다했다는 뜻이 아니다", ""))
+        # 같은 입력이면 글자까지 같고, 파일로도 나온다.
+        self.assertEqual(text, components.notice(rows, "9.9.9", decisions))
+        with tempfile.TemporaryDirectory() as out:
+            components.write(rows, bom, "9.9.9", out, None, decisions)
+            with open(os.path.join(out, "NOTICE.md"), encoding="utf-8") as written:
+                self.assertEqual(written.read(), text)
 
     def test_빈_입력에서도_목록이_나오고_확인할_것이_없다고_적는다(self):
         rows = self.collect(server_bom(), web_lock(), base=[])

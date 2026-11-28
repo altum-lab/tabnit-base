@@ -5,7 +5,8 @@
 #   bash tools/components.sh             dist/components/ 에 낸다
 #   bash tools/components.sh 낼_폴더     그 폴더에 낸다 (tools/package.sh 가 배포 폴더에 담을 때 쓴다)
 #
-# 내는 것: COMPONENTS.md (사람이 읽는 표. 확인이 필요한 것이 맨 위에 있다), components.csv, bom.json (표준 형식 CycloneDX).
+# 내는 것: COMPONENTS.md (사람이 읽는 표. 확인이 필요한 것이 맨 위에 있다), components.csv, bom.json (표준 형식 CycloneDX),
+# NOTICE.md (배포물에 담는 고지문: 라이선스마다의 구성요소와 소스를 얻는 길. 법률 검토가 아니다. D2 AD-430).
 # 서버는 실제로 배포되는 서버 파일 안의 라이브러리를 담고, 라이선스는 빌드 도구(Gradle 의 CycloneDX 플러그인)가 읽는다.
 # 화면의 꾸러미는 설치 기록에서 읽는다. 컨테이너의 바탕 이미지와, 서버 파일에는 들었는데 빌드 도구의 명세에 없는 것은
 # deploy/base-components.json 에 적어 둔 것을 쓴다: 바탕 이미지를 바꾸면 그 파일도 고친다 (다르면 알리며 멈춘다).

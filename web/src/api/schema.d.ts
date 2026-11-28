@@ -533,6 +533,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 개체 하나에서 출발해 조회 시점의 영향 범위를 계산해 근거 경로와 함께 돌려준다
+         * @description 저장하지 않는다: 부를 때마다 지금의 자료로 계산한다. 영향 범위, 조치, 변동 이벤트를 만들지 않는다. 관계 유형마다의 영향 방향과 최대 깊이는 그 개체의 Pack 의 정의를 쓴다. 조회 시점에 유효한 관계만 따라간다. includePreviousDay 를 주면 그 전날에 유효한 관계도 함께 따라가 합친다: 그 날짜가 적용일인 변동의 저장된 영향 범위(getChangeImpactScope)와 같은 방식이다. 담당자와 관리자가 부를 수 있다
+         */
+        get: operations["getImpactFromEntity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/impact-scopes": {
         parameters: {
             query?: never;
@@ -1234,6 +1254,43 @@ export interface components {
             /** @description 답에 쓴 건너뛴 수 */
             offset: number;
             /** @description 답에 쓴 한 번에 주는 수 */
+            limit: number;
+            /** @description 개체 유형별 수. 합계는 total 과 같다 */
+            countsByType: {
+                entityType: string;
+                count: number;
+            }[];
+            /** @description 깊이별 수. 합계는 total 과 같다 */
+            countsByDepth: {
+                depth: number;
+                count: number;
+            }[];
+            targets: components["schemas"]["ImpactTarget"][];
+        };
+        /** @description 개체 하나에서 출발해 계산한 영향 범위. 저장된 것이 아니다 */
+        EntityImpact: {
+            /** @description 출발 개체의 id */
+            entityId: string;
+            entity: components["schemas"]["EntityRef"];
+            /** @description 출발 개체의 Pack. 영향 방향과 최대 깊이를 이 Pack 의 정의에서 읽었다 */
+            packId: string;
+            /**
+             * Format: date
+             * @description 답에 쓴 조회 시점. 보내지 않았으면 서버가 정한 날짜다
+             */
+            asOf: string;
+            /**
+             * Format: date
+             * @description 함께 따라간 전날. includePreviousDay 를 주지 않았으면 null 이다
+             */
+            asOfPrevious: string | null;
+            /** @description 답에 쓴 최대 깊이 */
+            maxDepth: number;
+            /** @description 최대 깊이에서 멈췄는데 그 너머에 아직 찾지 못한 대상이 있는가 */
+            truncated: boolean;
+            /** @description 영향 대상의 전체 수. 나누기 전의 수다 */
+            total: number;
+            offset: number;
             limit: number;
             /** @description 개체 유형별 수. 합계는 total 과 같다 */
             countsByType: {
@@ -2614,6 +2671,45 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            500: components["responses"]["Problem"];
+        };
+    };
+    getImpactFromEntity: {
+        parameters: {
+            query: {
+                /** @description 출발 개체의 id. 서버가 준 값을 그대로 보낸다 */
+                entityId: string;
+                /** @description 조회 시점. 없으면 오늘 */
+                asOf?: string;
+                /** @description true 이면 조회 시점의 전날에 유효한 관계도 함께 따라간다. 없으면 false 다 */
+                includePreviousDay?: boolean;
+                /** @description 최대 깊이. 1 부터 그 Pack 의 최대 깊이의 기본값까지다. 없으면 그 기본값이다 */
+                maxDepth?: number;
+                /** @description 건너뛸 수. 없으면 0. 전체 수와 같거나 크면 빈 목록이다 */
+                offset?: components["parameters"]["Offset"];
+                /** @description 한 번에 받을 수. 없으면 50. 1 부터 200 까지 */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 영향 대상을 나눠 돌려준다: offset 만큼 건너뛰고 limit 개까지 준다. total 과 countsByType, countsByDepth 는 나누기 전의 영향 범위 전체의 값이다. 영향 대상의 순서는 깊이, 개체 유형, 개체의 id 차례다. countsByType 은 개체 유형의 글자 코드 순, countsByDepth 는 깊이 순이다. 경로의 단계는 출발 개체 쪽부터의 차례다. 출발 개체 자신은 영향 대상에 들지 않는다. 영향 대상이 없으면 빈 목록이다 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityImpact"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
             500: components["responses"]["Problem"];
         };
     };

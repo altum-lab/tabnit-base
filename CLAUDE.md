@@ -69,7 +69,7 @@ tools/     점검 스크립트, 개발 보드
 | rules | 규칙 실행, 조치 생성, 확정 이력 | G | common, pack, core |
 | api | 화면과 외부가 부르는 API | I | 전부 (verify-core 포함) |
 | web | 관리 화면 | D, I | api (HTTP로만) |
-| verify-core | 검증 질문 파일을 읽고 정답과 견준다 (AD-422) | J | 없음 |
+| verify-core | 검증 질문 파일을 읽고 정답과 견준다 (AD-422) | J, I | 없음 |
 | verify | 일반 시험, 검증 질문 실행 | J | verify-core, api 또는 각 모듈의 공개 API |
 
 - 주인은 사람이 아니라 개발 보드의 **자리**(A~J)다. 지금 누가 그 자리인지는 보드의 "자리와 사람"에서 본다. 담당자가 바뀌어도 이 파일은 고치지 않는다.

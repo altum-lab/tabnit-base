@@ -39,13 +39,20 @@ export function AuditPage() {
   // 칸에 적고 있는 조건과, 마지막으로 찾은 조건. 쪽을 넘길 때는 찾은 조건으로 넘긴다.
   const [draft, setDraft] = useState<Filter>(NO_FILTER);
   const searched = useRef<Filter>(NO_FILTER);
+  // 찾았을 때의 맨 위 줄의 id. 쪽을 넘길 때 이 값을 보내 목록을 붙든다 (D2 AD-424): 쪽을 받는 일 자체가 감사 기록을
+  // 더하므로, 붙들지 않으면 넘길 때마다 목록이 밀려 앞 쪽의 줄이 다시 나온다. 찾으면 놓고 새로 붙든다.
+  const pinned = useRef<number | null>(null);
   const [view, setView] = useState<View>({ kind: "loading" });
   // 늦게 온 답이 새 답을 덮지 않게 한다.
   const latest = useRef(0);
 
-  async function load(filter: Filter, offset: number) {
+  // pin: 찾기(새로 붙든다)인가, 쪽 넘기기(붙든 것을 보낸다)인가.
+  async function load(filter: Filter, offset: number, pin: "new" | "keep" = "new") {
     const turn = ++latest.current;
     searched.current = filter;
+    if (pin === "new") {
+      pinned.current = null;
+    }
     setView({ kind: "loading" });
     try {
       const query = {
@@ -54,11 +61,15 @@ export function AuditPage() {
         ...(filter.outcome ? { outcome: filter.outcome } : {}),
         ...(filter.from ? { from: filter.from } : {}),
         ...(filter.to ? { to: filter.to } : {}),
+        ...(pinned.current !== null ? { maxId: pinned.current } : {}),
         offset,
       };
       const { data, error, response } = await api.GET("/api/v1/audit-records", { params: { query } });
       if (turn !== latest.current) {
         return;
+      }
+      if (data && pin === "new") {
+        pinned.current = data.records[0]?.id ?? null;
       }
       setView(data ? { kind: "loaded", list: data } : { kind: "failed", message: messageOf(error, response.status) });
     } catch {
@@ -78,7 +89,10 @@ export function AuditPage() {
 
   function search(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    void load(draft, 0);
+    // 서버는 글자 그대로 같은 줄만 찾는다. 붙여 넣다 딸려 온 앞뒤 빈칸은 떼고 찾고, 칸에도 뗀 값을 보인다.
+    const trimmed = { ...draft, actor: draft.actor.trim(), action: draft.action.trim() };
+    setDraft(trimmed);
+    void load(trimmed, 0);
   }
 
   if (!admin) {
@@ -158,9 +172,10 @@ export function AuditPage() {
           </button>
         </p>
         <p>
-          <small>
+          <small data-testid="audit-filter-hint">
             누가는 아이디, 무엇을은 기능의 이름(listPacks 따위)이 글자 그대로 같은 줄을 찾습니다. 끝 날짜의 하루도
-            들어갑니다. 비운 조건은 거르지 않습니다.
+            들어갑니다. 비운 조건은 거르지 않습니다. 역할이 모자라 막힌 시도는 그 기능의 이름이 아니라 accessDenied 로
+            남습니다: 무엇을에 accessDenied 를 적어 찾고, 어느 주소였는지는 줄의 대상에서 봅니다.
           </small>
         </p>
       </form>
@@ -178,8 +193,13 @@ export function AuditPage() {
                 offset={view.list.offset}
                 limit={view.list.limit}
                 shown={view.list.records.length}
-                onMove={(offset) => void load(searched.current, offset)}
+                onMove={(offset) => void load(searched.current, offset, "keep")}
               />
+              {view.list.maxId !== null && (
+                <p data-testid="audit-pinned">
+                  <small>찾은 때까지의 기록입니다. 그 뒤에 남은 것을 보려면 찾기를 다시 누르세요.</small>
+                </p>
+              )}
               {view.list.records.length === 0 ? (
                 <p role="status">이 자리에는 줄이 없습니다. 이전으로 돌아가세요.</p>
               ) : (

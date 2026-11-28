@@ -83,6 +83,8 @@ final class Evaluator {
         for (QuestionFile.Question question : ordered) {
             String label = "";
             try {
+                // 날짜나 단계를 먼저 정해 둔다: 골든셋의 번호가 틀려 실패해도 어느 날짜의 질문인지는 보고에 남는다.
+                label = where(question);
                 label = label(question);
                 Object[] pair = switch (question.kind()) {
                     case RELATIONS -> relations(question);
@@ -163,8 +165,13 @@ final class Evaluator {
         }
         Map<?, ?> body = ok(this.product.attributeValues(entityId, asOf), "속성 값의 시점 조회");
         List<Object> actual = new ArrayList<>();
-        for (Object item : (List<?>) body.get("values")) {
-            Map<?, ?> value = (Map<?, ?>) item;
+        if (!(body.get("values") instanceof List<?> values)) {
+            throw new Failure("속성 값의 시점 조회의 답에 values 목록이 없습니다. 제품의 답이 계약(D7)과 다릅니다.");
+        }
+        for (Object item : values) {
+            if (!(item instanceof Map<?, ?> value)) {
+                throw new Failure("속성 값의 시점 조회의 답의 values 에 항목의 묶음이 아닌 것이 있습니다. 제품의 답이 계약(D7)과 다릅니다.");
+            }
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("attribute", value.get("attributeName"));
             row.put("value", value.get("value"));

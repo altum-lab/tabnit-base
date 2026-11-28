@@ -1263,6 +1263,45 @@ class VerifyRunnerTest {
             });
     }
 
+    // ── /code-review 132 가 짚은 것 ──────────────────────────────────
+
+    @Test
+    void 정답이_아예_없거나_제품의_답에_목록이_없으면_무엇이_없는지_알린다() throws IOException {
+        FakeProduct product = new FakeProduct();
+
+        // expect 가 아예 없다: 파일을 읽을 때 어느 질문의 무엇이 없는지 알리며 거부한다 (묻는 데까지 가지 않는다).
+        String noExpect = ATTRIBUTE_VALUES_QUESTION.substring(0, ATTRIBUTE_VALUES_QUESTION.indexOf("    expect:"));
+        assertThat(noExpect).doesNotContain("expect");
+        Path withoutExpect = write("S-no-expect.yaml", SCENARIO + noExpect);
+        assertThatThrownBy(() -> QuestionFile.read(withoutExpect)).isInstanceOf(QuestionFileException.class)
+            .hasMessageContaining("Q-01").hasMessageContaining("expect");
+
+        // 제품이 200 으로 답했는데 values 목록이 없다: 답의 모양이 틀렸다고 말한다.
+        String noShape = ATTRIBUTE_VALUES_QUESTION.replace("key: k-1", "key: k-noshape");
+        assertThat(new Evaluator(PACK, product)
+            .evaluate(QuestionFile.read(write("S-no-shape.yaml", SCENARIO + noShape)), product.steps())).singleElement()
+            .satisfies(result -> {
+                assertThat(result.passed()).isFalse();
+                assertThat(result.reason()).contains("values").doesNotContain("NullPointerException")
+                    .doesNotContain("ClassCastException");
+            });
+    }
+
+    @Test
+    void 골든셋의_번호가_틀려도_보고의_이름표에_날짜는_남는다() throws IOException {
+        FakeProduct product = new FakeProduct();
+        String broken = ATTRIBUTE_VALUES_QUESTION.replace("    title: 속성 값\n", "    title: 속성 값\n    golden: [CQ-01, CQ-02]\n");
+
+        assertThat(new Evaluator(PACK, product)
+            .evaluate(QuestionFile.read(write("S-golden-label.yaml", SCENARIO + broken)), product.steps())).singleElement()
+            .satisfies(result -> {
+                assertThat(result.passed()).isFalse();
+                assertThat(result.reason()).contains("golden");
+                // 어느 날짜의 질문인지는 보고에 남는다.
+                assertThat(result.label()).isEqualTo("2026-02-01");
+            });
+    }
+
     @Test
     void 속성_값의_질문에는_최소_수가_없다() {
         List<QuestionFile.Question> enough = new ArrayList<>();
@@ -1335,6 +1374,10 @@ class VerifyRunnerTest {
             this.asked.add("attribute-values " + entityId + " " + asOf);
             if (entityId.endsWith("empty")) {
                 return new Reply(200, Map.of("asOf", asOf.toString(), "entityId", entityId, "values", List.of()));
+            }
+            if (entityId.endsWith("noshape")) {
+                // 200 인데 values 목록이 없다 (계약과 다른 답).
+                return new Reply(200, Map.of("asOf", asOf.toString(), "entityId", entityId));
             }
             Map<String, Object> name = new LinkedHashMap<>();
             name.put("attributeName", "name");

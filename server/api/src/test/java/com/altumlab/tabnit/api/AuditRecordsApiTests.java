@@ -173,6 +173,35 @@ class AuditRecordsApiTests {
 			.andExpect(jsonPath("$.total", is(7)));
 	}
 
+	@Test
+	void 맨_위의_id_를_붙들고_넘기면_보는_사이에_줄이_늘어도_겹치지_않는다() throws Exception {
+		// 거르지 않고 본다: 이 조회 자체가 볼 때마다 두 줄을 더한다 (D2 AD-424).
+		for (int i = 0; i < 6; i++) {
+			entry("ar-pin", Instant.parse("2026-06-01T09:00:00Z").plusSeconds(i));
+		}
+		ResultActions first = list().param("limit", "3").andExpect(status().isOk());
+		List<Long> firstIds = ids(first);
+		int total = JsonPath.read(first.andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8), "$.total");
+		String pin = String.valueOf(firstIds.get(0));
+
+		// 붙들지 않으면 밀린다: 다음 쪽에 앞 쪽의 줄이 다시 나온다.
+		assertThat(ids(list().param("limit", "3").param("offset", "3"))).containsAnyElementsOf(firstIds);
+
+		// 붙들면 전체 수가 그대로이고, 다음 쪽은 앞 쪽의 바로 아래에서 이어진다.
+		ResultActions second = list().param("limit", "3").param("offset", "3").param("maxId", pin)
+			.andExpect(jsonPath("$.total", is(total)))
+			.andExpect(jsonPath("$.maxId", is(firstIds.get(0).intValue())));
+		List<Long> secondIds = ids(second);
+		assertThat(secondIds).doesNotContainAnyElementsOf(firstIds);
+		assertThat(secondIds.get(0)).isLessThan(firstIds.get(2));
+		// 붙든 채로 첫 쪽을 다시 받으면 처음과 같다.
+		assertThat(ids(list().param("limit", "3").param("maxId", pin))).containsExactlyElementsOf(firstIds);
+
+		problem(list().param("maxId", "0"), "INVALID_MAX_ID", "maxId");
+		problem(list().param("maxId", "abc"), "INVALID_MAX_ID", "maxId");
+		problem(list().param("maxId", ""), "INVALID_MAX_ID", "maxId");
+	}
+
 	// ── 수용 기준: 담당자는 403, 보는 것도 남는다, 고치는 길이 없다 ────────────────────
 
 	@Test

@@ -248,6 +248,12 @@ class ListExportsApiTests {
 		assertThat(data).extracting(row -> row.get(header.indexOf("변동 이벤트 id"))).containsOnly(changeEventId);
 		// 근거 경로가 행마다 적힌다: 근거 없는 영향 대상을 내보내지 않는다.
 		assertThat(data).extracting(row -> row.get(header.indexOf("근거 경로"))).allMatch(path -> !path.isBlank());
+		// 최대 깊이와, 거기서 잘렸는지가 행마다 적힌다 (D2 AD-425): 잘린 영향 범위의 파일이 전체 목록으로 읽히지 않는다.
+		int maxDepth = JsonPath.read(scope, "$.maxDepth");
+		boolean truncated = JsonPath.read(scope, "$.truncated");
+		assertThat(header).endsWith("최대 깊이", "최대 깊이에서 잘림");
+		assertThat(data).extracting(row -> row.get(header.indexOf("최대 깊이"))).containsOnly(String.valueOf(maxDepth));
+		assertThat(data).extracting(row -> row.get(header.indexOf("최대 깊이에서 잘림"))).containsOnly(truncated ? "예" : "아니오");
 
 		String json = this.mvc
 			.perform(get("/api/v1/impact-target-exports").with(OFFICER).param("changeEventId", changeEventId)

@@ -49,7 +49,9 @@ export function ExportButtons({ label, request, disabled = false }: Props) {
       document.body.append(link);
       link.click();
       link.remove();
-      URL.revokeObjectURL(url);
+      // 주소는 조금 뒤에 지운다. 누르자마자 지우면 브라우저에 따라 내려받기를 시작하기 전에 주소가 사라져
+      // 파일이 저장되지 않는다 (알림도 없다).
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch {
       setFailed(CONNECTION_FAILED);
     } finally {

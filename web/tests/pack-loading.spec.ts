@@ -153,3 +153,66 @@ baseTest("서버에 Pack 폴더가 정해져 있지 않으면 설치 설정을 �
   await baseExpect(loader(page)).toContainText("Pack 폴더가 정해져 있지 않습니다");
   await baseExpect(loader(page).getByRole("button", { name: "적재", exact: true })).toHaveCount(0);
 });
+
+// ── 코드 검토(/code-review 125)가 짚은 것 ─────────────────────────────────────
+
+baseTest("방금 적재한 Pack 은 폴더의 목록이 아직 옛것이어도 다시 적재할 때 확인을 받는다", async ({ page, context }) => {
+  await openAsAdmin(page, context);
+  // 폴더의 목록이 늘 "적재되지 않았다"고 답하게 한다: 다시 받는 것이 늦거나, 받은 것이 옛것일 때와 같다.
+  await page.route("**/api/v1/pack-folders", async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as { configured: boolean; folders: { packId: string; loaded: boolean }[] };
+    await route.fulfill({ response, json: { ...body, folders: body.folders.map((folder) => ({ ...folder, loaded: false })) } });
+  });
+  await page.reload();
+  await baseExpect(loader(page).getByLabel("서버에 둔 Pack")).toBeVisible();
+  let posts = 0;
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().endsWith("/api/v1/pack-loads")) {
+      posts++;
+    }
+  });
+
+  await loader(page).getByLabel("서버에 둔 Pack").selectOption("e2e-loadable");
+  await loader(page).getByRole("button", { name: "적재", exact: true }).click();
+  await baseExpect(loader(page).getByTestId("load-result")).toContainText("e2e-loadable");
+  baseExpect(posts).toBe(1);
+
+  // 한 번 더 누르면 바로 보내지 않고 확인을 받는다 (D2 AD-416).
+  await loader(page).getByRole("button", { name: "적재", exact: true }).click();
+  await baseExpect(loader(page).getByTestId("reload-confirm")).toBeVisible();
+  baseExpect(posts).toBe(1);
+});
+
+baseTest("다른 Pack 을 고르면 앞의 Pack 의 결과가 남지 않는다", async ({ page, context }) => {
+  await openAsAdmin(page, context);
+  await load(page, "e2e-broken");
+  await baseExpect(loader(page).getByRole("alert")).toContainText("적재하지 않았습니다");
+
+  await loader(page).getByLabel("서버에 둔 Pack").selectOption("e2e-loadable");
+  await baseExpect(loader(page).getByRole("alert")).toHaveCount(0);
+  await baseExpect(loader(page).getByRole("list", { name: "Pack 의 문제" })).toHaveCount(0);
+});
+
+baseTest("적재한 뒤 Pack 의 목록을 받지 못하면 까닭만 알리고 정의를 열지 않는다", async ({ page, context }) => {
+  await openAsAdmin(page, context);
+  // 적재 뒤에 목록을 다시 받는 것이 실패하게 한다.
+  await page.route("**/api/v1/packs", (route) => route.abort());
+
+  let definitionRequests = 0;
+  page.on("request", (request) => {
+    if (request.url().includes("/api/v1/pack-definition")) {
+      definitionRequests++;
+    }
+  });
+
+  await load(page, "e2e-loadable");
+  await baseExpect(loader(page).getByTestId("load-result")).toContainText("e2e-loadable");
+
+  // 목록이 없는데 고르는 칸도 없이 정의만 떠 있지 않다: 정의를 청하지도 않는다.
+  await baseExpect(page.getByRole("alert").filter({ hasText: "다시" })).toBeVisible();
+  // 고치기 전에는 목록이 실패한 뒤에 정의를 청했다: 그 청이 나갈 틈을 준 뒤에 본다.
+  await page.waitForTimeout(1500);
+  baseExpect(definitionRequests).toBe(0);
+  await baseExpect(page.getByTestId("definition")).toHaveCount(0);
+});

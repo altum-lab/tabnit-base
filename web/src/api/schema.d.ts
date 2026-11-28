@@ -765,7 +765,12 @@ export interface components {
             from: string | null;
             /** Format: date */
             to: string | null;
-            /** @description 조건에 맞는 줄의 전체 수. 나누기 전의 수다 */
+            /**
+             * Format: int64
+             * @description 답에 쓴 일련번호의 위쪽 끝. 주지 않았으면 null 이다
+             */
+            maxId: number | null;
+            /** @description 조건에 맞는 줄의 전체 수. 나누기 전의 수다. maxId 를 줬으면 그 번호까지의 수다 */
             total: number;
             offset: number;
             limit: number;
@@ -1912,7 +1917,7 @@ export interface operations {
             query?: {
                 /** @description 누가. 아이디가 글자 그대로 같은 줄만. 일부로 찾지 않는다 */
                 actor?: string;
-                /** @description 무엇을. 기능의 이름(규격의 operationId 따위)이 글자 그대로 같은 줄만 */
+                /** @description 무엇을. 기능의 이름(규격의 operationId 따위)이 글자 그대로 같은 줄만. 역할이 모자라 막힌 시도는 그 기능의 이름이 아니라 accessDenied 로 남는다 */
                 action?: string;
                 /** @description 결과 */
                 outcome?: components["schemas"]["AuditOutcome"];
@@ -1920,6 +1925,8 @@ export interface operations {
                 from?: string;
                 /** @description 언제까지. 설치 설정의 시간대에서 이 날짜의 끝까지다 (이 날짜를 포함한다). from 보다 앞설 수 없다 */
                 to?: string;
+                /** @description 일련번호(id)의 위쪽 끝. 이 번호까지의 줄만 준다 (이 번호를 포함한다). 첫 쪽의 맨 위 줄의 id 를 붙들어 다음 쪽부터 보내면, 넘기는 사이에 남은 줄 때문에 목록이 밀리지 않는다 */
+                maxId?: number;
                 /** @description 건너뛸 수. 없으면 0. 전체 수와 같거나 크면 빈 목록이다 */
                 offset?: components["parameters"]["Offset"];
                 /** @description 한 번에 받을 수. 없으면 50. 1 부터 200 까지 */

@@ -53,10 +53,12 @@ class PackLoadsController {
 	FolderList folders() {
 		java.util.TreeSet<String> loaded = new java.util.TreeSet<>(this.packs.packIds());
 		List<Folder> folders = new java.util.ArrayList<>();
-		for (String name : this.loading.folders()) {
+		// 쓸 수 있는지와 이름을 한 번에 본 것으로 답한다.
+		PackLoading.Folders snapshot = this.loading.snapshot();
+		for (String name : snapshot.folders()) {
 			folders.add(new Folder(name, loaded.contains(name)));
 		}
-		return new FolderList(this.loading.configured(), folders);
+		return new FolderList(snapshot.configured(), folders);
 	}
 
 	@PostMapping(PATH)

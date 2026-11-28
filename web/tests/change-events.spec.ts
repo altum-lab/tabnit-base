@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
-import { expect, test } from "./fixtures";
+import { expect as baseExpect, test as baseTest } from "@playwright/test";
+import { E2E_OTHER_USER, expect, login, test } from "./fixtures";
 
 // C-15 수용 기준: Pack 의 변동 이벤트를 판을 거치지 않고 목록으로 본다. 줄마다 상태, 조치의 수, 영향 대상의 수가 있다
 // (D7 5절 "변동 이벤트의 목록", D2 AD-417).
@@ -187,3 +188,78 @@ test("받지 못하면 까닭을 알리고 올리는 폼은 그대로 쓸 수 �
   await expect(section(page).getByRole("alert")).toBeVisible();
   await expect(page.getByRole("button", { name: "올리기" })).toBeVisible();
 });
+
+// ── /code-review 가 짚은 것 (C-15 의 후속 수정) ─────────────────────────────
+
+baseTest("관리자가 다시 처리하면 변동 이벤트의 목록도 다시 받는다", async ({ page, context }) => {
+  // e2e-failed 는 변동이 실패로 남아 있는 Pack 이다. 다시 처리해도 다시 실패하지만 (규칙을 고치지 않는다),
+  // 처리가 끝나면 이 목록이 서버에 다시 물어야 한다: 고쳐서 처리됐다면 상태와 수가 바뀌었을 것이다.
+  await login(context, E2E_OTHER_USER);
+  await page.goto("/changes");
+  await page.getByLabel("Pack", { exact: true }).selectOption("e2e-failed");
+  await baseExpect(section(page).getByRole("table", { name: "변동 이벤트" })).toBeVisible();
+
+  const asked: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/v1/change-events?")) {
+      asked.push(request.url());
+    }
+  });
+  await page.getByRole("button", { name: "다시 처리" }).click();
+  await baseExpect(page.getByTestId("reprocess-result")).toContainText("다시 처리했습니다");
+
+  await baseExpect.poll(() => asked.length, { message: "다시 처리한 뒤 변동 이벤트의 목록을 다시 묻는다" }).toBeGreaterThan(0);
+  await baseExpect(section(page).getByRole("table", { name: "변동 이벤트" })).toBeVisible();
+});
+
+test("거르거나 쪽을 넘겨 새로 받는 동안에는 받는 중이라고 알리고 쪽 넘기기를 잠근다", async ({ page }) => {
+  await open(page, "e2e-actions");
+  // 상태로 거른 요청의 답을 붙들어 둔다.
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/v1/change-events?**status=FAILED**", async (route) => {
+    await held;
+    await route.continue();
+  });
+
+  await section(page).getByLabel("상태").selectOption("FAILED");
+
+  // 새 답이 오기 전: 옛 줄이 새 조건의 것처럼 보이지 않게 받는 중이라고 알린다.
+  await expect(section(page).getByTestId("change-events-pending")).toBeVisible();
+  await expect(section(page).getByRole("table", { name: "변동 이벤트" })).toHaveAttribute("aria-busy", "true");
+  for (const button of await section(page).getByTestId("pager").getByRole("button").all()) {
+    await expect(button).toBeDisabled();
+  }
+
+  release();
+  await expect(section(page).getByTestId("change-events-pending")).toHaveCount(0);
+});
+
+test("빈 목록의 문구는 고른 값이 아니라 서버가 답한 조건으로 고른다", async ({ page }) => {
+  await open(page, "e2e-actions");
+  // 실패한 변동이 없는 Pack: 실패로 거르면 "이 상태의 변동 이벤트가 없습니다".
+  await section(page).getByLabel("상태").selectOption("FAILED");
+  await expect(section(page).getByText("이 상태의 변동 이벤트가 없습니다.")).toBeVisible();
+
+  // 모두로 돌아가는 요청의 답을 붙들어 둔다. 그 사이에 "이 Pack 에는 변동 이벤트가 없습니다"라고 하지 않는다:
+  // 이 Pack 에는 변동이 있다.
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/v1/change-events?**", async (route) => {
+    if (!route.request().url().includes("status=")) {
+      await held;
+    }
+    await route.continue();
+  });
+  await section(page).getByLabel("상태").selectOption("");
+  await expect(section(page).getByTestId("change-events-pending")).toBeVisible();
+  await expect(section(page).getByText("이 Pack 에는 변동 이벤트가 없습니다")).toHaveCount(0);
+
+  release();
+  await expect(section(page).getByRole("table", { name: "변동 이벤트" })).toBeVisible();
+});
+

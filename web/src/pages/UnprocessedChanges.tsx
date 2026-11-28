@@ -57,7 +57,16 @@ function guide(table: Record<string, string>, code: string | null): string {
   return table[code] ?? `까닭의 코드: ${code}. 서버의 기록에서 까닭을 확인하세요.`;
 }
 
-export function UnprocessedChanges({ packId, refreshKey }: { packId: string; refreshKey: number }) {
+export function UnprocessedChanges({
+  packId,
+  refreshKey,
+  onReprocessed,
+}: {
+  packId: string;
+  refreshKey: number;
+  // 다시 처리가 끝났다 (되었든 안 되었든). 화면이 다른 목록을 다시 받게 한다.
+  onReprocessed?: () => void;
+}) {
   const session = useContext(SessionContext);
   const [list, setList] = useState<List>({ kind: "loading" });
   const [reprocess, setReprocess] = useState<Reprocess>({ kind: "idle" });
@@ -100,6 +109,8 @@ export function UnprocessedChanges({ packId, refreshKey }: { packId: string; ref
     }
     // 되었든 안 되었든 지금의 목록을 다시 받는다.
     void load();
+    // 같은 화면의 다른 목록(변동 이벤트)도 다시 받게 알린다: 처리되면 그 변동의 상태와 수가 바뀐다.
+    onReprocessed?.();
   }
 
   return (

@@ -30,7 +30,7 @@ type View =
 
 type Props = {
   packId: string;
-  // 판을 올릴 때마다 바뀌는 값. 목록을 첫 쪽부터 다시 받게 한다.
+  // 판을 올리거나 다시 처리할 때마다 바뀌는 값. 목록을 첫 쪽부터 다시 받게 한다.
   refreshKey: number;
 };
 
@@ -39,6 +39,9 @@ export function ChangeEventsList({ packId, refreshKey }: Props) {
   const [offset, setOffset] = useState(0);
   const [seenRefresh, setSeenRefresh] = useState(refreshKey);
   const [view, setView] = useState<View>({ kind: "loading" });
+  // 새 답을 기다리는 중인가. 앞의 목록을 화면에 둔 채로 받으므로 (깜빡이지 않게), 그 줄이 새 조건의 것처럼 보이지
+  // 않게 받는 중이라고 알리고 쪽 넘기기를 잠근다.
+  const [pending, setPending] = useState(false);
   const latest = useRef(0);
 
   // 판을 올리면 첫 쪽부터 다시 본다. 그리는 중에 맞춘다: 따로 효과로 맞추면 옛 자리로 한 번 더 묻게 된다.
@@ -50,6 +53,7 @@ export function ChangeEventsList({ packId, refreshKey }: Props) {
   useEffect(() => {
     // 가장 나중에 보낸 요청의 답만 쓴다.
     const request = ++latest.current;
+    setPending(true);
     setView((current) => (current.kind === "loaded" ? current : { kind: "loading" }));
     void (async () => {
       try {
@@ -58,9 +62,11 @@ export function ChangeEventsList({ packId, refreshKey }: Props) {
         if (request !== latest.current) {
           return;
         }
+        setPending(false);
         setView(data ? { kind: "loaded", list: data } : { kind: "failed", message: messageOf(error, response.status) });
       } catch {
         if (request === latest.current) {
+          setPending(false);
           setView({ kind: "failed", message: CONNECTION_FAILED });
         }
       }
@@ -93,8 +99,13 @@ export function ChangeEventsList({ packId, refreshKey }: Props) {
 
       {view.kind === "loading" && <p role="status">변동 이벤트를 불러오는 중입니다…</p>}
       {view.kind === "failed" && <p role="alert">{view.message}</p>}
+      {/* 앞의 목록을 둔 채로 새로 받는 중이다. 이 줄에는 대기 상태의 역할(status)을 주지 않는다: 처음 받을 때의 것과 겹친다. */}
+      {pending && view.kind === "loaded" && <p data-testid="change-events-pending">새로 받는 중입니다…</p>}
+      {/* 문구는 고른 값이 아니라 서버가 답한 조건으로 고른다: 새 답이 오기 전에는 화면의 목록이 앞의 조건의 것이다. */}
       {view.kind === "loaded" && view.list.total === 0 && (
-        <p role="status">{status ? "이 상태의 변동 이벤트가 없습니다." : "이 Pack 에는 변동 이벤트가 없습니다. 둘째 판부터 변동이 생깁니다."}</p>
+        <p role="status">
+          {view.list.status ? "이 상태의 변동 이벤트가 없습니다." : "이 Pack 에는 변동 이벤트가 없습니다. 둘째 판부터 변동이 생깁니다."}
+        </p>
       )}
       {view.kind === "loaded" && view.list.total > 0 && (
         <>
@@ -104,11 +115,12 @@ export function ChangeEventsList({ packId, refreshKey }: Props) {
             limit={view.list.limit}
             shown={view.list.changes.length}
             onMove={setOffset}
+            disabled={pending}
           />
           {view.list.changes.length === 0 ? (
             <p role="status">이 자리에는 변동 이벤트가 없습니다. 이전으로 돌아가세요.</p>
           ) : (
-            <table aria-label="변동 이벤트">
+            <table aria-label="변동 이벤트" aria-busy={pending}>
               <thead>
                 <tr>
                   <th scope="col">판</th>

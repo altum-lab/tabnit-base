@@ -2,6 +2,7 @@ import { useContext, useEffect, useRef, useState } from "react";
 import { api, type PackDefinition, type PackSummary } from "../api/client";
 import { CONNECTION_FAILED, messageOf } from "../api/problem";
 import { SessionContext } from "../session";
+import { formatInstant } from "../time";
 import { PackLoader } from "./PackLoader";
 import { VerificationRunner } from "./VerificationRunner";
 
@@ -137,8 +138,17 @@ export function PackDefinitionPage() {
 }
 
 function Definition({ definition }: { definition: PackDefinition }) {
+  const session = useContext(SessionContext);
   return (
     <div data-testid="definition" data-pack-id={definition.packId}>
+      {/* 정의에는 조회 시점이 없다. 언제 적재한 것인지가 그 자리다: 다시 적재한 뒤의 것인지 알 수 있다. */}
+      <p>
+        적재한 때{" "}
+        <time data-testid="definition-loaded-at" dateTime={definition.loadedAt}>
+          {formatInstant(definition.loadedAt, session?.timeZone)}
+        </time>{" "}
+        <small>이때 적재한 정의입니다. Pack 을 다시 적재하면 바뀝니다.</small>
+      </p>
       <p>
         <strong>{definition.label}</strong> <code>{definition.packId}</code> · 영향 범위의 최대 깊이의 기본값{" "}
         {definition.defaultMaxDepth} · 개체 유형 <span data-testid="count-entity-types">{definition.entityTypes.length}</span>
@@ -165,7 +175,11 @@ function Definition({ definition }: { definition: PackDefinition }) {
                 <code>{type.name}</code>
               </td>
               <td>{type.parents.join(", ")}</td>
-              <td>{type.displayNameAttribute ?? (type.parents.length > 0 ? <small>상위 유형의 것을 받습니다</small> : "")}</td>
+              <td>
+                {/* 상위 유형에 있는지는 답이 알려 주지 않는다: 받는다고 단정하지 않는다. */}
+                {type.displayNameAttribute ??
+                  (type.parents.length > 0 ? <small>이 유형에는 적지 않았습니다. 상위 유형에 있으면 그것을 씁니다.</small> : "")}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -307,9 +321,12 @@ function Definition({ definition }: { definition: PackDefinition }) {
                       {condition.typeIs !== null && ` 의 유형이 ${condition.typeIs}`}
                       {condition.attributeName !== null &&
                         ` 의 ${condition.attributeName} ${condition.operator ?? ""} ${
-                          condition.compareAttributeName !== null
-                            ? `${SUBJECTS[condition.compareSubject ?? ""] ?? condition.compareSubject ?? ""} 의 ${condition.compareAttributeName}`
-                            : condition.values.join(", ")
+                          // 무엇과 견주는가: 판의 적용일, 다른 속성, 적어 둔 값.
+                          condition.compareTo === "EFFECTIVE_DATE"
+                            ? "판의 적용일"
+                            : condition.compareAttributeName !== null
+                              ? `${SUBJECTS[condition.compareSubject ?? ""] ?? condition.compareSubject ?? ""} 의 ${condition.compareAttributeName}`
+                              : condition.values.join(", ")
                         }`}
                     </small>
                   </div>

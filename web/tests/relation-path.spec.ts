@@ -110,6 +110,10 @@ test("한도에서 멈췄으면 없다고 하지 않고 한도 안에서 찾지 
   await expect(finder(page).getByRole("status")).toContainText("한도 안에서 찾지 못했습니다");
   await expect(finder(page).getByRole("status")).toContainText("6");
   await expect(finder(page).getByRole("status")).not.toContainText("유효한 경로가 없습니다");
+  // 한도는 둘이다 (경로의 길이, 찾은 개체의 수). 개체의 수에서 멈췄으면 더 짧은 경로도 있을 수 있다:
+  // "더 긴 경로가 있을 수 있다"고만 말하지 않는다.
+  await expect(finder(page).getByRole("status")).not.toContainText("더 긴 경로");
+  await expect(finder(page).getByRole("status")).toContainText("일찍 멈춥니다");
 });
 
 test("서버가 거부하면 까닭을 보이고 다시 찾을 수 있다", async ({ page }) => {
@@ -121,4 +125,27 @@ test("서버가 거부하면 까닭을 보이고 다시 찾을 수 있다", asyn
   await finder(page).getByRole("button", { name: "경로 찾기" }).click();
   await expect(finder(page).getByRole("list", { name: "경로의 걸음" })).toBeVisible();
   await expect(finder(page).getByRole("alert")).toHaveCount(0);
+});
+
+// ── 코드 검토(/code-review 122)가 짚은 것 ─────────────────────────────────────
+
+test("조회 시점을 바꾸면 찾아 둔 경로를 그 날짜로 다시 받는다", async ({ page }) => {
+  await find(page, FROM, TO, "2026-02-01");
+  await expect(finder(page).getByRole("list", { name: "경로의 걸음" })).toBeVisible();
+
+  // 자료가 들어오기 전의 날짜로 옮긴다: 그 날짜에는 유효한 관계가 없다.
+  await page.getByLabel("조회 시점").fill("2025-12-31");
+  await expect(finder(page).getByTestId("path-as-of")).toHaveText("2025-12-31");
+  await expect(finder(page).getByRole("status")).toContainText("유효한 경로가 없습니다");
+  await expect(finder(page).getByRole("list", { name: "경로의 걸음" })).toHaveCount(0);
+});
+
+test("출발이나 도착을 고치면 앞의 결과를 비운다", async ({ page }) => {
+  await find(page, FROM, TO, "2026-02-01");
+  await expect(finder(page).getByRole("list", { name: "경로의 걸음" })).toBeVisible();
+
+  await finder(page).getByLabel("경로의 도착").fill(FROM);
+  // 적힌 두 개체의 것이 아닌 결과가 남아 있지 않다.
+  await expect(finder(page).getByRole("list", { name: "경로의 걸음" })).toHaveCount(0);
+  await expect(finder(page).getByTestId("path-as-of")).toHaveCount(0);
 });

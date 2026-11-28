@@ -39,6 +39,35 @@ class AuditLogPageTest {
     }
 
     @Test
+    void 거르는_값은_남길_때와_같은_법으로_다듬어_견준다() {
+        // 남길 때 제어 문자는 빈칸으로 바꾼다. 거르는 값도 그렇게 바꿔야 그 줄을 찾는다.
+        long tabbed = entry("page-clean\t이름", "page-clean\n기능", AuditOutcome.SUCCESS, T0);
+
+        assertThat(ids(new AuditFilter("page-clean\t이름", null, null, null, null))).containsExactly(tabbed);
+        assertThat(ids(new AuditFilter(null, "page-clean\n기능", null, null, null))).containsExactly(tabbed);
+        // 저장된 꼴(빈칸)로 물어도 같다.
+        assertThat(ids(new AuditFilter("page-clean 이름", null, null, null, null))).containsExactly(tabbed);
+    }
+
+    @Test
+    void 일련번호의_위쪽_끝을_주면_그_뒤에_남긴_줄은_수에도_목록에도_없다() {
+        // 쪽을 넘기는 사이에 줄이 늘어도 목록이 밀리지 않게 한다 (D2 AD-424).
+        long first = entry("page-max", "listPacks", AuditOutcome.SUCCESS, T0);
+        long second = entry("page-max", "listPacks", AuditOutcome.SUCCESS, T0.plusSeconds(1));
+        long later = entry("page-max", "listPacks", AuditOutcome.SUCCESS, T0.plusSeconds(2));
+
+        AuditPage bounded = log.page(new AuditFilter("page-max", null, null, null, null, second), 0, 50);
+        assertThat(bounded.total()).isEqualTo(2);
+        assertThat(bounded.records()).extracting(AuditRecord::id).containsExactly(second, first);
+        // 끝은 포함한다. 주지 않으면 모두다.
+        assertThat(ids(new AuditFilter("page-max", null, null, null, null, later))).containsExactly(later, second, first);
+        assertThat(ids(new AuditFilter("page-max", null, null, null, null))).containsExactly(later, second, first);
+        // 1 보다 작은 끝은 틀린 인자다.
+        assertThatThrownBy(() -> new AuditFilter(null, null, null, null, null, 0L)).isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("일련번호");
+    }
+
+    @Test
     void 무엇을과_결과로_거른다_조건을_함께_주면_모두_맞는_줄이다() {
         String who = "page-what";
         long a = entry(who, "listPacks", AuditOutcome.SUCCESS, T0);

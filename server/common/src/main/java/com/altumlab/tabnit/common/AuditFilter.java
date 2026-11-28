@@ -3,22 +3,32 @@ package com.altumlab.tabnit.common;
 import java.time.Instant;
 
 /**
- * 감사 기록을 거르는 조건 (D2 AD-414). 없는 조건(null)은 거르지 않는다. 여러 조건을 주면 모두 맞는 줄이다.
+ * 감사 기록을 거르는 조건 (D2 AD-414, AD-424). 없는 조건(null)은 거르지 않는다. 여러 조건을 주면 모두 맞는 줄이다.
  *
  * @param actor 누가. 아이디가 글자 그대로 같은 줄. 일부로 찾지 않는다
  * @param action 무엇을. 기능의 이름이 글자 그대로 같은 줄
  * @param outcome 결과
  * @param from 언제부터. 이 시각을 포함한다
  * @param to 언제까지. 이 시각은 제외한다
+ * @param maxId 일련번호의 위쪽 끝. 이 번호까지의 줄만 (이 번호를 포함한다). 1 이상. 나눠 받는 동안 이 값을 그대로 주면,
+ *        그 사이에 남은 줄 때문에 목록이 밀리지 않는다
  */
-public record AuditFilter(String actor, String action, AuditOutcome outcome, Instant from, Instant to) {
+public record AuditFilter(String actor, String action, AuditOutcome outcome, Instant from, Instant to, Long maxId) {
 
     /** 거르지 않는다. */
     public static final AuditFilter NONE = new AuditFilter(null, null, null, null, null);
 
+    /** 일련번호의 위쪽 끝을 두지 않는 조건. */
+    public AuditFilter(String actor, String action, AuditOutcome outcome, Instant from, Instant to) {
+        this(actor, action, outcome, from, to, null);
+    }
+
     public AuditFilter {
         requireText(actor, "누가");
         requireText(action, "무엇을");
+        if (maxId != null && maxId < 1) {
+            throw new IllegalArgumentException("일련번호의 위쪽 끝은 1 이상이어야 합니다. 받은 값: " + maxId + ".");
+        }
         if (from != null && to != null && to.isBefore(from)) {
             throw new IllegalArgumentException("언제의 끝이 시작보다 앞섭니다. 시작: " + from + ", 끝: " + to + ".");
         }

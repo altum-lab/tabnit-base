@@ -443,3 +443,24 @@ test("조치의 대상과 근거 조항과 근거 경로의 개체를 표시 이
     firstStep.source.displayName ?? firstStep.source.entityKey,
   );
 });
+
+// /code-review 121 이 짚은 것 (카드 D-21): 내보낸 파일의 행의 수는 화면의 전체 건수와 같아야 한다.
+test("목록을 받은 뒤 상태를 바꿨으면 목록을 다시 받기 전에는 파일로 내보내지 못한다", async ({ page, request }) => {
+  const action = await freshAction(request);
+  // 대기인 것만 걸러서 연다: 확정하면 서버의 그 조건에서는 빠지지만 화면의 줄과 전체 건수는 받았을 때의 것이다.
+  await page.goto(`/actions?packId=${WRITE_PACK}&status=PENDING&changeEventId=${encodeURIComponent(action.changeEventId)}`);
+  const exports = page.getByRole("group", { name: "조치 목록 내보내기" });
+  await expect(exports.getByRole("button", { name: "CSV" })).toBeEnabled();
+
+  await open(page, action.id);
+  await detail(page, action.id).getByRole("button", { name: "확정" }).click();
+  await expect(row(page, action.id).getByTestId("status")).toHaveText("확정");
+
+  // 지금 내보내면 파일의 행의 수가 화면의 전체 건수와 다르다: 막고 까닭을 알린다.
+  await expect(page.getByTestId("list-outdated")).toContainText("파일로 받으려면");
+  await expect(exports.getByRole("button", { name: "CSV" })).toBeDisabled();
+  await expect(exports.getByRole("button", { name: "JSON" })).toBeDisabled();
+
+  await page.getByRole("button", { name: "목록 다시 받기" }).click();
+  await expect(page.getByTestId("list-outdated")).toHaveCount(0);
+});

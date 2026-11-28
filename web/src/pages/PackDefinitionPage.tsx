@@ -49,16 +49,24 @@ export function PackDefinitionPage() {
   const admin = useContext(SessionContext)?.role === "ADMIN";
   const mounted = useRef(true);
 
-  async function loadPacks() {
+  // Pack 의 목록을 받는 차례. 늦게 온 옛 답이 새 답을 덮지 않게 한다 (적재를 잇달아 하면 목록을 잇달아 받는다).
+  const listTurn = useRef(0);
+
+  // 받은 목록을 화면에 올렸으면 참이다. 받지 못했거나, 그 사이에 새로 받기 시작했거나, 화면을 떠났으면 거짓이다.
+  async function loadPacks(): Promise<boolean> {
+    const turn = ++listTurn.current;
     try {
       const { data, error, response } = await api.GET("/api/v1/packs");
-      if (mounted.current) {
-        setPacks(data ? { kind: "loaded", packs: data.packs } : { kind: "failed", message: messageOf(error, response.status) });
+      if (!mounted.current || turn !== listTurn.current) {
+        return false;
       }
+      setPacks(data ? { kind: "loaded", packs: data.packs } : { kind: "failed", message: messageOf(error, response.status) });
+      return Boolean(data);
     } catch {
-      if (mounted.current) {
+      if (mounted.current && turn === listTurn.current) {
         setPacks({ kind: "failed", message: CONNECTION_FAILED });
       }
+      return false;
     }
   }
 
@@ -71,9 +79,12 @@ export function PackDefinitionPage() {
   }, []);
 
   // 적재가 끝났다: 목록을 다시 받고 (처음 적재한 Pack 이 생긴다) 그 Pack 의 정의를 보인다.
+  // 목록을 받지 못했거나 그 사이에 다른 것을 다시 받기 시작했으면 정의를 열지 않는다: 고르는 칸에 없는 Pack 의 정의가
+  // 떠 있지 않게 한다.
   async function loaded(loadedPackId: string) {
-    await loadPacks();
-    await choose(loadedPackId);
+    if (await loadPacks()) {
+      await choose(loadedPackId);
+    }
   }
 
   async function choose(next: string) {

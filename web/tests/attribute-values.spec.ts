@@ -112,3 +112,32 @@ test("서버가 답하지 못하면 그 문구를 보이고 다시 불러올 수
   await values(page).getByRole("button", { name: "속성 값 다시 불러오기" }).click();
   await expect(values(page).getByTestId("entity-values")).toHaveAttribute("data-as-of", "2026-03-01");
 });
+
+// /code-review 129 가 짚은 것: 관계 목록의 쪽을 넘기면 속성 값의 칸이 사라졌다 다시 받았다.
+test("관계 목록의 쪽을 넘겨도 속성 값을 다시 받지 않는다", async ({ page }) => {
+  let valueRequests = 0;
+  page.on("request", (request) => {
+    if (request.url().includes("/api/v1/attribute-values")) {
+      valueRequests++;
+    }
+  });
+  // 관계가 한 쪽을 넘는 개체.
+  await open(page, "e2e|T|crowd", "2026-03-01");
+  const result = page.getByRole("region", { name: "조회 결과" });
+  await expect(result.getByTestId("pager-position")).toContainText("1~50번째");
+  await expect(values(page)).toBeVisible();
+  // 개발 화면은 처음에 두 번 받을 수 있다 (React 의 엄격 모드). 그 뒤로 늘지 않는지를 본다.
+  await page.waitForTimeout(500);
+  const before = valueRequests;
+  expect(before).toBeGreaterThan(0);
+
+  // 넘기는 동안에도 속성 값의 칸과 지도는 그 자리에 있다.
+  await result.getByRole("button", { name: "다음" }).click();
+  await expect(values(page)).toBeVisible();
+  await expect(page.getByTestId("relation-map")).toBeVisible();
+  await expect(result.getByTestId("pager-position")).toContainText("51~100번째");
+  await page.waitForTimeout(500);
+
+  // 개체와 조회 시점이 그대로다: 다시 받지 않는다 (감사 기록도 늘지 않는다).
+  expect(valueRequests).toBe(before);
+});

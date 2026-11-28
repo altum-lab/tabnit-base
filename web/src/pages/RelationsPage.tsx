@@ -60,6 +60,8 @@ export function RelationsPage() {
   // 막대의 가운데 날짜와, 막대가 가리키는 날수 (가운데에서 며칠 앞뒤인가).
   const [barBase, setBarBase] = useState<string | null>(null);
   const [barOffset, setBarOffset] = useState(0);
+  // 관계 목록의 다음 쪽을 받는 중인가. 그동안 지도와 속성 값은 그대로 둔다.
+  const [paging, setPaging] = useState(false);
   // 늦게 온 답이 새 답을 덮지 않게 한다: 막대를 잇달아 옮기면 요청이 겹친다.
   const latest = useRef(0);
 
@@ -108,9 +110,12 @@ export function RelationsPage() {
   }
 
   // 목록의 다른 쪽만 받는다. 지도는 그대로 둔다.
+  // 관계 목록의 다음 쪽을 받는다. 화면을 "불러오는 중"으로 바꾸지 않는다: 지도와 속성 값은 개체와 조회 시점이 그대로라
+  // 그 자리에 둔다. 바꾸면 그 둘이 사라졌다 다시 그려지고, 속성 값을 다시 받는다 (감사 기록도 한 줄씩 는다).
+  // 받는 동안에는 쪽을 더 넘기지 못한다.
   async function movePage(map: RelationMap, offset: number) {
     const turn = ++latest.current;
-    setView({ kind: "loading" });
+    setPaging(true);
     try {
       const { data, error, response } = await api.GET("/api/v1/relations", {
         params: { query: { entityId: map.centerEntityId, asOf: map.asOf, offset } },
@@ -123,6 +128,9 @@ export function RelationsPage() {
       if (turn === latest.current) {
         setView({ kind: "failed", message: CONNECTION_FAILED });
       }
+    } finally {
+      // 더 새로운 청이 있으면 그 청이 화면을 정한다. 쪽을 받는 중이라는 표시만 끈다.
+      setPaging(false);
     }
   }
 
@@ -277,7 +285,7 @@ export function RelationsPage() {
             onHidden={setMapFilter}
           />
           <EntityValues entityId={view.map.centerEntityId} asOf={view.map.asOf} />
-          <Result result={view.relations} onMove={(offset) => void movePage(view.map, offset)} />
+          <Result result={view.relations} onMove={(offset) => void movePage(view.map, offset)} paging={paging} />
         </>
       )}
 
@@ -287,7 +295,7 @@ export function RelationsPage() {
   );
 }
 
-function Result({ result, onMove }: { result: RelationsAsOf; onMove: (offset: number) => void }) {
+function Result({ result, onMove, paging }: { result: RelationsAsOf; onMove: (offset: number) => void; paging: boolean }) {
   return (
     <section aria-label="조회 결과">
       <p>
@@ -301,7 +309,14 @@ function Result({ result, onMove }: { result: RelationsAsOf; onMove: (offset: nu
           limit={result.limit}
           shown={result.relations.length}
           onMove={onMove}
+          disabled={paging}
         />
+      )}
+      {/* 대기 상태를 알린다: 화면 전체를 "불러오는 중"으로 바꾸지 않으므로 여기서 말한다. */}
+      {paging && (
+        <p role="status" data-testid="relations-paging">
+          다음 쪽을 받는 중입니다…
+        </p>
       )}
       {result.total > 0 && (
         <ExportButtons

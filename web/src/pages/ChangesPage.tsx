@@ -53,6 +53,8 @@ export function ChangesPage() {
   const latestRequest = useRef(0);
   // 판을 올린 횟수. 처리되지 않은 변동의 목록을 다시 받게 하는 데만 쓴다.
   const [uploadCount, setUploadCount] = useState(0);
+  // 다시 처리한 횟수. 변동 이벤트의 목록을 다시 받게 한다 (처리되지 않은 변동의 칸이 알린다).
+  const [reprocessCount, setReprocessCount] = useState(0);
 
   // 목록을 받아 온다. 이미 받은 목록이 있을 때 다시 받다가 실패하면 그 목록을 그대로 두고 알리기만 한다:
   // 폼과 방금 올린 결과가 사라지지 않게 한다.
@@ -244,7 +246,14 @@ export function ChangesPage() {
 
       {/* 고른 Pack 의 처리되지 않은 변동. 판을 올릴 때마다 다시 받는다. Pack 을 바꾸면 새로 그린다:
           앞에 고른 Pack 에서 아직 돌고 있던 다시 처리의 결과와 목록이 새로 고른 Pack 의 것처럼 보이지 않게 한다. */}
-      {pack && <UnprocessedChanges key={pack.packId} packId={pack.packId} refreshKey={uploadCount} />}
+      {pack && (
+        <UnprocessedChanges
+          key={pack.packId}
+          packId={pack.packId}
+          refreshKey={uploadCount}
+          onReprocessed={() => setReprocessCount((count) => count + 1)}
+        />
+      )}
 
       {/* 고른 Pack 의 자료가 제약을 어긴 곳. 판을 올릴 때마다 다시 받는다. Pack 을 바꾸면 조회 시점도 새로 시작한다. */}
       {pack && <ConstraintViolations key={`violations-${pack.packId}`} packId={pack.packId} refreshKey={uploadCount} />}
@@ -260,7 +269,10 @@ export function ChangesPage() {
       )}
 
       {/* 고른 Pack 의 변동 이벤트를 판을 거치지 않고 본다 (카드 C-15). 판을 올릴 때마다 다시 받는다. 맨 아래에 둔다. */}
-      {pack && <ChangeEventsList key={`events-${pack.packId}`} packId={pack.packId} refreshKey={uploadCount} />}
+      {/* 판을 올리거나 다시 처리하면 다시 받는다: 둘 다 변동의 상태와 수를 바꾼다. */}
+      {pack && (
+        <ChangeEventsList key={`events-${pack.packId}`} packId={pack.packId} refreshKey={uploadCount + reprocessCount} />
+      )}
     </section>
   );
 }

@@ -273,6 +273,70 @@ class ImpactFromEntityApiTests {
 			.param("maxDepth", String.valueOf(packDepth))), "$.maxDepth")).isEqualTo(packDepth);
 	}
 
+	// ── /code-review 155 가 짚은 것 ──────────────────────────────────
+
+	@Test
+	void 자료가_있는_날짜에도_관계가_없는_개체는_빈_영향_범위다() throws Exception {
+		// 시험용 Pack 에 팀의 판 하나만 올린다: 팀은 있고 관계는 하나도 없다.
+		String packId = "im-alone";
+		Path pack = PackCopies.load(this.dataSource, this.temp, packId, text -> text);
+		this.mvc.perform(multipart("/api/v1/editions").with(OFFICER).with(csrf()).param("packId", packId)
+				.param("inputSourceId", "team").param("effectiveDate", "2026-01-01")
+				.file(new MockMultipartFile("file", "team-v1.csv", "text/csv",
+						Files.readAllBytes(pack.resolve("data/team-v1.csv")))))
+			.andExpect(status().isOk());
+		String entityId = new JdbcTemplate(this.dataSource)
+			.queryForList("select id from entity where pack_id = ? order by id", String.class, packId).get(0);
+
+		String alone = read(get("/api/v1/impact").param("entityId", entityId).param("asOf", "2026-06-01")
+			.param("includePreviousDay", "true"));
+
+		assertThat(JsonPath.<String>read(alone, "$.entityId")).isEqualTo(entityId);
+		assertThat(JsonPath.<Integer>read(alone, "$.total")).isZero();
+		assertThat(JsonPath.<List<Object>>read(alone, "$.targets")).isEmpty();
+		assertThat(JsonPath.<List<Object>>read(alone, "$.countsByDepth")).isEmpty();
+		assertThat(JsonPath.<Boolean>read(alone, "$.truncated")).isFalse();
+	}
+
+	@Test
+	void 깨진_글자의_개체_id_와_숫자가_아닌_최대_깊이는_500_이_아니라_400_이다() throws Exception {
+		String packId = "im-strict";
+		loadExample("manufacturing-safety", packId);
+		String entityId = packId + "|제조공정|가-세정-01";
+
+		// 짝 없는 대리 문자: 저장소가 담지 못하는 글자다 (D2 AD-370).
+		problem(get("/api/v1/impact").param("entityId", "a\uD800b"), 400, "INVALID_ENTITY_ID", "entityId");
+		problem(get("/api/v1/impact").param("entityId", "a\u0000b"), 400, "INVALID_ENTITY_ID", "entityId");
+		// 더하기 표와 전각 숫자는 수로 받지 않는다 (나눠 주기의 인자와 같다).
+		problem(get("/api/v1/impact").param("entityId", entityId).param("maxDepth", "+1"), 400, "INVALID_MAX_DEPTH", "maxDepth");
+		problem(get("/api/v1/impact").param("entityId", entityId).param("maxDepth", "\uFF11"), 400, "INVALID_MAX_DEPTH",
+				"maxDepth");
+		problem(get("/api/v1/impact").param("entityId", entityId).param("maxDepth", "-1"), 400, "INVALID_MAX_DEPTH", "maxDepth");
+		problem(get("/api/v1/impact").param("entityId", entityId).param("maxDepth", ""), 400, "INVALID_MAX_DEPTH", "maxDepth");
+		problem(get("/api/v1/impact").param("entityId", entityId).param("maxDepth", "99999999999"), 400, "INVALID_MAX_DEPTH",
+				"maxDepth");
+	}
+
+	@Test
+	void Pack_의_정의에_없는_관계_유형을_만나면_어느_유형인지_알린다() throws Exception {
+		String packId = "im-unknown";
+		loadExample("manufacturing-safety", packId);
+		// 저장소에 Pack 의 정의에 없는 유형의 관계를 바로 넣는다 (정의를 바꿔 다시 적재한 뒤에 남은 옛 자료와 같다).
+		com.altumlab.tabnit.core.EntityRef process = new com.altumlab.tabnit.core.EntityRef(packId, "제조공정", "가-세정-01");
+		com.altumlab.tabnit.core.EntityRef worker = new com.altumlab.tabnit.core.EntityRef(packId, "작업인원", "W-1003");
+		new com.altumlab.tabnit.core.RelationStore(this.dataSource).saveRelation(
+				new com.altumlab.tabnit.core.NewRelation(process, worker, "지어낸-모르는-유형",
+						new com.altumlab.tabnit.core.ValidityPeriod(java.time.LocalDate.parse("2026-01-01"), null),
+						new com.altumlab.tabnit.core.Provenance("지어낸-자료", 1)),
+				java.time.Instant.parse("2026-07-02T00:00:00Z"));
+
+		this.mvc.perform(get("/api/v1/impact").with(OFFICER).param("entityId", process.id()).param("asOf", "2026-06-01"))
+			.andExpect(status().is(422))
+			.andExpect(jsonPath("$.code", is("UNKNOWN_IMPACT_DIRECTION")))
+			// 무엇을 Pack 에 더해야 하는지 알 수 있다.
+			.andExpect(jsonPath("$.detail", org.hamcrest.Matchers.containsString("지어낸-모르는-유형")));
+	}
+
 	// ── 도우미 ────────────────────────────────────────────────
 
 	private String read(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request) throws Exception {

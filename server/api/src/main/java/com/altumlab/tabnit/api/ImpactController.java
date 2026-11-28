@@ -13,6 +13,7 @@ import com.altumlab.tabnit.core.UnknownImpactDirectionException;
 import com.altumlab.tabnit.pack.PackDefinition;
 import com.altumlab.tabnit.pack.PackDefinitions;
 import com.altumlab.tabnit.pack.RelationTypeDefinition;
+import com.altumlab.tabnit.rules.ActionRecords;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -79,7 +80,8 @@ class ImpactController {
 			throw new ApiProblemException(HttpStatus.BAD_REQUEST, "MISSING_ENTITY_ID", "entityId",
 					"출발 개체의 id 가 없습니다. entityId 에 개체의 id 를 넣어 다시 보내세요.");
 		}
-		if (entityId.indexOf('\u0000') >= 0) {
+		// 저장소가 담지 못하는 글자(NUL, 짝 없는 대리 문자)가 든 id 는 틀린 입력이다 (D2 AD-370). 다른 조회와 같이 본다.
+		if (!ActionRecords.isReadableEntityId(entityId)) {
 			throw new ApiProblemException(HttpStatus.BAD_REQUEST, "INVALID_ENTITY_ID", "entityId",
 					"개체의 id 에 쓸 수 없는 글자가 있습니다. 서버가 준 id 를 그대로 넣어 다시 보내세요.");
 		}
@@ -108,9 +110,10 @@ class ImpactController {
 		}
 		catch (UnknownImpactDirectionException e) {
 			// 저장된 관계의 유형이 지금의 Pack 의 정의에 없다 (정의를 바꿔 다시 적재한 뒤의 옛 자료).
+			// 어느 유형인지를 알린다: 그 유형과 영향 방향을 Pack 의 정의에 더해야 한다.
 			throw new ApiProblemException(HttpStatus.UNPROCESSABLE_CONTENT, "UNKNOWN_IMPACT_DIRECTION", "entityId",
-					"따라가야 할 관계 가운데 지금의 Pack 의 정의에 없는 관계 유형이 있어 영향 범위를 계산하지 못했습니다."
-							+ " Pack 의 정의에 그 관계 유형과 영향 방향이 있는지 확인하세요.");
+					"따라가야 할 관계 가운데 지금의 Pack 의 정의에 없는 관계 유형이 있어 영향 범위를 계산하지 못했습니다: "
+							+ e.relationType() + ". Pack 의 정의에 그 관계 유형과 영향 방향을 더해 다시 적재하세요.");
 		}
 		// 나누는 것은 여기서 한다: 계산은 전체를 하고, 순서는 core 가 준 그대로다.
 		List<ImpactTarget> all = scope.targets();
@@ -170,14 +173,12 @@ class ImpactController {
 		if (value == null) {
 			return packDefault;
 		}
-		try {
+		// 숫자(0 ~ 9)만 받는다: 더하기 표나 다른 글자의 숫자는 수로 받지 않는다 (나눠 주기의 인자와 같다).
+		if (!value.isEmpty() && value.length() <= 9 && value.chars().allMatch(c -> c >= '0' && c <= '9')) {
 			int parsed = Integer.parseInt(value);
 			if (parsed >= 1 && parsed <= packDefault) {
 				return parsed;
 			}
-		}
-		catch (NumberFormatException e) {
-			// 아래에서 틀린 값으로 알린다.
 		}
 		throw new ApiProblemException(HttpStatus.BAD_REQUEST, "INVALID_MAX_DEPTH", "maxDepth",
 				"최대 깊이의 값이 틀렸습니다. 1 부터 이 Pack 의 최대 깊이의 기본값 " + packDefault + " 까지의 수를 넣거나 그 항목을 빼고 다시 보내세요.");

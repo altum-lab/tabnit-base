@@ -72,12 +72,13 @@ class PackRelationMapController {
 					"Pack 의 식별자가 없습니다. packId 에 Pack 의 식별자를 넣어 다시 보내세요.");
 		}
 		LocalDate date = resolveAsOf(asOf);
+		// 날짜를 읽자마자 알린다: 그 뒤에 거부되는 요청(없는 Pack)의 감사 기록에도 조회 시점이 남는다.
+		AuditTrail.asOf(date);
 		// NUL 이 든 식별자의 Pack 은 있을 수 없다. 저장소에 묻지 않고 없는 것으로 답한다.
 		PackDefinition definition = (packId.indexOf('\u0000') >= 0 ? java.util.Optional.<PackDefinition>empty()
 				: this.packs.find(packId))
 			.orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND, "PACK_NOT_FOUND", "packId",
 					"Pack " + packId + " 이 적재되어 있지 않습니다. Pack 의 식별자를 확인하세요."));
-		AuditTrail.asOf(date);
 		PackRelationMap map = this.mapQuery.packRelationMap(packId, date, MAX_NODES);
 		// 담긴 노드의 개체를 한 번에 읽어 유형, 키, 조회 시점의 표시 이름을 붙인다 (D2 AD-349).
 		TreeSet<String> ids = new TreeSet<>();

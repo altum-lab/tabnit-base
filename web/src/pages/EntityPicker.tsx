@@ -22,6 +22,8 @@ type Found =
   | { kind: "loaded"; list: EntityList }
   | { kind: "failed"; message: string };
 
+type Submitted = { packId: string; q: string; entityType?: string[] };
+
 type Props = {
   // 화면의 조회 시점. 비어 있으면 보내지 않는다.
   asOf: string;
@@ -94,23 +96,44 @@ export function EntityPicker({ asOf, onPick, extras = [], disabled = false, type
     setPackId(next);
     if (typeFilter && next !== typeFilter.packId) {
       latest.current++;
+      submitted.current = null;
       setFound({ kind: "idle" });
       onClearTypeFilter?.();
     }
   }
 
+  // 마지막으로 찾은 조건 (Pack, 검색어, 거르는 유형). 화면의 목록은 이 조건의 것이다: 다른 쪽을 받을 때와 조회 시점이
+  // 바뀌어 다시 받을 때 이것을 쓴다. 칸에 적어 두기만 한 값으로 묻지 않는다.
+  const submitted = useRef<Submitted | null>(null);
+
+  // 칸에 적힌 값으로 새로 찾는다 (찾기 단추, 유형 거르기).
   async function search(offset: number, given?: { packId: string; text: string }) {
+    const wantedPack = given?.packId ?? packId;
+    submitted.current = {
+      packId: wantedPack,
+      q: given?.text ?? text,
+      // 거르는 유형은 그 Pack 을 볼 때만 보낸다.
+      ...(typeFilter && typeFilter.packId === wantedPack ? { entityType: [typeFilter.entityType] } : {}),
+    };
+    await fetchPage(submitted.current, offset);
+  }
+
+  // 화면의 조회 시점이 바뀌면 찾아 둔 후보를 그 날짜로 다시 받는다 (찾기를 다시 누르지 않는다): 지도와 관계 목록이
+  // 새 날짜를 보는데 후보와 표시 이름만 앞 날짜의 것으로 남지 않는다.
+  useEffect(() => {
+    if (submitted.current) {
+      void fetchPage(submitted.current, 0);
+    }
+    // 조회 시점이 바뀔 때만 다시 받는다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asOf]);
+
+  // 그 조건의 한 쪽을 받는다. 조회 시점은 화면의 것이다.
+  async function fetchPage(wanted: Submitted, offset: number) {
     const turn = ++latest.current;
     setFound({ kind: "loading" });
     try {
-      const query = {
-        packId: given?.packId ?? packId,
-        q: given?.text ?? text,
-        offset,
-        ...(asOf ? { asOf } : {}),
-        // 거르는 유형은 그 Pack 을 볼 때만 보낸다.
-        ...(typeFilter && typeFilter.packId === (given?.packId ?? packId) ? { entityType: [typeFilter.entityType] } : {}),
-      };
+      const query = { ...wanted, offset, ...(asOf ? { asOf } : {}) };
       const { data, error, response } = await api.GET("/api/v1/entities", { params: { query } });
       if (turn !== latest.current) {
         return;
@@ -212,7 +235,8 @@ export function EntityPicker({ asOf, onPick, extras = [], disabled = false, type
                 offset={found.list.offset}
                 limit={found.list.limit}
                 shown={found.list.entities.length}
-                onMove={(offset) => void search(offset)}
+                // 다른 쪽은 화면의 목록을 만든 그 조건으로 받는다.
+                onMove={(offset) => submitted.current && void fetchPage(submitted.current, offset)}
               />
               {found.list.entities.length > 0 && (
                 <table aria-label="찾은 개체">

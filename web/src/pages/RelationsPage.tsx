@@ -8,6 +8,7 @@ import { EntityPicker } from "./EntityPicker";
 import { EntityValues } from "./EntityValues";
 import { ExportButtons } from "./ExportButtons";
 import { PackMapOverview } from "./PackMapOverview";
+import { TimeBar } from "./TimeBar";
 import { RelationPathFinder } from "./RelationPathFinder";
 import { Pager } from "./Pager";
 import { type MapFilter, type MapView, RelationMapView } from "./RelationMapView";
@@ -23,7 +24,6 @@ import { type MapFilter, type MapView, RelationMapView } from "./RelationMapView
 // 막대를 옮기면 그 날짜로 지도와 목록을 다시 받는다. 범위 밖의 날짜는 조회 시점에 적어 조회한다:
 // 그러면 막대의 범위도 그 날짜를 가운데로 다시 잡힌다.
 
-const BAR_DAYS = 365;
 const DEPTHS = [1, 2, 3] as const;
 
 type View =
@@ -165,6 +165,15 @@ export function RelationsPage() {
     }
   }
 
+  // 전체 보기의 시점 막대가 조회 시점을 옮긴다. 위에 열어 둔 지도가 있으면 그것도 그 날짜로 다시 받는다:
+  // 화면의 조회 시점과 지도가 보이는 날짜가 어긋나지 않는다. 막대의 범위는 그 날짜를 가운데로 다시 잡는다.
+  function moveAsOf(date: string) {
+    setAsOf(date);
+    if (wanted.current) {
+      void load({ ...wanted.current, asOf: date }, true);
+    }
+  }
+
   function moveBar(offset: number) {
     if (!wanted.current || barBase === null) {
       return;
@@ -240,6 +249,8 @@ export function RelationsPage() {
 
       {barBase !== null && (
         <TimeBar
+          id="time-bar"
+          label="시점 막대"
           base={barBase}
           offset={barOffset}
           disabled={view.kind === "loading"}
@@ -271,60 +282,8 @@ export function RelationsPage() {
       )}
 
       {/* 전체 보기는 화면의 맨 아래에 둔다: 위의 지도와 목록의 자리를 밀지 않는다. */}
-      <PackMapOverview asOf={asOf} onPick={pick} onPickType={setTypeFilter} />
+      <PackMapOverview asOf={asOf} onAsOf={moveAsOf} onPick={pick} onPickType={setTypeFilter} />
     </section>
-  );
-}
-
-// 시점 막대. 미는 동안에는 가리키는 날짜만 바꿔 보여 주고, 놓으면 (또는 글쇠로 옮기면) 그 날짜로 다시 받는다.
-function TimeBar({
-  base,
-  offset,
-  disabled,
-  onSlide,
-  onCommit,
-}: {
-  base: string;
-  offset: number;
-  // 받아 오는 동안에는 옮기지 못한다: 청한 것이 끝나기 전에 다른 것을 청하지 않는다.
-  disabled: boolean;
-  onSlide: (offset: number) => void;
-  onCommit: (offset: number) => void;
-}) {
-  const input = useRef<HTMLInputElement>(null);
-  const commit = useRef(onCommit);
-  commit.current = onCommit;
-
-  // 놓았을 때를 알려 주는 것은 브라우저의 change 이벤트다. React 의 onChange 는 미는 동안 계속 온다.
-  useEffect(() => {
-    const element = input.current;
-    if (!element) {
-      return;
-    }
-    const listener = () => commit.current(Number(element.value));
-    element.addEventListener("change", listener);
-    return () => element.removeEventListener("change", listener);
-  }, []);
-
-  return (
-    <p>
-      <label htmlFor="time-bar">시점 막대</label>{" "}
-      <small data-testid="time-bar-from">{addDays(base, -BAR_DAYS)}</small>{" "}
-      <input
-        id="time-bar"
-        ref={input}
-        type="range"
-        min={-BAR_DAYS}
-        max={BAR_DAYS}
-        step={1}
-        value={offset}
-        disabled={disabled}
-        onChange={(e) => onSlide(Number(e.target.value))}
-        style={{ width: "24rem", verticalAlign: "middle" }}
-      />{" "}
-      <small data-testid="time-bar-to">{addDays(base, BAR_DAYS)}</small>{" "}
-      <strong data-testid="time-bar-date">{addDays(base, offset)}</strong>
-    </p>
   );
 }
 

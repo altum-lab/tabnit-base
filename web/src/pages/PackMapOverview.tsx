@@ -1,6 +1,10 @@
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type ComponentType, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { api, type PackRelationMap, type PackSummary } from "../api/client";
 import { CONNECTION_FAILED, messageOf } from "../api/problem";
+import { addDays } from "../time";
+import { buildPackGraph, filterPackMap, type PackGraphProps, type PackMapFilter } from "./packMapData";
+import { PackMapGraph, type Spot } from "./PackMapGraph";
+import { TimeBar } from "./TimeBar";
 
 // Pack 의 전체 지도 (카드 A-20, D7 4절 "Pack 의 전체 지도", D2 AD-419).
 // 서버의 getPackRelationMap (docs/api/openapi.yaml) 의 답을 그대로 그린다.
@@ -8,7 +12,13 @@ import { CONNECTION_FAILED, messageOf } from "../api/problem";
 // 이 칸은 계산하지 않는다.
 // - 무엇이 이어져 있는지, 묶을지, 수와 차례는 서버가 준 것이다. 다시 세거나 정렬하지 않는다.
 // - 오늘을 정하지 않는다. 조회 시점이 비어 있으면 서버가 정하고, 서버가 답한 날짜를 보여 준다.
-// - 그림의 자리는 서버가 준 차례대로 원 위에 놓는다: 같은 답이면 같은 그림이다 (난수를 쓰지 않는다).
+// - 그림은 PackMapGraph(2D)와 PackMapGraph3D 가 그린다: 개체 하나의 둘레의 지도와 같은 그래프 그림이다.
+//
+// 개체 하나의 둘레의 지도에 있는 것을 여기에도 둔다.
+// - 2D 와 3D. 3D 의 코드는 고를 때 내려받는다 (D2 AD-361).
+// - 시점 막대. 옮기면 화면의 조회 시점을 그 날짜로 바꾼다: 전체 보기가 따로 날짜를 갖지 않는다. 그래서 전체 보기가
+//   보이는 날짜와 여기서 고른 개체가 열리는 날짜가 늘 같다. 범위는 전체 보기를 연 날짜의 앞뒤 1년이다.
+// - 가리기. 유형과 관계 유형을 꺼서 그림에서 뺀다. 서버에 다시 묻지 않고, 서버가 준 수와 아래의 표는 바꾸지 않는다.
 
 type Packs =
   | { kind: "loading" }
@@ -24,30 +34,37 @@ type View =
 type Props = {
   // 화면의 조회 시점. 비어 있으면 보내지 않는다.
   asOf: string;
+  // 시점 막대를 옮기면 화면의 조회 시점을 그 날짜로 바꾼다.
+  onAsOf: (date: string) => void;
   // 개체 하나를 가운데로 지도를 연다.
   onPick: (entityId: string) => void;
   // 유형 묶음을 누르면 개체 찾기를 그 유형으로 거른다.
   onPickType: (filter: { packId: string; entityType: string; label: string }) => void;
 };
 
-const SIZE = 560;
-const CENTER = SIZE / 2;
-const RING = 220;
+type MapView = "2d" | "3d";
 
-// 차례대로 원 위에 놓는다. 하나뿐이면 가운데다.
-function place(index: number, count: number): { x: number; y: number } {
-  if (count === 1) {
-    return { x: CENTER, y: CENTER };
-  }
-  const angle = (2 * Math.PI * index) / count - Math.PI / 2;
-  return { x: Math.round(CENTER + RING * Math.cos(angle)), y: Math.round(CENTER + RING * Math.sin(angle)) };
+// 3D 그림은 고를 때 내려받는다. 한 번 받은 것은 화면을 열어 둔 동안 다시 받지 않는다.
+let loaded3D: ComponentType<PackGraphProps> | null = null;
+
+function toggled(names: string[], name: string, on: boolean) {
+  return on ? names.filter((candidate) => candidate !== name) : [...names, name];
 }
 
-export function PackMapOverview({ asOf, onPick, onPickType }: Props) {
+export function PackMapOverview({ asOf, onAsOf, onPick, onPickType }: Props) {
   const [packs, setPacks] = useState<Packs>({ kind: "loading" });
   const [packId, setPackId] = useState("");
   const [view, setView] = useState<View>({ kind: "idle" });
   const latest = useRef(0);
+  // 그림을 보는 법과 가린 것. 다시 받아도 (시점 막대, 조회 시점) 그대로 둔다.
+  const [mapView, setMapView] = useState<MapView>("2d");
+  const [hidden, setHidden] = useState<PackMapFilter>({ entityTypes: [], relationTypes: [] });
+  // 시점 막대의 가운데 날짜와 거기서 옮긴 날 수. 가운데는 막대가 아닌 것으로 받은 답의 조회 시점이다.
+  const [barBase, setBarBase] = useState<string | null>(null);
+  const [barOffset, setBarOffset] = useState(0);
+  // 막대가 화면에 청한 조회 시점. 조회 시점이 이 날짜로 바뀐 것이면 막대가 옮긴 것이니 막대의 범위를 다시 잡지 않는다.
+  // 청마다 따로 정한다: 버려진 청의 것이 다음 청에 남지 않는다.
+  const barDate = useRef<string | null>(null);
 
   async function loadPacks() {
     setPacks({ kind: "loading" });
@@ -69,8 +86,10 @@ export function PackMapOverview({ asOf, onPick, onPickType }: Props) {
   // 화면의 조회 시점이 바뀌면 열어 둔 전체 보기를 그 날짜로 다시 받는다 (단추를 다시 누르지 않는다). 그래서 전체
   // 보기가 보이는 날짜와, 여기서 고른 개체나 유형이 열리는 날짜가 늘 같다.
   useEffect(() => {
+    const byBar = barDate.current === asOf;
+    barDate.current = null;
     if (opened.current !== null) {
-      void fetchMap(opened.current);
+      void fetchMap(opened.current, !byBar);
     }
     // 조회 시점이 바뀔 때만 다시 받는다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -78,11 +97,16 @@ export function PackMapOverview({ asOf, onPick, onPickType }: Props) {
 
   function open(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // 다른 Pack 을 열면 가린 것을 푼다: 이름이 같은 유형이 가려진 채로 열리지 않는다.
+    if (opened.current !== packId) {
+      setHidden({ entityTypes: [], relationTypes: [] });
+    }
     opened.current = packId;
-    void fetchMap(packId);
+    void fetchMap(packId, true);
   }
 
-  async function fetchMap(wanted: string) {
+  // rebase: 받은 답의 조회 시점을 가운데로 막대의 범위를 다시 잡는다 (막대가 옮겨서 받는 것이 아닐 때).
+  async function fetchMap(wanted: string, rebase: boolean) {
     const turn = ++latest.current;
     setView({ kind: "loading" });
     try {
@@ -92,12 +116,30 @@ export function PackMapOverview({ asOf, onPick, onPickType }: Props) {
       if (turn !== latest.current) {
         return;
       }
+      if (data && rebase) {
+        setBarBase(data.asOf);
+        setBarOffset(0);
+      }
       setView(data ? { kind: "loaded", map: data } : { kind: "failed", message: messageOf(error, response.status) });
     } catch {
       if (turn === latest.current) {
         setView({ kind: "failed", message: CONNECTION_FAILED });
       }
     }
+  }
+
+  function moveBar(offset: number) {
+    if (barBase === null) {
+      return;
+    }
+    const date = addDays(barBase, offset);
+    setBarOffset(offset);
+    if (date === asOf) {
+      return;
+    }
+    // 화면의 조회 시점을 바꾼다. 위의 효과가 그 날짜로 다시 받는다.
+    barDate.current = date;
+    onAsOf(date);
   }
 
   return (
@@ -138,14 +180,112 @@ export function PackMapOverview({ asOf, onPick, onPickType }: Props) {
         </form>
       )}
 
+      {barBase !== null && (
+        <TimeBar
+          id="pack-map-bar"
+          label="전체 보기의 시점을 옮기는 막대"
+          base={barBase}
+          offset={barOffset}
+          disabled={view.kind === "loading"}
+          onSlide={setBarOffset}
+          onCommit={moveBar}
+        />
+      )}
+
       {view.kind === "loading" && <p data-testid="pack-map-loading">전체 지도를 불러오는 중입니다…</p>}
-      {view.kind === "failed" && <p role="alert">{view.message}</p>}
-      {view.kind === "loaded" && <Overview map={view.map} onPick={onPick} onPickType={onPickType} />}
+      {view.kind === "failed" && (
+        <p role="alert">
+          {view.message}{" "}
+          {opened.current !== null && (
+            // 같은 Pack 을 같은 조회 시점으로 다시 청한다. 막대의 자리는 그대로 둔다.
+            <button type="button" onClick={() => void fetchMap(opened.current!, barBase === null)}>
+              다시 받기
+            </button>
+          )}
+        </p>
+      )}
+      {view.kind === "loaded" && (
+        <Overview
+          map={view.map}
+          onPick={onPick}
+          onPickType={onPickType}
+          mapView={mapView}
+          onMapView={setMapView}
+          hidden={hidden}
+          onHidden={setHidden}
+        />
+      )}
     </section>
   );
 }
 
-function Overview({ map, onPick, onPickType }: { map: PackRelationMap } & Pick<Props, "onPick" | "onPickType">) {
+function Overview({
+  map,
+  onPick,
+  onPickType,
+  mapView,
+  onMapView,
+  hidden,
+  onHidden,
+}: { map: PackRelationMap } & Pick<Props, "onPick" | "onPickType"> & {
+    mapView: MapView;
+    onMapView: (view: MapView) => void;
+    hidden: PackMapFilter;
+    onHidden: (hidden: PackMapFilter) => void;
+  }) {
+  // 3D 그림의 코드를 받는 일의 상태. 받았는지는 loaded3D 로 본다.
+  const [loading3D, setLoading3D] = useState<"loading" | "failed">("loading");
+  const [, setArrived] = useState(0);
+  useEffect(() => {
+    if (mapView !== "3d" || loaded3D) {
+      return;
+    }
+    let current = true;
+    setLoading3D("loading");
+    import("./PackMapGraph3D")
+      .then((module) => {
+        loaded3D = module.default;
+        if (current) {
+          setArrived((count) => count + 1);
+        }
+      })
+      .catch(() => {
+        if (current) {
+          setLoading3D("failed");
+        }
+      });
+    return () => {
+      current = false;
+    };
+  }, [mapView]);
+  const Graph3D = loaded3D;
+
+  // 고를 것: 서버의 답에 나온 유형과 관계 유형. 답에 처음 나온 차례다 (화면이 정렬하지 않는다).
+  const entityTypes = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const group of map.typeGroups) {
+      seen.set(group.entityType, group.entityTypeLabel);
+    }
+    return [...seen].map(([name, label]) => ({ name, label }));
+  }, [map]);
+  const relationTypes = useMemo(() => [...new Set(map.relationGroups.map((group) => group.relationType))], [map]);
+  const shown = useMemo(() => filterPackMap(map, hidden), [map, hidden]);
+  // 그리는 것. 두 끝이 그리는 점에 없는 선은 그리지 못해 뺀다 (packMapData 의 build).
+  const drawn = useMemo(() => buildPackGraph(shown, 2), [shown]);
+  const shownNodes = drawn.nodes.map((node) => node.id);
+  const shownLinks = drawn.links.map((link) => link.id);
+  const filtered =
+    shown.nodes.length !== map.nodes.length ||
+    shown.edges.length !== map.edges.length ||
+    shown.typeGroups.length !== map.typeGroups.length ||
+    shown.relationGroups.length !== map.relationGroups.length;
+  // 가리지 않았는데도 그리지 못한 선: 서버의 답에서 끝이 점의 목록에 없는 것이다. 표에는 있다.
+  const unmatched = (map.grouped ? map.relationGroups.length : map.edges.length) - buildPackGraph(map, 2).links.length;
+
+  // 2D 그림이 알려 준 점의 자리. 그린 것이 바뀌면 비운다.
+  const [spots, setSpots] = useState<Spot[]>([]);
+  useEffect(() => setSpots([]), [shown, mapView]);
+
   return (
     <div
       data-testid="pack-map"
@@ -165,7 +305,91 @@ function Overview({ map, onPick, onPickType }: { map: PackRelationMap } & Pick<P
           걸러집니다. 거기서 개체를 골라 그 둘레의 지도를 엽니다.
         </p>
       )}
-      {map.connectedEntities > 0 && (map.grouped ? <GroupDrawing map={map} /> : <NodeDrawing map={map} />)}
+      {map.connectedEntities > 0 && (
+        <>
+          <fieldset>
+            <legend>전체 보기의 그림</legend>
+            <label>
+              <input type="radio" name="pack-map-view" checked={mapView === "2d"} onChange={() => onMapView("2d")} /> 2D
+            </label>{" "}
+            <label>
+              <input type="radio" name="pack-map-view" checked={mapView === "3d"} onChange={() => onMapView("3d")} /> 3D
+            </label>{" "}
+            <small>3D 는 마우스로 끌어 돌리고 굴려서 확대합니다.</small>
+          </fieldset>
+          <p role="group" aria-label="전체 보기에 보일 것">
+            <strong>보일 것</strong>{" "}
+            <small>끄면 그 유형의 개체와 관계를 그림에 그리지 않습니다. 서버에 다시 묻지 않습니다.</small>
+            <br />
+            <span>유형:</span>{" "}
+            {entityTypes.map((type) => (
+              <label key={type.name}>
+                <input
+                  type="checkbox"
+                  data-entity-type={type.name}
+                  checked={!hidden.entityTypes.includes(type.name)}
+                  onChange={(e) => onHidden({ ...hidden, entityTypes: toggled(hidden.entityTypes, type.name, e.target.checked) })}
+                />{" "}
+                {type.label}{" "}
+              </label>
+            ))}
+            <br />
+            <span>관계 유형:</span>{" "}
+            {relationTypes.map((name) => (
+              <label key={name}>
+                <input
+                  type="checkbox"
+                  data-relation-type={name}
+                  checked={!hidden.relationTypes.includes(name)}
+                  onChange={(e) =>
+                    onHidden({ ...hidden, relationTypes: toggled(hidden.relationTypes, name, e.target.checked) })
+                  }
+                />{" "}
+                {name}{" "}
+              </label>
+            ))}
+          </p>
+          {unmatched > 0 && (
+            <p data-testid="pack-map-unmatched">
+              관계 {map.grouped ? "묶음 " : ""}
+              {unmatched}건은 끝이 지도의 점에 없어 그림에 그리지 못했습니다. 아래의 표에는 있습니다.
+            </p>
+          )}
+          {filtered && (
+            <p data-testid="pack-map-filtered">가린 것이 있습니다. 위의 수와 아래의 표, 목록은 가리기 전의 것 그대로입니다.</p>
+          )}
+          {/* 그림은 캔버스라 시험이 안을 읽지 못한다. 무엇을 그렸는지와 점의 자리를 이 칸에 적어 둔다. */}
+          <div
+            data-testid="pack-map-graph"
+            data-view={mapView}
+            data-mode={map.grouped ? "groups" : "nodes"}
+            data-node-ids={JSON.stringify(shownNodes)}
+            data-link-ids={JSON.stringify(shownLinks)}
+            data-link-bends={JSON.stringify(drawn.links.map((link) => link.bend))}
+            data-node-spots={JSON.stringify(spots)}
+          >
+            {shownNodes.length === 0 && (
+              <p data-testid="pack-map-all-hidden">켜 둔 유형이 없어 그림에 보일 것이 없습니다. "보일 것"에서 유형을 켜세요.</p>
+            )}
+            {shownNodes.length > 0 && mapView === "2d" && (
+              <PackMapGraph map={shown} onPick={onPick} onPickType={onPickType} onSpots={setSpots} />
+            )}
+            {shownNodes.length > 0 && mapView === "3d" && Graph3D && (
+              <Graph3D map={shown} onPick={onPick} onPickType={onPickType} />
+            )}
+            {mapView === "3d" && !Graph3D && loading3D === "loading" && <p>3D 그림을 불러오는 중입니다…</p>}
+            {mapView === "3d" && !Graph3D && loading3D === "failed" && (
+              <p role="alert">3D 그림을 불러오지 못했습니다. 연결을 확인하고 3D 를 다시 고르거나, 2D 로 보세요.</p>
+            )}
+          </div>
+          <p>
+            <small>
+              화살표는 관계에 적힌 방향(출발에서 도착)입니다. 점을 누르면{" "}
+              {map.grouped ? "위의 개체 찾기가 그 유형으로 걸러집니다." : "그 개체를 가운데로 지도를 엽니다."}
+            </small>
+          </p>
+        </>
+      )}
 
       {map.connectedEntities > 0 && (
         <p data-testid="type-group-note">
@@ -283,118 +507,3 @@ function TypeName({ map, entityType }: { map: PackRelationMap; entityType: strin
   );
 }
 
-// 한도 안: 개체마다 점 하나, 관계마다 선 하나. 자리는 서버가 준 차례대로다.
-function NodeDrawing({ map }: { map: PackRelationMap }) {
-  const at = new Map(map.nodes.map((node, index) => [node.entityId, place(index, map.nodes.length)]));
-  return (
-    <svg
-      className="pack-map-drawing"
-      viewBox={`0 0 ${SIZE} ${SIZE}`}
-      width={SIZE}
-      height={SIZE}
-      role="img"
-      aria-label={`개체 ${map.nodes.length}개와 관계 ${map.edges.length}건의 지도`}
-    >
-      {map.edges.map((edge) => {
-        const from = at.get(edge.sourceEntityId);
-        const to = at.get(edge.targetEntityId);
-        return from && to ? (
-          <line key={edge.id} data-pack-map-edge={edge.id} x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke="#8a8a8a" />
-        ) : null;
-      })}
-      {map.nodes.map((node) => {
-        const spot = at.get(node.entityId)!;
-        return (
-          <g key={node.entityId}>
-            <circle cx={spot.x} cy={spot.y} r={5} fill="#3b6ea5">
-              <title>
-                {node.entity.entityTypeLabel}: {node.entity.displayName ?? node.entity.entityKey}
-              </title>
-            </circle>
-            {map.nodes.length <= 40 && (
-              <text x={spot.x} y={spot.y - 9} textAnchor="middle" fontSize="11">
-                {node.entity.displayName ?? node.entity.entityKey}
-              </text>
-            )}
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
-type Pair = { key: string; first: string; second: string; groups: PackRelationMap["relationGroups"] };
-
-// 관계의 묶음을 두 유형의 짝으로 모은다 (방향을 가리지 않는다). 같은 유형 안의 묶음은 뺀다: 두 끝이 같은 자리라
-// 선으로 그리지 않는다 (표에 있다). 짝의 차례는 그 짝이 서버의 묶음에 처음 나온 차례다.
-function pairs(map: PackRelationMap): Pair[] {
-  const found = new Map<string, Pair>();
-  for (const group of map.relationGroups) {
-    if (group.sourceEntityType === group.targetEntityType) {
-      continue;
-    }
-    const [first, second] =
-      group.sourceEntityType < group.targetEntityType
-        ? [group.sourceEntityType, group.targetEntityType]
-        : [group.targetEntityType, group.sourceEntityType];
-    const key = `${first}|${second}`;
-    const pair = found.get(key) ?? { key, first, second, groups: [] };
-    pair.groups = [...pair.groups, group];
-    found.set(key, pair);
-  }
-  return [...found.values()];
-}
-
-// 한도 밖: 유형마다 점 하나, 두 유형의 짝마다 선 하나. 수를 함께 적는다.
-function GroupDrawing({ map }: { map: PackRelationMap }) {
-  const at = new Map(map.typeGroups.map((group, index) => [group.entityType, place(index, map.typeGroups.length)]));
-  return (
-    <svg
-      className="pack-map-drawing"
-      viewBox={`0 0 ${SIZE} ${SIZE}`}
-      width={SIZE}
-      height={SIZE}
-      role="img"
-      aria-label={`유형 ${map.typeGroups.length}개로 묶은 지도`}
-    >
-      {/* 같은 두 유형 사이의 묶음들(방향이 다른 것, 관계 유형이 다른 것)은 선 하나로 그리고 그 모두를 적는다:
-          따로 그리면 같은 자리에 겹쳐 하나만 보인다. 차례는 서버가 준 묶음의 차례다. */}
-      {pairs(map).map((pair) => {
-        const from = at.get(pair.first);
-        const to = at.get(pair.second);
-        return from && to ? (
-          <line
-            key={pair.key}
-            data-pack-map-pair={pair.key}
-            data-group-count={pair.groups.length}
-            x1={from.x}
-            y1={from.y}
-            x2={to.x}
-            y2={to.y}
-            stroke="#8a8a8a"
-          >
-            <title>
-              {pair.groups
-                .map(
-                  (group) =>
-                    `${labelOf(map, group.sourceEntityType)} → ${labelOf(map, group.targetEntityType)} (${group.relationType}) ${group.relationCount}건`,
-                )
-                .join("\n")}
-            </title>
-          </line>
-        ) : null;
-      })}
-      {map.typeGroups.map((group) => {
-        const spot = at.get(group.entityType)!;
-        return (
-          <g key={group.entityType} data-pack-map-group={group.entityType}>
-            <circle cx={spot.x} cy={spot.y} r={16} fill="#3b6ea5" />
-            <text x={spot.x} y={spot.y - 22} textAnchor="middle" fontSize="12">
-              {group.entityTypeLabel} ({group.entityCount})
-            </text>
-          </g>
-        );
-      })}
-    </svg>
-  );
-}

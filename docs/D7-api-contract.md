@@ -783,9 +783,36 @@ GET /api/v1/impact-scopes?changeEventId={변동 이벤트의 id}&entityId={영�
 | `offset`, `limit` 의 값이 틀림 (2절 "나눠 주기") | 400 | `INVALID_OFFSET`, `INVALID_LIMIT` |
 | 그 변동 이벤트의 저장된 영향 범위가 없음 (없는 변동, 아직 처리되지 않았거나 처리에 실패한 변동) | 404 | `IMPACT_SCOPE_NOT_FOUND` |
 
+### 출발 개체로 영향을 묻는다
+
+개체 하나에서 출발해 조회 시점의 영향 범위를 계산해 답한다. 변동 이벤트가 없어도 "이 개체가 바뀌면 무엇이 영향을 받는가"를 물을 수 있다. [AD-429]
+
+```
+GET /api/v1/impact?entityId={출발 개체의 id}&asOf={조회 시점}&includePreviousDay={true|false}&maxDepth={최대 깊이}&offset=&limit=
+```
+
+- **저장하지 않는다.** 부를 때마다 지금의 자료로 계산한다. 영향 범위, 조치, 변동 이벤트를 만들지 않는다. 규칙을 실행하지 않는다. 부른 것은 감사 기록에 남는다 (기능 이름 `getImpactFromEntity`).
+- **영향 방향과 최대 깊이는 그 개체의 Pack 의 정의를 쓴다** (관계 유형마다의 영향 방향, 최대 깊이의 기본값). 판을 처리할 때의 계산과 같은 것이다: core 의 같은 계산을 부른다.
+- **날짜.** `asOf` 하루에 유효한 관계만 따라간다 (다른 조회와 같은 뜻이다. 없으면 서버가 오늘로 정하고 답에 적는다). `includePreviousDay=true` 를 주면 그 전날에 유효한 관계도 함께 따라가 합친다: 그 날짜가 적용일인 변동의 저장된 영향 범위와 같은 방식이다 [AD-100] [AD-115]. 답의 `asOfPrevious` 가 그 전날이고, 주지 않았으면 null 이다. 대상마다의 근거 경로에 어느 날짜의 관계인지가 적힌다 (`path.asOf`).
+- **저장된 영향 범위와 같은가.** 변동 대상이 하나인 변동의 그 개체와 적용일을 `includePreviousDay=true` 로 물으면, **저장할 때와 자료가 같은 동안에는** 저장된 영향 범위와 대상, 깊이, 근거 경로, 순서까지 같다. 저장된 것은 판을 올린 그때의 자료로 계산한 것이라, 그 뒤에 그 날짜에 유효한 관계가 더 들어오면 이 조회의 답만 달라진다. 변동 대상이 여럿인 변동은 이 조회로 같은 답을 얻지 못한다 (개체 하나에서 출발한다).
+- **최대 깊이.** `maxDepth` 가 없으면 그 Pack 의 최대 깊이의 기본값이다. 적으면 1 부터 그 기본값까지만 받는다: Pack 이 정한 한도보다 깊게는 묻지 못한다. 최대 깊이에서 멈췄는데 그 너머에 대상이 더 있으면 `truncated` 가 true 다.
+- **답의 모양**은 저장된 영향 범위와 같다: `total`, `countsByType`, `countsByDepth`, `targets` (대상마다 `entityId`, `entityType`, `entity`, `depth`, `path`). 머리에는 변동 이벤트 대신 출발 개체(`entityId`, `entity`)와 `packId`, `asOf`, `asOfPrevious`, `maxDepth`, `truncated` 가 있다. 출발 개체 자신은 영향 대상에 들지 않는다. 표시 이름은 조회 시점의 값이다.
+- **순서와 나눠 주기**는 저장된 영향 범위와 같다: 깊이, 개체 유형, 개체의 `id` 차례이고 `offset`, `limit` 으로 나눠 준다. `total` 과 유형별·깊이별 수는 나누기 전의 값이다. 계산은 부를 때마다 전체를 한다: 쪽을 넘기는 사이에 자료가 바뀌면 쪽들이 서로 맞지 않을 수 있다.
+
+| 상황 | HTTP 상태 | `code` |
+|---|---|---|
+| `entityId` 가 없다 | 400 | `MISSING_ENTITY_ID` |
+| 조회 시점의 형식이 틀렸거나, 전날을 함께 보라고 했는데 조회 시점이 0001-01-01 이다 | 400 | `INVALID_AS_OF` |
+| `includePreviousDay` 가 true 나 false 가 아니다 | 400 | `INVALID_INCLUDE_PREVIOUS_DAY` |
+| `maxDepth` 가 1 부터 그 Pack 의 기본값까지의 정수가 아니다 | 400 | `INVALID_MAX_DEPTH` |
+| 그 개체가 없다 | 404 | `ENTITY_NOT_FOUND` |
+| 따라가야 할 관계의 유형이 지금의 Pack 의 정의에 없다 | 422 | `UNKNOWN_IMPACT_DIRECTION` |
+
+화면은 아직 이 API 를 부르지 않는다.
+
 ### 규격
 
-`docs/api/openapi.yaml` 의 `listActions` 와 `getChangeImpactScope` 가 이 API 들의 규격이다.
+`docs/api/openapi.yaml` 의 `listActions`, `getChangeImpactScope`, `getImpactFromEntity` 가 이 API 들의 규격이다.
 
 ### 목록 내보내기
 

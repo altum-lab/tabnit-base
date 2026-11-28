@@ -216,6 +216,12 @@ class ApiConfiguration implements WebMvcConfigurer {
 		return new com.altumlab.tabnit.core.PackRelationMapQuery(dataSource);
 	}
 
+	/** 출발 개체로 영향을 묻는 조회가 쓴다 (D2 AD-429). 판을 처리할 때의 계산(EditionProcessing)은 제 것을 따로 든다. */
+	@Bean
+	com.altumlab.tabnit.core.ImpactQuery impactQuery(DataSource dataSource) {
+		return new com.altumlab.tabnit.core.ImpactQuery(dataSource);
+	}
+
 	/** 두 개체 사이의 가장 짧은 경로를 찾는 조회 (카드 A-18, D2 AD-413). */
 	@Bean
 	com.altumlab.tabnit.core.RelationPathQuery relationPathQuery(DataSource dataSource) {

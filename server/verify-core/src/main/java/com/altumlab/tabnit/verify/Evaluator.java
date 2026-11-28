@@ -83,6 +83,8 @@ final class Evaluator {
         for (QuestionFile.Question question : ordered) {
             String label = "";
             try {
+                // 날짜나 단계를 먼저 정해 둔다: 골든셋의 번호가 틀려 실패해도 어느 날짜의 질문인지는 보고에 남는다.
+                label = where(question);
                 label = label(question);
                 Object[] pair = switch (question.kind()) {
                     case RELATIONS -> relations(question);
@@ -163,8 +165,13 @@ final class Evaluator {
         }
         Map<?, ?> body = ok(this.product.attributeValues(entityId, asOf), "속성 값의 시점 조회");
         List<Object> actual = new ArrayList<>();
-        for (Object item : (List<?>) body.get("values")) {
-            Map<?, ?> value = (Map<?, ?>) item;
+        if (!(body.get("values") instanceof List<?> values)) {
+            throw new Failure("속성 값의 시점 조회의 답에 values 목록이 없습니다. 제품의 답이 계약(D7)과 다릅니다.");
+        }
+        for (Object item : values) {
+            if (!(item instanceof Map<?, ?> value)) {
+                throw new Failure("속성 값의 시점 조회의 답의 values 에 항목의 묶음이 아닌 것이 있습니다. 제품의 답이 계약(D7)과 다릅니다.");
+            }
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("attribute", value.get("attributeName"));
             row.put("value", value.get("value"));
@@ -481,14 +488,17 @@ final class Evaluator {
      *
      * @return 번호. 적지 않았으면 null
      */
+    private static final java.util.regex.Pattern GOLDEN = java.util.regex.Pattern.compile("CQ-[0-9]{2}");
+
     private static String golden(QuestionFile.Question question) {
         Object golden = question.body().get("golden");
         if (golden == null) {
             return null;
         }
-        if (!(golden instanceof String text) || text.isBlank()) {
-            throw new Failure("질문 " + question.id() + " 의 golden 은 골든셋의 번호 하나를 글자로 적어야 합니다 (예: CQ-03). 받은 값: "
-                    + golden);
+        // 꼴은 CQ- 뒤에 숫자 둘이다 (D4 3절, D2 AD-426). 오타(CQ-3)나 여럿을 한 글자로 적은 것(CQ-01, CQ-02)을 받지 않는다.
+        if (!(golden instanceof String text) || !GOLDEN.matcher(text).matches()) {
+            throw new Failure("질문 " + question.id() + " 의 golden 은 골든셋의 번호 하나를 CQ- 뒤에 숫자 둘로 적어야 합니다"
+                    + " (예: CQ-03). 받은 값: " + golden);
         }
         return text;
     }

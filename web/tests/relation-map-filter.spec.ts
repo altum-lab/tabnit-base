@@ -170,3 +170,63 @@ test("가린 것은 시점을 옮겨 다시 받아도, 3D 로 바꿔도 그대�
   await expect(page.getByTestId("map-3d")).toBeVisible();
   expect(await shownEdges(page)).toEqual(expected(map, [], ["a-type"]).edges);
 });
+
+// ── 코드 검토(/code-review 120)가 짚은 것 ─────────────────────────────────────
+
+test("3D 의 코드를 받는 중이거나 받지 못했어도, 모두 껐으면 보일 것이 없다고만 말한다", async ({ page }) => {
+  // 3D 의 코드를 받지 못하게 한다.
+  await page.route(/RelationMapGraph3D/, (route) => route.abort());
+  await open(page, MIXED.entityId, MIXED.asOf);
+  await page.getByRole("radio", { name: "3D" }).check();
+  await expect(page.getByTestId("map-3d-failed")).toBeVisible();
+
+  for (const box of await page.getByRole("group", { name: "보일 것" }).locator("[data-entity-type]").all()) {
+    await box.uncheck();
+  }
+  await expect(page.getByTestId("map-empty")).toBeVisible();
+  // 그릴 것이 없는데 그림을 받지 못했다고 알리지 않는다.
+  await expect(page.getByTestId("map-3d-failed")).toHaveCount(0);
+  await expect(page.getByTestId("map-3d-loading")).toHaveCount(0);
+});
+
+test("가린 유형이 지금의 지도에 없어도 칸이 남아 다시 켤 수 있다", async ({ page }) => {
+  await open(page, "e2e|T|me", "2026-03-01");
+  const filter = page.getByRole("group", { name: "보일 것" });
+  await filter.locator('[data-relation-type="a-type"]').uncheck();
+
+  // 그 관계 유형이 없는 다른 개체의 지도.
+  await page.getByLabel("개체 id").fill(MIXED.entityId);
+  await page.getByLabel("조회 시점").fill(MIXED.asOf);
+  await page.getByRole("button", { name: "조회" }).click();
+  await expect(page.getByTestId("relation-map")).toHaveAttribute("data-center", MIXED.entityId);
+
+  const box = filter.locator('[data-relation-type="a-type"]');
+  await expect(box).toHaveCount(1);
+  await expect(box).not.toBeChecked();
+  await expect(filter.getByTestId("hidden-absent")).toContainText("이 지도에 없는");
+  // 이 지도에서 가려진 것은 없다.
+  await expect(page.getByTestId("map-filtered")).toHaveCount(0);
+
+  // 누르면 칸이 사라지므로 (아래) 상태를 확인하는 check 가 아니라 click 으로 누른다.
+  await box.click();
+  // 켜면 가린 것이 없으니, 이 지도에 없는 유형의 칸은 사라진다.
+  await expect(filter.locator('[data-relation-type="a-type"]')).toHaveCount(0);
+  await expect(filter.getByTestId("hidden-absent")).toHaveCount(0);
+});
+
+test("강제 색 모드에서도 그림의 테두리가 보인다", async ({ page }) => {
+  await page.emulateMedia({ forcedColors: "active" });
+  await open(page, MIXED.entityId, MIXED.asOf);
+  const picture = page.locator('[role="img"][aria-label^="관계 지도 그림"]');
+  // 강제 색 모드에서는 브라우저가 그림자를 그리지 않는다: 테두리는 외곽선으로 그린다.
+  expect(await picture.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe("solid");
+});
+
+test("가린 것의 안내는 위에 수가 있을 때만 수를 말한다", async ({ page }) => {
+  // 잘리지 않은 지도: 위에 수가 없다.
+  await open(page, "e2e|T|me", "2026-03-01");
+  await expect(page.getByTestId("map-truncated")).toHaveCount(0);
+  await page.getByRole("group", { name: "보일 것" }).locator('[data-relation-type="a-type"]').uncheck();
+  await expect(page.getByTestId("map-filtered")).toContainText("관계 목록은 가리기 전의 것 그대로입니다");
+  await expect(page.getByTestId("map-filtered")).not.toContainText("위의 수");
+});

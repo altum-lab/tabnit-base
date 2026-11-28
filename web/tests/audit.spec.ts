@@ -108,3 +108,59 @@ baseTest("받지 못하면 까닭을 알리고 다시 받을 수 있다", async 
   await page.getByRole("button", { name: "찾기" }).click();
   await baseExpect(page.getByRole("table", { name: "감사 기록" })).toBeVisible();
 });
+
+// /code-review 123 이 짚은 것.
+baseTest("거르는 값의 앞뒤 빈칸은 떼고 찾고, 권한이 없어 막힌 시도를 찾는 법을 알린다", async ({ page, context, baseURL }) => {
+  await login(context, E2E_OTHER_USER);
+  const officer = await apiAs(baseURL, E2E_USER);
+  await officer.get("/api/v1/packs");
+  await officer.dispose();
+  await page.goto("/audit");
+  await baseExpect(page.getByRole("table", { name: "감사 기록" })).toBeVisible();
+
+  // 붙여 넣다 딸려 온 빈칸.
+  await page.getByLabel("누가").fill(` ${E2E_USER.loginId} `);
+  await page.getByLabel("무엇을").fill("listPacks ");
+  await page.getByRole("button", { name: "찾기" }).click();
+
+  const rows = page.getByRole("table", { name: "감사 기록" }).locator("tbody tr");
+  await baseExpect(rows.first()).toBeVisible();
+  await baseExpect(page.getByText("맞는 감사 기록이 없습니다")).toHaveCount(0);
+  // 칸에도 뗀 값이 보인다: 무엇으로 찾았는지가 화면과 같다.
+  await baseExpect(page.getByLabel("누가")).toHaveValue(E2E_USER.loginId);
+
+  // 역할이 모자라 막힌 시도는 그 기능의 이름이 아니라 accessDenied 로 남는다.
+  await baseExpect(page.getByTestId("audit-filter-hint")).toContainText("accessDenied");
+});
+
+// /code-review 123 이 짚은 것 (D2 AD-424): 쪽을 넘기는 일 자체가 감사 기록을 더한다.
+baseTest("쪽을 넘겨도 앞 쪽의 줄이 다시 나오지 않고 전체 수가 그대로다", async ({ page, context, baseURL }) => {
+  await login(context, E2E_OTHER_USER);
+  // 한 쪽(50줄)을 넘도록 줄을 만든다.
+  const officer = await apiAs(baseURL, E2E_USER);
+  for (let i = 0; i < 30; i++) {
+    await officer.get("/api/v1/packs");
+  }
+  await officer.dispose();
+  await page.goto("/audit");
+  const rows = page.getByRole("table", { name: "감사 기록" }).locator("tbody tr");
+  await baseExpect(rows.first()).toBeVisible();
+  const ids = () => rows.evaluateAll((trs) => trs.map((tr) => Number(tr.getAttribute("data-record-id"))));
+  const firstPage = await ids();
+  const position = (await page.getByTestId("pager-position").innerText()).match(/전체 (\d+)건/)![1];
+
+  await page.getByRole("button", { name: "다음" }).click();
+  await baseExpect(page.getByTestId("pager-position")).toContainText(`${firstPage.length + 1}`);
+  const secondPage = await ids();
+  // 앞 쪽의 바로 아래에서 이어진다.
+  baseExpect(secondPage.filter((id) => firstPage.includes(id))).toEqual([]);
+  baseExpect(secondPage[0]).toBeLessThan(firstPage[firstPage.length - 1]!);
+  await baseExpect(page.getByTestId("pager-position")).toContainText(`전체 ${position}건`);
+  // 붙든 것을 알린다.
+  await baseExpect(page.getByTestId("audit-pinned")).toContainText("찾은 때까지의 기록");
+
+  // 다시 찾으면 그 사이에 남은 것까지 본다.
+  await page.getByRole("button", { name: "찾기" }).click();
+  await baseExpect(rows.first()).toBeVisible();
+  baseExpect((await ids())[0]).toBeGreaterThan(firstPage[0]!);
+});

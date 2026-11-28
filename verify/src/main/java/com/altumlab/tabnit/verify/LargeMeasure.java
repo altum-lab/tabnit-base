@@ -50,6 +50,22 @@ final class LargeMeasure {
         return Math.max(100.0, impactTargets * 0.1);
     }
 
+    /** 동시에 돌리는 수 (카드 A-16, D5 1절, D2 AD-427). */
+    static final int CONCURRENT = 10;
+
+    /** 동시에 열을 돌렸을 때의 영향 범위 계산 하나의 p95 의 목표 (밀리초. D5 1절, D2 AD-427). */
+    static final double CONCURRENT_TARGET_MILLIS = 2_000.0;
+
+    /**
+     * p95: 작은 것부터 늘어놓아 백에 아흔다섯째의 자리의 값이다. 가장 가까운 자리로 잡는다 (사이를 채워 셈하지 않는다).
+     *
+     * @param micros 잰 값. 하나 이상
+     */
+    static long percentile95(List<Long> micros) {
+        long[] sorted = micros.stream().mapToLong(Long::longValue).sorted().toArray();
+        return sorted[(int) Math.ceil(sorted.length * 0.95) - 1];
+    }
+
     /** 오래 걸린 질의로 보는 기준 (실행 계획을 남긴다). */
     private static final int SLOW_MILLIS = 50;
 
@@ -106,6 +122,8 @@ final class LargeMeasure {
         boolean sameCount = true;
         // 영향 대상의 수마다 계산에 걸린 시간 (마이크로초). 목표가 영향 대상의 수에 달려 있다.
         Map<Long, List<Long>> calculations = new TreeMap<>();
+        // 동시에 돌려 잴 계산들. 변동마다 한 번씩 모은다 (첫 바퀴에서).
+        List<ImpactRequest> requests = new ArrayList<>();
         for (int round = 0; round < this.rounds; round++) {
             for (LargePack.ExpectedChange change : expected.changes()) {
                 String scopePath = "/api/v1/impact-scopes?changeEventId=" + HttpProduct.encoded(eventByKey.get(change.itemKey()));
@@ -134,6 +152,9 @@ final class LargeMeasure {
                         List.of(LocalDate.parse(String.valueOf(scope.get("asOfPrevious"))),
                                 LocalDate.parse(String.valueOf(scope.get("asOfEffective")))),
                         directions, ((Number) scope.get("maxDepth")).intValue());
+                if (round == 0) {
+                    requests.add(request);
+                }
                 String calculation = "영향 범위 계산 (core): 영향 대상 " + change.impactTargets() + "개";
                 ImpactScope calculated = timed(samples, calculation, () -> impact.impactScope(request));
                 List<Long> taken = samples.get(calculation);
@@ -179,6 +200,7 @@ final class LargeMeasure {
         if (sameCount && computed >= 0) {
             lines.add("  같음  영향 범위 계산 (core) 의 영향 대상의 수: " + computed);
         }
+        failed |= comparison(samples, lines, http, expected.packId());
         samples.forEach((what, taken) -> lines.add(summary(what, taken)));
         // 목표와 견준다. 넘어도 실패로 끝내지는 않는다: 걸린 시간은 기계와 그날의 사정에 따라 흔들린다 (D2 AD-355).
         for (Map.Entry<Long, List<Long>> entry : calculations.entrySet()) {
@@ -187,9 +209,98 @@ final class LargeMeasure {
             lines.add(String.format("  %s  영향 범위 계산 (core) 의 가운데 값 %.1f ms, 목표 %.1f ms (영향 대상 %d개)",
                     median <= target ? "목표 안" : "목표 넘음", median, target, entry.getKey()));
         }
+        failed |= concurrent(lines, impact, requests);
         failed |= !sameCount;
         failed |= storage(lines, jdbcUrl, user, password);
         return failed;
+    }
+
+    /**
+     * 두 판의 비교를 잰다 (카드 A-16). 같은 입력 자료의 판이 둘 이상이면 가장 앞의 둘을 견준다 (HTTP).
+     * 판이 둘이 안 되면 재지 않고 그렇다고 적는다.
+     */
+    private boolean comparison(Map<String, List<Long>> samples, List<String> lines, HttpProduct http, String packId) {
+        Product.Reply listed = http.get("/api/v1/editions?limit=" + LARGEST_PAGE + "&packId=" + HttpProduct.encoded(packId));
+        if (listed.status() != 200 || !(listed.body() instanceof Map<?, ?> body) || !(body.get("editions") instanceof List<?> editions)) {
+            lines.add("  실패  판의 목록을 받지 못했습니다: HTTP " + listed.status());
+            return true;
+        }
+        // 입력 자료마다 판 번호의 차례로 모은다.
+        Map<String, Map<Integer, String>> bySource = new TreeMap<>();
+        for (Object item : editions) {
+            Map<?, ?> edition = (Map<?, ?>) item;
+            bySource.computeIfAbsent(String.valueOf(edition.get("inputSourceId")), key -> new TreeMap<>())
+                .put(((Number) edition.get("editionNo")).intValue(), String.valueOf(edition.get("editionId")));
+        }
+        for (Map<Integer, String> numbered : bySource.values()) {
+            if (numbered.size() >= 2) {
+                List<String> ids = new ArrayList<>(numbered.values());
+                String path = "/api/v1/edition-comparison?fromEditionId=" + HttpProduct.encoded(ids.get(0)) + "&toEditionId="
+                        + HttpProduct.encoded(ids.get(1));
+                boolean failed = false;
+                for (int round = 0; round < this.rounds; round++) {
+                    failed |= get(samples, lines, http, "두 판의 비교 (행 " + this.spec.entities() / this.spec.layers() + "개쯤)", path);
+                }
+                return failed;
+            }
+        }
+        lines.add("  두 판의 비교: 같은 입력 자료의 판이 둘이 안 되어 재지 않았습니다.");
+        return false;
+    }
+
+    /**
+     * 영향 범위 계산을 동시에 열을 돌려 잰다 (카드 A-16, D2 AD-427). 열이 저마다 모아 둔 계산을 차례로 되풀이한다:
+     * 계산 하나마다 걸린 시간을 재어 p95 를 목표와 견준다. 넘어도 실패로 끝내지 않는다 (걸린 시간은 기계마다 다르다).
+     * 계산은 core 를 바로 부른다 (저장과 규칙 실행이 들지 않는다. AD-355 의 목표와 같은 것을 잰다).
+     *
+     * @return 재다가 오류가 났는가
+     */
+    private boolean concurrent(List<String> lines, ImpactQuery impact, List<ImpactRequest> requests) {
+        if (requests.isEmpty()) {
+            lines.add("  영향 범위 계산 (core) 동시 " + CONCURRENT + ": 영향 대상이 있는 변동이 없어 재지 않았습니다.");
+            return false;
+        }
+        List<Long> micros = java.util.Collections.synchronizedList(new ArrayList<>());
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(CONCURRENT);
+        java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+        List<java.util.concurrent.Future<?>> running = new ArrayList<>();
+        for (int worker = 0; worker < CONCURRENT; worker++) {
+            running.add(pool.submit(() -> {
+                start.await();
+                for (int round = 0; round < this.rounds; round++) {
+                    for (ImpactRequest request : requests) {
+                        long started = System.nanoTime();
+                        impact.impactScope(request);
+                        micros.add((System.nanoTime() - started) / 1_000);
+                    }
+                }
+                return null;
+            }));
+        }
+        start.countDown();
+        try {
+            for (java.util.concurrent.Future<?> one : running) {
+                one.get();
+            }
+        }
+        catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            lines.add("  실패  영향 범위 계산 (core) 동시 " + CONCURRENT + ": 재다가 멈췄습니다.");
+            return true;
+        }
+        catch (java.util.concurrent.ExecutionException e) {
+            lines.add("  실패  영향 범위 계산 (core) 동시 " + CONCURRENT + ": " + e.getCause());
+            return true;
+        }
+        finally {
+            pool.shutdownNow();
+        }
+        double p95 = percentile95(micros) / 1000.0;
+        long[] sorted = micros.stream().mapToLong(Long::longValue).sorted().toArray();
+        lines.add(String.format("  %s  영향 범위 계산 (core) 동시 %d: p95 %.1f ms, 목표 %.1f ms (계산 %d번, 가운데 %.1f ms, 가장 큼 %.1f ms)",
+                p95 < CONCURRENT_TARGET_MILLIS ? "목표 안" : "목표 넘음", CONCURRENT, p95, CONCURRENT_TARGET_MILLIS,
+                sorted.length, median(micros) / 1000.0, sorted[sorted.length - 1] / 1000.0));
+        return false;
     }
 
     /** 저장소의 기록(오래 걸린 질의의 실행 계획이 들어 있다)을 파일로 남긴다. */

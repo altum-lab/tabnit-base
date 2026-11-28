@@ -105,3 +105,55 @@ test("담당자에게도 메뉴가 보이고 정의를 받지 못하면 까닭�
   await expect(page.getByRole("alert")).toBeVisible();
   await expect(page.getByTestId("definition")).toHaveCount(0);
 });
+
+// ── 코드 검토(/code-review 124)가 짚은 것 ─────────────────────────────────────
+
+test("판의 적용일과 견주는 조건은 무엇과 견주는지 적고, 언제 적재한 정의인지 보인다", async ({ page, request }) => {
+  const packId = "e2e-actions";
+  const answer = (await (await request.get("/api/v1/pack-definition", { params: { packId } })).json()) as Definition & {
+    loadedAt: string;
+  };
+  // 시험용 Pack 에는 판의 적용일과 견주는 조건이 없다. 서버의 답에 그런 조건 하나를 끼워 넣는다.
+  await page.route("**/api/v1/pack-definition?*", async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as { rules: { conditions: unknown[] }[] };
+    body.rules[0]!.conditions = [
+      {
+        subject: "CHANGE_TARGET",
+        linkedBy: null,
+        typeIs: null,
+        attributeName: "지어낸날짜",
+        operator: "LESS_THAN_OR_EQUAL",
+        compareTo: "EFFECTIVE_DATE",
+        compareSubject: null,
+        compareAttributeName: null,
+        values: [],
+      },
+    ];
+    await route.fulfill({ response, json: body });
+  });
+  await open(page, packId);
+
+  const rule = page.getByRole("table", { name: "규칙" }).locator("tbody tr").first();
+  await expect(rule).toContainText("지어낸날짜 LESS_THAN_OR_EQUAL 판의 적용일");
+
+  // 적재한 때: 서버가 준 시각 그대로를 담고, 설치 설정의 시간대로 바꿔 보인다.
+  const loaded = page.getByTestId("definition-loaded-at");
+  await expect(loaded).toHaveAttribute("datetime", answer.loadedAt);
+  await expect(loaded).toHaveText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+});
+
+test("표시 이름의 속성을 적지 않은 유형에 상위 유형의 것을 받는다고 단정하지 않는다", async ({ page, request }) => {
+  const packId = "e2e-actions";
+  const answer = (await (await request.get("/api/v1/pack-definition", { params: { packId } })).json()) as {
+    entityTypes: { name: string; parents: string[]; displayNameAttribute: string | null }[];
+  };
+  const child = answer.entityTypes.find((type) => type.parents.length > 0 && type.displayNameAttribute === null)!;
+  expect(child, "상위 유형이 있고 표시 이름의 속성을 적지 않은 유형이 시험 자료에 있어야 한다").toBeTruthy();
+  await open(page, packId);
+
+  const row = page.getByRole("table", { name: "개체 유형" }).locator(`tbody tr[data-name="${child.name}"]`);
+  // 상위 유형에도 없을 수 있다: 화면은 그것을 알지 못한다.
+  await expect(row).toContainText("이 유형에는 적지 않았습니다");
+  await expect(row).not.toContainText("받습니다");
+});
